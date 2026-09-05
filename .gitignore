@@ -1,0 +1,64 @@
+# ===== Build artifacts =====
+target/
+build/
+out/
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.tar
+
+# ===== Frontend =====
+node_modules/
+dist/
+.cache/
+.parcel-cache/
+.npm/
+.yarn/
+
+# ===== IDE =====
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.project
+.classpath
+.settings/
+
+# ===== Maven wrapper local copy =====
+.mvn/wrapper/maven-wrapper.jar
+
+# ===== OS junk =====
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ===== Logs =====
+*.log
+logs/
+hs_err_pid*.log
+
+# ===== Secrets / local config =====
+.env
+.env.*
+*.pem
+*.key
+credentials*
+secrets.*
+
+# ===== Temp =====
+*.tmp
+*.bak
+*.swp
+*~
+
+# ===== Coverage / test output =====
+coverage/
+.nyc_output/
+*.lcov
+test-output/
+surefire-reports/

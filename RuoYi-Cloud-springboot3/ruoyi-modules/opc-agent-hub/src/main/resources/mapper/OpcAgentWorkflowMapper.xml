@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.agent.mapper.OpcAgentWorkflowMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.agent.domain.OpcAgentWorkflow">
+        <id property="id" column="id" />
+        <result property="workflowCode" column="workflow_code" />
+        <result property="name" column="name" />
+        <result property="companyId" column="company_id" />
+        <result property="definitionId" column="definition_id" />
+        <result property="triggerType" column="trigger_type" />
+        <result property="triggerConfig" column="trigger_config" />
+        <result property="dagJson" column="dag_json" />
+        <result property="enabled" column="enabled" />
+        <result property="cronExpression" column="cron_expression" />
+        <result property="timezone" column="timezone" />
+        <result property="nextRunAt" column="next_run_at" />
+        <result property="lastRunTime" column="last_run_time" />
+        <result property="runCount" column="run_count" />
+        <result property="status" column="status" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+        <result property="remark" column="remark" />
+    </resultMap>
+
+    <sql id="Base_Columns">
+        id, workflow_code, name, company_id, definition_id,
+        trigger_type, trigger_config, dag_json, enabled,
+        cron_expression, timezone, next_run_at,
+        last_run_time, run_count, status,
+        create_by, create_time, update_by, update_time, remark
+    </sql>
+
+    <select id="selectByCode" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_agent_workflow WHERE workflow_code = #{workflowCode}
+    </select>
+
+    <update id="updateRunStats">
+        UPDATE opc_agent_workflow
+        SET last_run_time = #{lastRunTime},
+            next_run_at   = #{nextRunAt},
+            run_count     = run_count + 1,
+            update_time   = NOW()
+        WHERE id = #{id}
+    </update>
+
+</mapper>

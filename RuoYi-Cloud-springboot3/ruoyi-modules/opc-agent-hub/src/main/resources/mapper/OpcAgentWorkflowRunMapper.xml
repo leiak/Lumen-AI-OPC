@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.agent.mapper.OpcAgentWorkflowRunMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.agent.domain.OpcAgentWorkflowRun">
+        <id property="id" column="id" />
+        <result property="runCode" column="run_code" />
+        <result property="workflowId" column="workflow_id" />
+        <result property="companyId" column="company_id" />
+        <result property="triggerType" column="trigger_type" />
+        <result property="triggerSource" column="trigger_source" />
+        <result property="status" column="status" />
+        <result property="inputParams" column="input_params" />
+        <result property="outputResult" column="output_result" />
+        <result property="errorMessage" column="error_message" />
+        <result property="stepLogs" column="step_logs" />
+        <result property="tokenUsed" column="token_used" />
+        <result property="cost" column="cost" />
+        <result property="startTime" column="start_time" />
+        <result property="endTime" column="end_time" />
+        <result property="durationMs" column="duration_ms" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Columns">
+        id, run_code, workflow_id, company_id, trigger_type, trigger_source, status,
+        input_params, output_result, error_message, step_logs,
+        token_used, cost, start_time, end_time, duration_ms,
+        create_by, create_time, update_by, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.agent.domain.OpcAgentWorkflowRun"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_agent_workflow_run (
+            run_code, workflow_id, company_id, trigger_type, trigger_source, status,
+            input_params, start_time, create_by, create_time
+        ) VALUES (
+            #{runCode}, #{workflowId}, #{companyId}, #{triggerType}, #{triggerSource}, #{status},
+            #{inputParams}, #{startTime}, #{createBy}, NOW()
+        )
+    </insert>
+
+    <update id="update" parameterType="com.ruoyi.opc.agent.domain.OpcAgentWorkflowRun">
+        UPDATE opc_agent_workflow_run
+        <set>
+            <if test="status != null">status = #{status},</if>
+            <if test="outputResult != null">output_result = #{outputResult},</if>
+            <if test="errorMessage != null">error_message = #{errorMessage},</if>
+            <if test="stepLogs != null">step_logs = #{stepLogs},</if>
+            <if test="tokenUsed != null">token_used = #{tokenUsed},</if>
+            <if test="cost != null">cost = #{cost},</if>
+            <if test="endTime != null">end_time = #{endTime},</if>
+            <if test="durationMs != null">duration_ms = #{durationMs},</if>
+            update_by = #{updateBy},
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="findRunningByCodeSince" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_agent_workflow_run r
+        WHERE r.workflow_id = (SELECT w.id FROM opc_agent_workflow w WHERE w.workflow_code = #{workflowCode})
+          AND r.status = 'RUNNING'
+          AND r.create_time &gt;= #{since}
+        ORDER BY r.id DESC
+        LIMIT 1
+    </select>
+
+</mapper>
