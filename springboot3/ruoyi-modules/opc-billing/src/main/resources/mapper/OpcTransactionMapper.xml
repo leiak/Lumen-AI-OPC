@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.billing.mapper.OpcTransactionMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.billing.domain.OpcTransaction">
+        <id property="id" column="id"/>
+        <result property="txCode" column="tx_code"/>
+        <result property="walletId" column="wallet_id"/>
+        <result property="companyId" column="company_id"/>
+        <result property="txType" column="tx_type"/>
+        <result property="amount" column="amount"/>
+        <result property="balanceBefore" column="balance_before"/>
+        <result property="balanceAfter" column="balance_after"/>
+        <result property="bizType" column="biz_type"/>
+        <result property="bizId" column="biz_id"/>
+        <result property="description" column="description"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, tx_code, wallet_id, company_id, tx_type, amount,
+        balance_before, balance_after, biz_type, biz_id, description,
+        create_by, create_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.billing.domain.OpcTransaction"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_transaction (
+            tx_code, wallet_id, company_id, tx_type, amount,
+            balance_before, balance_after, biz_type, biz_id, description,
+            create_by, create_time
+        ) VALUES (
+            #{txCode}, #{walletId}, #{companyId}, #{txType}, #{amount},
+            #{balanceBefore}, #{balanceAfter}, #{bizType}, #{bizId}, #{description},
+            #{createBy}, NOW()
+        )
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM opc_transaction
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectByTxCode" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM opc_transaction
+        WHERE tx_code = #{txCode}
+    </select>
+
+    <select id="selectByWallet" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM opc_transaction
+        WHERE wallet_id = #{walletId}
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectByCompany" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM opc_transaction
+        <where>
+            company_id = #{companyId}
+            <if test="txType != null and txType != ''">
+                AND tx_type = #{txType}
+            </if>
+        </where>
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>
