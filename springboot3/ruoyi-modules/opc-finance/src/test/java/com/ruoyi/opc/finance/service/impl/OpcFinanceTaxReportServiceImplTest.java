@@ -169,6 +169,8 @@ class OpcFinanceTaxReportServiceImplTest {
         assertEquals(0, saved.getTaxableAmount().compareTo(BigDecimal.ZERO));
         assertEquals(0, saved.getTaxAmount().compareTo(BigDecimal.ZERO));
         assertEquals(0, saved.getPayAmount().compareTo(BigDecimal.ZERO));
+        assertEquals(0, saved.getPaidAmount().compareTo(BigDecimal.ZERO),
+                "paidAmount 应为 0（默认未缴）");
         assertEquals("DRAFT", saved.getStatus());
     }
 
