@@ -64,6 +64,13 @@
             <groupId>com.ruoyi</groupId>
             <artifactId>opc-common</artifactId>
         </dependency>
+
+        <!-- W2.1: 单元测试 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
