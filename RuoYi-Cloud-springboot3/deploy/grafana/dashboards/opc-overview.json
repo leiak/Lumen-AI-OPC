@@ -1,0 +1,71 @@
+{
+  "title": "OPC 业务总览",
+  "uid": "opc-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "LLM 调用次数（每分钟）",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {"expr": "rate(opc_llm_calls_total[1m])", "legendFormat": "{{model}}"}
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Token 消耗（每分钟）",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {"expr": "rate(opc_token_total[1m])", "legendFormat": "{{model}}"}
+      ]
+    },
+    {
+      "id": 3,
+      "title": "LLM API 成本（每小时）",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {"expr": "increase(opc_llm_cost_total[1h])", "legendFormat": "{{model}}"}
+      ]
+    },
+    {
+      "id": 4,
+      "title": "活跃 Agent 实例",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {"expr": "opc_agent_instance_running"}
+      ]
+    },
+    {
+      "id": 5,
+      "title": "凭证生成（每小时）",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {"expr": "rate(opc_voucher_created_total[1h])"}
+      ]
+    },
+    {
+      "id": 6,
+      "title": "钱包余额（Top 10 公司）",
+      "type": "table",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [
+        {"expr": "topk(10, opc_wallet_balance)"}
+      ]
+    },
+    {
+      "id": 7,
+      "title": "4 大黄金指标 - 延迟 P95",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m]))", "legendFormat": "{{uri}}"}
+      ]
+    }
+  ]
+}

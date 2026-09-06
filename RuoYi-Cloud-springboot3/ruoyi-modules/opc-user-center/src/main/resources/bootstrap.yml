@@ -1,0 +1,40 @@
+# Tomcat
+server:
+  port: 9302
+
+# Spring
+spring:
+  application:
+    name: opc-user-center
+  profiles:
+    active: dev
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+        namespace: ${NACOS_NAMESPACE:public}
+        fail-fast: true
+        fail-fast-on-connection-refused: true
+      config:
+        server-addr: 127.0.0.1:8848
+        namespace: ${NACOS_NAMESPACE:public}
+        file-extension: yml
+        fail-fast: true
+        refresh-enabled: true
+        retry-time: 3000
+        max-retry-time: 60000
+        ext-config:
+          - data-id: opc-common-prod.yml
+            group: DEFAULT_GROUP
+            refresh: true
+  config:
+    file-extension: yml
+    import:
+      - nacos:application-${spring.profiles.active}.${spring.config.file-extension}
+      - nacos:${spring.application.name}-${spring.profiles.active}.${spring.config.file-extension}
+      - nacos:opc-common-${spring.profiles.active}.${spring.config.file-extension}
+
+logging:
+  level:
+    com.ruoyi.opc: debug
+    com.alibaba.cloud.nacos: info

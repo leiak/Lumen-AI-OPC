@@ -1,0 +1,347 @@
+# ============================================================
+# OPC Helm Chart 默认 values（被 values-{env}.yaml 覆盖）
+# ============================================================
+# 多环境用法：
+#   helm install opc ./opc -f values-prod.yaml
+#   helm install opc ./opc -f values-staging.yaml
+#   helm install opc ./opc -f values-dev.yaml
+# ============================================================
+
+global:
+  # 命名空间（生产 opc，公测 opc-staging，本地 opc-dev）
+  namespace: opc
+
+  # 是否在 Helm 部署时创建命名空间（false 时需手动 kubectl create ns）
+  namespaceCreate: true
+
+  # 镜像仓库（公测阿里云，registry/namespace）
+  imageRegistry: registry.cn-hangzhou.aliyuncs.com
+
+  # 镜像 tag（CI/CD 会注入）
+  imageTag: "1.0.0"
+
+  imagePullPolicy: IfNotPresent
+
+  # Spring profile
+  profile: prod
+
+  # 镜像拉取 secrets（私有仓库）
+  imagePullSecrets:
+    - name: aliyun-registry-secret
+
+  # Nacos 服务发现（Sidecar 部署）
+  nacos:
+    serverAddr: nacos:8848
+    namespace: opc-prod
+    username: nacos
+    # password 通过 existingSecret 注入
+
+  # 中间件连接（生产）
+  middleware:
+    mysqlHost: mysql.opc.svc.cluster.local
+    mysqlPort: 3306
+    mysqlDb: ry-vue-opc
+    redisHost: redis.opc.svc.cluster.local
+    redisPort: 6379
+    rabbitmqHost: rabbitmq.opc.svc.cluster.local
+    rabbitmqPort: 5672
+    qdrantHost: qdrant.opc.svc.cluster.local
+    qdrantPort: 6333
+
+  # 已有 Secret（外部管理，不在 chart 中创建）
+  existingSecrets:
+    aiSecrets: opc-ai-secrets
+    jasyptSecrets: opc-jasypt-secrets
+
+# ============================================================
+# 服务列表（可通过 enabled: false 关闭任意服务）
+# ============================================================
+services:
+
+  # ----- 网关（Ingress 入口）-----
+  gateway:
+    enabled: true
+    name: ruoyi-gateway
+    port: 8080
+    replicaCount: 2
+    image:
+      repository: opc/ruoyi-gateway
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits:   { cpu: 2000m, memory: 2Gi }
+    jvmOpts: "-Xms1g -Xmx2g -XX:+UseG1GC"
+    podAnnotations:
+      prometheus.io/scrape: "true"
+    probes:
+      liveness:
+        path: /actuator/health/liveness
+        initialDelaySeconds: 60
+        periodSeconds: 10
+      readiness:
+        path: /actuator/health/readiness
+        initialDelaySeconds: 30
+        periodSeconds: 5
+    hpa: { enabled: false }
+
+  # ----- AI 中台 -----
+  ai-core:
+    enabled: true
+    name: opc-ai-core
+    port: 9301
+    replicaCount: 2
+    image:
+      repository: opc/opc-ai-core
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits:   { cpu: 2000m, memory: 2Gi }
+    jvmOpts: "-Xms1g -Xmx2g -XX:+UseG1GC"
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/path: "/actuator/prometheus"
+    probes:
+      liveness:
+        path: /actuator/health/liveness
+        initialDelaySeconds: 60
+        periodSeconds: 10
+      readiness:
+        path: /actuator/health/readiness
+        initialDelaySeconds: 30
+        periodSeconds: 5
+    secrets:
+      - name: OPENAI_API_KEY
+        secret: opc-ai-secrets
+        key: openai-api-key
+      - name: ZHIPUAI_API_KEY
+        secret: opc-ai-secrets
+        key: zhipuai-api-key
+      - name: JASYPT_PASSWORD
+        secret: opc-jasypt-secrets
+        key: password
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 8
+      cpuAverageUtilization: 70
+
+  # ----- Agent Hub -----
+  agent-hub:
+    enabled: true
+    name: opc-agent-hub
+    port: 9303
+    replicaCount: 2
+    image:
+      repository: opc/opc-agent-hub
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits:   { cpu: 2000m, memory: 2Gi }
+    jvmOpts: "-Xms1g -Xmx2g -XX:+UseG1GC"
+    podAnnotations:
+      prometheus.io/scrape: "true"
+    probes:
+      liveness:
+        path: /actuator/health/liveness
+        initialDelaySeconds: 60
+        periodSeconds: 10
+      readiness:
+        path: /actuator/health/readiness
+        initialDelaySeconds: 30
+        periodSeconds: 5
+    secrets:
+      - name: JASYPT_PASSWORD
+        secret: opc-jasypt-secrets
+        key: password
+    hpa: { enabled: false }
+
+  # ----- 用户中心 -----
+  user-center:
+    enabled: true
+    name: opc-user-center
+    port: 9302
+    replicaCount: 2
+    image:
+      repository: opc/opc-user-center
+    resources:
+      requests: { cpu: 300m, memory: 768Mi }
+      limits:   { cpu: 1500m, memory: 1.5Gi }
+    jvmOpts: "-Xms512m -Xmx1g -XX:+UseG1GC"
+    podAnnotations:
+      prometheus.io/scrape: "true"
+    probes:
+      liveness:
+        path: /actuator/health/liveness
+        initialDelaySeconds: 60
+        periodSeconds: 10
+      readiness:
+        path: /actuator/health/readiness
+        initialDelaySeconds: 30
+        periodSeconds: 5
+    secrets:
+      - name: JASYPT_PASSWORD
+        secret: opc-jasypt-secrets
+        key: password
+    hpa: { enabled: false }
+
+  # ----- 计费 -----
+  billing:
+    enabled: true
+    name: opc-billing
+    port: 9304
+    replicaCount: 2
+    image:
+      repository: opc/opc-billing
+    resources:
+      requests: { cpu: 300m, memory: 768Mi }
+      limits:   { cpu: 1500m, memory: 1.5Gi }
+    jvmOpts: "-Xms512m -Xmx1g -XX:+UseG1GC"
+    podAnnotations:
+      prometheus.io/scrape: "true"
+    probes:
+      liveness:
+        path: /actuator/health/liveness
+        initialDelaySeconds: 60
+        periodSeconds: 10
+      readiness:
+        path: /actuator/health/readiness
+        initialDelaySeconds: 30
+        periodSeconds: 5
+    secrets:
+      - name: JASYPT_PASSWORD
+        secret: opc-jasypt-secrets
+        key: password
+    hpa: { enabled: false }
+
+  # ----- 财务 Agent -----
+  finance:
+    enabled: true
+    name: opc-finance
+    port: 9305
+    replicaCount: 2
+    image:
+      repository: opc/opc-finance
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits:   { cpu: 2000m, memory: 2Gi }
+    jvmOpts: "-Xms1g -Xmx2g -XX:+UseG1GC"
+    podAnnotations:
+      prometheus.io/scrape: "true"
+    probes:
+      liveness:
+        path: /actuator/health/liveness
+        initialDelaySeconds: 60
+        periodSeconds: 10
+      readiness:
+        path: /actuator/health/readiness
+        initialDelaySeconds: 30
+        periodSeconds: 5
+    secrets:
+      - name: JASYPT_PASSWORD
+        secret: opc-jasypt-secrets
+        key: password
+    hpa: { enabled: false }
+
+  # ----- 系统服务 -----
+  system:
+    enabled: true
+    name: ruoyi-system
+    port: 9201
+    replicaCount: 2
+    image:
+      repository: opc/ruoyi-system
+    resources:
+      requests: { cpu: 300m, memory: 768Mi }
+      limits:   { cpu: 1500m, memory: 1.5Gi }
+    jvmOpts: "-Xms512m -Xmx1g -XX:+UseG1GC"
+    podAnnotations:
+      prometheus.io/scrape: "true"
+    probes:
+      liveness:
+        path: /actuator/health/liveness
+        initialDelaySeconds: 60
+        periodSeconds: 10
+      readiness:
+        path: /actuator/health/readiness
+        initialDelaySeconds: 30
+        periodSeconds: 5
+    secrets: []
+    hpa: { enabled: false }
+
+# ============================================================
+# ServiceAccount（RBAC）
+# ============================================================
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# ============================================================
+# Ingress（公网入口）
+# ============================================================
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-Forwarded-Proto $scheme;
+  hosts:
+    - host: opc.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: gateway
+          port: 8080
+  tls:
+    - secretName: opc-tls
+      hosts:
+        - opc.example.com
+
+# ============================================================
+# ServiceMonitor（Prometheus Operator）
+# ============================================================
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+  labels:
+    release: prometheus
+
+# ============================================================
+# Pod 安全策略
+# ============================================================
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+# ============================================================
+# 节点调度
+# ============================================================
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ============================================================
+# 资源更新策略
+# ============================================================
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 25%
+
+# ============================================================
+# 存活副本数（PodDisruptionBudget）
+# ============================================================
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

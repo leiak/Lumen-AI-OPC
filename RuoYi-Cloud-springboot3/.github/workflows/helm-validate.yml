@@ -1,0 +1,108 @@
+# GitHub Actions: OPC Helm Chart 验证
+#
+# 触发:
+#   - push to main / develop / release-*
+#   - PR targeting main / develop
+#   - 手动触发 (workflow_dispatch)
+#
+# 阶段:
+#   1. helm lint -f values-{dev,staging,prod}.yaml  (parallel matrix)
+#   2. helm template 渲染所有环境 + 上传 artifact
+#   3. diff-envs.py 跨环境 SHAPE 等价性 (Sub-task 6.3)
+#
+# 依赖: helm v3.14+, python 3.10+, pyyaml 6+
+
+name: Helm Chart Validate
+
+on:
+  push:
+    branches: [main, develop, 'release/*']
+    paths:
+      - 'deploy/helm/opc/**'
+      - '.github/workflows/helm-validate.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'deploy/helm/opc/**'
+  workflow_dispatch:
+
+env:
+  CHART_DIR: deploy/helm/opc
+  HELM_VERSION: v3.14.4
+
+jobs:
+  # Stage 1: helm lint per env (parallel matrix)
+  helm-lint:
+    name: helm lint (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev, staging, prod]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm ${{ env.HELM_VERSION }}
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: helm lint
+        run: |
+          helm version
+          helm lint ${{ env.CHART_DIR }} -f ${{ env.CHART_DIR }}/values-${{ matrix.env }}.yaml
+
+  # Stage 2: helm template 渲染所有环境
+  helm-template:
+    name: helm template (all envs)
+    runs-on: ubuntu-latest
+    needs: helm-lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pyyaml
+        run: pip install pyyaml
+      - name: helm template per env
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -e
+          for env in dev staging prod; do
+            echo "=== render values-${env}.yaml ==="
+            helm template opc ${{ env.CHART_DIR }} \
+              -f ${{ env.CHART_DIR }}/values-${env}.yaml \
+              --set global.imageTag=${IMAGE_TAG} > rendered-${env}.yaml
+            echo "  docs: $(grep -c '^kind:' rendered-${env}.yaml)"
+          done
+      - name: Upload rendered manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-rendered
+          path: rendered-*.yaml
+          retention-days: 7
+
+  # Stage 3: 跨环境 SHAPE 等价性
+  helm-diff-envs:
+    name: diff-envs (SHAPE verify)
+    runs-on: ubuntu-latest
+    needs: helm-template
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pyyaml
+        run: pip install pyyaml
+      - name: Run diff-envs.py
+        working-directory: ${{ env.CHART_DIR }}
+        run: python ci/diff-envs.py

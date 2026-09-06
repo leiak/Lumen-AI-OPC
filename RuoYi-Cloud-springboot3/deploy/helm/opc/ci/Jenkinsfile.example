@@ -1,0 +1,51 @@
+// Jenkinsfile 示例：OPC Helm Chart 流水线
+// 放到项目根目录 Jenkinsfile，引用此片段
+// 用法：
+//   Jenkinsfile {
+//     agent any
+//     stages {
+//       stage('Helm Lint & Render') { steps { script { helmLint('prod') } } }
+//       stage('Helm Deploy')         { steps { script { helmDeploy('prod', env.BUILD_NUMBER) } } }
+//     }
+//   }
+
+def chartPath = 'deploy/helm/opc'
+def releaseName = 'opc'
+
+// Stage 1: Lint + Template
+def helmLint(env) {
+    sh """
+        helm version
+        helm lint ${chartPath} -f ${chartPath}/values-${env}.yaml
+        helm template ${releaseName} ${chartPath} -f ${chartPath}/values-${env}.yaml \\
+            --set global.imageTag=${BUILD_NUMBER} > rendered-${env}.yaml
+    """
+    archiveArtifacts artifacts: "rendered-${env}.yaml"
+}
+
+// Stage 2: Deploy (with record for rollback)
+def helmDeploy(env, imageTag) {
+    sh """
+        helm upgrade --install ${releaseName} ${chartPath} \\
+            -f ${chartPath}/values-${env}.yaml \\
+            --set global.imageTag=${imageTag} \\
+            --namespace opc \\
+            --wait --timeout 10m \\
+            --record
+    """
+}
+
+// Stage 3: Rollback
+def helmRollback(env, revision) {
+    sh """
+        helm rollback ${releaseName} ${revision} \\
+            --namespace opc \\
+            --wait --timeout 5m
+    """
+}
+
+return [
+    helmLint: helmLint,
+    helmDeploy: helmDeploy,
+    helmRollback: helmRollback
+]

@@ -1,0 +1,91 @@
+# ============================================================
+# 公测 / 预发布环境（独立 K8s 集群）
+# ============================================================
+# 用法：helm install opc ./opc -f values-staging.yaml
+# 特点：中等规格（2-3 副本），HPA 启用但保守，Ingress + TLS
+# ============================================================
+# 与 default (values.yaml) 的差异点:
+#   global.namespace     : opc-staging (默认: opc)
+#   global.imageTag      : 1.0.0-rc.1  (默认: 1.0.0)
+#   global.profile       : staging     (默认: prod)
+#   nacos.namespace      : opc-staging (默认: opc-prod)
+#   nacos.serverAddr     : nacos-staging.opc-staging.svc.cluster.local:8848 (默认: 内网短名)
+#   middleware.*         : *.opc-staging.svc.cluster.local (默认: *.opc.svc.cluster.local)
+#   ingress.host         : staging.opc.example.com (默认: opc.example.com)
+#   ingress.tls          : opc-staging-tls (默认: opc-tls)
+#   services.*.replicaCount: 2 (默认: 2;部分服务资源限额调小)
+#   services.ai-core.hpa : 启用 (min2 max4 cpu70) — 与默认一致
+# 资源渲染: 28 个 K8s 资源(7 Deploy + 7 Service + 1 HPA + 7 PDB + 1 Ingress + 1 CM + 1 NS + 1 SA + 1 SM)
+# ============================================================
+
+global:
+  namespace: opc-staging
+  imageRegistry: registry.cn-hangzhou.aliyuncs.com
+  imageTag: "1.0.0-rc.1"
+  imagePullPolicy: IfNotPresent
+  profile: staging
+
+  nacos:
+    serverAddr: nacos-staging.opc-staging.svc.cluster.local:8848
+    namespace: opc-staging
+    username: nacos
+    password: ""
+
+  middleware:
+    mysqlHost: mysql.opc-staging.svc.cluster.local
+    mysqlPort: 3306
+    redisHost: redis.opc-staging.svc.cluster.local
+    redisPort: 6379
+    rabbitmqHost: rabbitmq.opc-staging.svc.cluster.local
+    rabbitmqPort: 5672
+    qdrantHost: qdrant.opc-staging.svc.cluster.local
+    qdrantPort: 6333
+
+services:
+  gateway:
+    enabled: true
+    replicaCount: 2
+    resources:
+      requests: { cpu: 300m, memory: 768Mi }
+      limits:   { cpu: 1000m, memory: 1.5Gi }
+  ai-core:
+    enabled: true
+    replicaCount: 2
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4  # 比 prod 保守
+      cpuAverageUtilization: 70
+  agent-hub:
+    enabled: true
+    replicaCount: 2
+  user-center:
+    enabled: true
+    replicaCount: 2
+  billing:
+    enabled: true
+    replicaCount: 2
+  finance:
+    enabled: true
+    replicaCount: 2
+  system:
+    enabled: true
+    replicaCount: 2
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: staging.opc.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: gateway
+          port: 8080
+  tls:
+    - secretName: opc-staging-tls
+      hosts:
+        - staging.opc.example.com
+
+serviceMonitor:
+  enabled: true

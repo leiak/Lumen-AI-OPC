@@ -1,0 +1,82 @@
+# GitLab CI 示例：OPC Helm Chart
+# 放到项目根目录 .gitlab-ci.yml
+
+stages:
+  - validate
+  - package
+  - deploy
+
+variables:
+  CHART_DIR: deploy/helm/opc
+  HELM_VERSION: v3.14.0
+
+# ─────────── Validate ───────────
+helm:lint:
+  stage: validate
+  image: alpine/helm:${HELM_VERSION}
+  parallel:
+    matrix:
+      - ENV: [dev, staging, prod]
+  script:
+    - helm lint ${CHART_DIR} -f ${CHART_DIR}/values-${ENV}.yaml
+
+helm:template:
+  stage: validate
+  image: alpine/helm:${HELM_VERSION}
+  script:
+    - |
+      for env in dev staging prod; do
+        helm template opc ${CHART_DIR} \
+          -f ${CHART_DIR}/values-${env}.yaml \
+          --set global.imageTag=${CI_COMMIT_SHORT_SHA} > rendered-${env}.yaml
+      done
+  artifacts:
+    paths:
+      - rendered-*.yaml
+    expire_in: 7 days
+
+# ─────────── Package ───────────
+helm:package:
+  stage: package
+  image: alpine/helm:${HELM_VERSION}
+  script:
+    - helm package ${CHART_DIR} -d .packages
+  artifacts:
+    paths:
+      - .packages/*.tgz
+  only:
+    - tags
+
+# ─────────── Deploy ───────────
+helm:deploy:staging:
+  stage: deploy
+  image: alpine/helm:${HELM_VERSION}
+  script:
+    - |
+      helm upgrade --install opc ${CHART_DIR} \
+        -f ${CHART_DIR}/values-staging.yaml \
+        --set global.imageTag=${CI_COMMIT_SHORT_SHA} \
+        --namespace opc-staging \
+        --wait --timeout 5m \
+        --record
+  environment:
+    name: staging
+  only:
+    - develop
+
+helm:deploy:prod:
+  stage: deploy
+  image: alpine/helm:${HELM_VERSION}
+  script:
+    - |
+      helm upgrade --install opc ${CHART_DIR} \
+        -f ${CHART_DIR}/values-prod.yaml \
+        --set global.imageTag=${CI_COMMIT_SHORT_SHA} \
+        --namespace opc \
+        --wait --timeout 10m \
+        --record
+  environment:
+    name: production
+  when: manual
+  only:
+    - main

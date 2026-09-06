@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.agent.mapper.OpcAgentTokenUsageMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.agent.domain.OpcAgentTokenUsage">
+        <id property="id" column="id" />
+        <result property="usageCode" column="usage_code" />
+        <result property="companyId" column="company_id" />
+        <result property="userId" column="user_id" />
+        <result property="instanceId" column="instance_id" />
+        <result property="taskId" column="task_id" />
+        <result property="model" column="model" />
+        <result property="modelType" column="model_type" />
+        <result property="tokenInput" column="token_input" />
+        <result property="tokenOutput" column="token_output" />
+        <result property="tokenTotal" column="token_total" />
+        <result property="unitPriceInput" column="unit_price_input" />
+        <result property="unitPriceOutput" column="unit_price_output" />
+        <result property="cost" column="cost" />
+        <result property="latencyMs" column="latency_ms" />
+        <result property="success" column="success" />
+        <result property="errorMessage" column="error_message" />
+        <result property="requestId" column="request_id" />
+        <result property="bizDate" column="biz_date" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+    </resultMap>
+
+    <sql id="Base_Columns">
+        id, usage_code, company_id, user_id, instance_id, task_id, model, model_type,
+        token_input, token_output, token_total, unit_price_input, unit_price_output,
+        cost, latency_ms, success, error_message, request_id, biz_date, create_by, create_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.agent.domain.OpcAgentTokenUsage" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_agent_token_usage (
+            usage_code, company_id, user_id, instance_id, task_id, model, model_type,
+            token_input, token_output, token_total, unit_price_input, unit_price_output,
+            cost, latency_ms, success, error_message, request_id, biz_date, create_by, create_time
+        ) VALUES (
+            #{usageCode}, #{companyId}, #{userId}, #{instanceId}, #{taskId}, #{model}, #{modelType},
+            #{tokenInput}, #{tokenOutput}, #{tokenTotal}, #{unitPriceInput}, #{unitPriceOutput},
+            #{cost}, #{latencyMs}, #{success}, #{errorMessage}, #{requestId}, #{bizDate}, #{createBy}, NOW()
+        )
+    </insert>
+
+    <select id="selectByCompany" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_agent_token_usage
+        WHERE company_id = #{companyId}
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="aggregateDaily" resultType="java.util.Map">
+        SELECT
+            biz_date,
+            model,
+            SUM(token_input) AS input_tokens,
+            SUM(token_output) AS output_tokens,
+            SUM(token_total) AS total_tokens,
+            SUM(cost) AS total_cost,
+            COUNT(*) AS call_count
+        FROM opc_agent_token_usage
+        WHERE company_id = #{companyId}
+        <if test="startDate != null and startDate != ''">AND biz_date &gt;= #{startDate}</if>
+        <if test="endDate != null and endDate != ''">AND biz_date &lt;= #{endDate}</if>
+        GROUP BY biz_date, model
+        ORDER BY biz_date ASC
+    </select>
+
+    <select id="summary" resultType="java.util.Map">
+        SELECT
+            COUNT(*) AS total_calls,
+            COALESCE(SUM(token_total), 0) AS total_tokens,
+            COALESCE(SUM(cost), 0) AS total_cost,
+            COUNT(DISTINCT model) AS model_count
+        FROM opc_agent_token_usage
+        WHERE company_id = #{companyId}
+        <if test="bizDate != null and bizDate != ''">AND biz_date = #{bizDate}</if>
+    </select>
+
+</mapper>

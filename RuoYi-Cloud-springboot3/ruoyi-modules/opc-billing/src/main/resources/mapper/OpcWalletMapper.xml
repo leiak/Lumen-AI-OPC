@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.billing.mapper.OpcWalletMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.billing.domain.OpcWallet">
+        <id property="id" column="id" />
+        <result property="companyId" column="company_id" />
+        <result property="userId" column="user_id" />
+        <result property="balance" column="balance" />
+        <result property="frozen" column="frozen" />
+        <result property="totalRecharge" column="total_recharge" />
+        <result property="totalConsume" column="total_consume" />
+        <result property="status" column="status" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Columns">
+        id, company_id, user_id, balance, frozen, total_recharge, total_consume,
+        status, create_by, create_time, update_by, update_time
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_wallet WHERE id = #{id}
+    </select>
+
+    <select id="selectByCompanyUser" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_wallet WHERE company_id = #{companyId} AND user_id = #{userId}
+    </select>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.billing.domain.OpcWallet" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_wallet (company_id, user_id, balance, frozen, total_recharge, total_consume, status, create_by, create_time)
+        VALUES (#{companyId}, #{userId}, #{balance}, #{frozen}, #{totalRecharge}, #{totalConsume}, #{status}, #{createBy}, NOW())
+    </insert>
+
+    <update id="update" parameterType="com.ruoyi.opc.billing.domain.OpcWallet">
+        UPDATE opc_wallet
+        <set>
+            <if test="balance != null">balance = #{balance},</if>
+            <if test="frozen != null">frozen = #{frozen},</if>
+            <if test="status != null">status = #{status},</if>
+            update_by = #{updateBy},
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <update id="deductBalance">
+        UPDATE opc_wallet
+        SET balance = balance - #{amount},
+            total_consume = total_consume + #{amount},
+            update_time = NOW()
+        WHERE id = #{id} AND balance >= #{amount}
+    </update>
+
+    <update id="recharge">
+        UPDATE opc_wallet
+        SET balance = balance + #{amount},
+            total_recharge = total_recharge + #{amount},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+</mapper>

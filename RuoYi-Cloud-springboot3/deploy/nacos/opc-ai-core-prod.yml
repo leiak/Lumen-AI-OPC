@@ -1,0 +1,82 @@
+# ============================================================
+# opc-ai-core prod 配置（覆盖 application-prod.yml）
+# 命名空间：opc-prod
+# DataID：opc-ai-core-prod.yml
+# ============================================================
+
+server:
+  port: 9301
+
+spring:
+  application:
+    name: opc-ai-core
+  cloud:
+    nacos:
+      discovery:
+        server-addr: opc-nacos-prod:8848
+        namespace: opc-prod
+        group: DEFAULT_GROUP
+        metadata:
+          version: 1.0.0
+      config:
+        server-addr: opc-nacos-prod:8848
+        namespace: opc-prod
+        group: DEFAULT_GROUP
+        file-extension: yml
+        refresh-enabled: true
+
+# AI 中台特有配置
+opc:
+  ai:
+    rate-limit:
+      qps: 200              # 单实例 QPS 限流
+      burst: 400
+    token-pricing:
+      input-per-1k: 0.001    # 单位：元
+      output-per-1k: 0.002
+    prompt-cache:
+      redis-key-prefix: "opc:prompt:v1:"
+      ttl-seconds: 7200
+    model-routing:
+      strategy: cost-first  # cost-first | latency-first | quality-first
+      fallback-chain:
+        - deepseek-v3
+        - gpt-4o-mini
+        - zhipu-glm-4
+    memory:
+      vector-collection: opc_memory_prod
+      embedding-model: text-embedding-3-small
+      embedding-dim: 1536
+
+# Spring AI
+ai:
+  openai:
+    chat:
+      options:
+        model: deepseek-chat
+        temperature: 0.2
+        max-tokens: 4096
+  zhipuai:
+    chat:
+      options:
+        model: glm-4-plus
+        temperature: 0.3
+
+# 业务日志
+logging:
+  level:
+    com.ruoyi.opc.ai: info
+    dev.langchain4j: warn
+
+# 健康检查详细项
+management:
+  endpoint:
+    health:
+      show-details: always
+  health:
+    db:
+      enabled: true
+    redis:
+      enabled: true
+    rabbit:
+      enabled: true

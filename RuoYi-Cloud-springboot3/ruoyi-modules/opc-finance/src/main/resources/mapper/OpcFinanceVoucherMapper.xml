@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.finance.mapper.OpcFinanceVoucherMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.finance.domain.OpcFinanceVoucher">
+        <id property="id" column="id" />
+        <result property="voucherCode" column="voucher_code" />
+        <result property="companyId" column="company_id" />
+        <result property="voucherDate" column="voucher_date" />
+        <result property="period" column="period" />
+        <result property="summary" column="summary" />
+        <result property="sourceType" column="source_type" />
+        <result property="sourceRefId" column="source_ref_id" />
+        <result property="totalDebit" column="total_debit" />
+        <result property="totalCredit" column="total_credit" />
+        <result property="entriesJson" column="entries_json" />
+        <result property="attachments" column="attachments" />
+        <result property="agentTaskId" column="agent_task_id" />
+        <result property="status" column="status" />
+        <result property="reviewedBy" column="reviewed_by" />
+        <result property="reviewedTime" column="reviewed_time" />
+        <result property="postedBy" column="posted_by" />
+        <result property="postedTime" column="posted_time" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+        <result property="remark" column="remark" />
+    </resultMap>
+
+    <sql id="Base_Columns">
+        id, voucher_code, company_id, voucher_date, period, summary, source_type,
+        source_ref_id, total_debit, total_credit, entries_json, attachments, agent_task_id,
+        status, reviewed_by, reviewed_time, posted_by, posted_time,
+        create_by, create_time, update_by, update_time, remark
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_finance_voucher WHERE id = #{id}
+    </select>
+
+    <select id="selectByCode" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_finance_voucher WHERE voucher_code = #{code}
+    </select>
+
+    <select id="selectByCompany" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_finance_voucher
+        WHERE company_id = #{companyId}
+        <if test="period != null and period != ''">AND period = #{period}</if>
+        <if test="status != null and status != ''">AND status = #{status}</if>
+        ORDER BY voucher_date DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="aggregateDaily" resultType="java.util.Map">
+        SELECT
+            SUM(CASE WHEN direction_via_total_credit = 0 THEN total_credit ELSE 0 END) AS today_revenue,
+            SUM(CASE WHEN direction_via_total_credit = 1 THEN total_credit ELSE 0 END) AS today_expense,
+            COUNT(*) AS voucher_count,
+            SUM(CASE WHEN status = 'REVIEW' THEN 1 ELSE 0 END) AS pending_review
+        FROM opc_finance_voucher
+        WHERE company_id = #{companyId} AND voucher_date = #{bizDate}
+    </select>
+
+    <!--
+        月度聚合 (W1 Sub-task 4.2)
+        取指定期间 (YYYY-MM) 的全量凭证指标,供 OpcFinanceTaxReportServiceImpl 写入税务报表。
+        注意:voucher_date 列存 DATE 格式,这里用 DATE_FORMAT 截取 YYYY-MM 与 #{period} 比较。
+    -->
+    <select id="aggregateByPeriod" resultType="java.util.Map">
+        SELECT
+            COALESCE(SUM(total_credit), 0)       AS taxable_amount,
+            COALESCE(SUM(total_debit), 0)        AS input_tax,
+            COUNT(*)                              AS voucher_count,
+            SUM(CASE WHEN status = 'POSTED'   THEN 1 ELSE 0 END) AS posted_count,
+            SUM(CASE WHEN status = 'REJECTED' THEN 1 ELSE 0 END) AS rejected_count,
+            SUM(CASE WHEN status IN ('DRAFT','REVIEW') THEN 1 ELSE 0 END) AS pending_count
+        FROM opc_finance_voucher
+        WHERE company_id = #{companyId}
+          AND DATE_FORMAT(voucher_date, '%Y-%m') = #{period}
+    </select>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.finance.domain.OpcFinanceVoucher" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_finance_voucher (
+            voucher_code, company_id, voucher_date, period, summary, source_type,
+            source_ref_id, total_debit, total_credit, entries_json, attachments, agent_task_id,
+            status, create_by, create_time
+        ) VALUES (
+            #{voucherCode}, #{companyId}, #{voucherDate}, #{period}, #{summary}, #{sourceType},
+            #{sourceRefId}, #{totalDebit}, #{totalCredit}, #{entriesJson}, #{attachments}, #{agentTaskId},
+            #{status}, #{createBy}, NOW()
+        )
+    </insert>
+
+    <update id="update" parameterType="com.ruoyi.opc.finance.domain.OpcFinanceVoucher">
+        UPDATE opc_finance_voucher
+        <set>
+            <if test="summary != null">summary = #{summary},</if>
+            <if test="totalDebit != null">total_debit = #{totalDebit},</if>
+            <if test="totalCredit != null">total_credit = #{totalCredit},</if>
+            <if test="entriesJson != null">entries_json = #{entriesJson},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="reviewedBy != null">reviewed_by = #{reviewedBy},</if>
+            <if test="reviewedTime != null">reviewed_time = #{reviewedTime},</if>
+            <if test="postedBy != null">posted_by = #{postedBy},</if>
+            <if test="postedTime != null">posted_time = #{postedTime},</if>
+            update_by = #{updateBy},
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+</mapper>

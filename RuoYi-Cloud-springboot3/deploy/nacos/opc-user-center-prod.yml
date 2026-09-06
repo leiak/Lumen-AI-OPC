@@ -1,0 +1,70 @@
+# ============================================================
+# opc-user-center prod 配置
+# 命名空间：opc-prod
+# DataID：opc-user-center-prod.yml
+# ============================================================
+
+server:
+  port: 9302
+
+spring:
+  application:
+    name: opc-user-center
+  cloud:
+    nacos:
+      discovery:
+        server-addr: opc-nacos-prod:8848
+        namespace: opc-prod
+        group: DEFAULT_GROUP
+        metadata:
+          version: 1.0.0
+      config:
+        server-addr: opc-nacos-prod:8848
+        namespace: opc-prod
+        group: DEFAULT_GROUP
+        file-extension: yml
+        refresh-enabled: true
+
+# 用户中心特有配置
+opc:
+  user:
+    invitation:
+      code-length: 8
+      max-active-per-user: 50
+      reward-coupon-amount: 50.00
+      code-expire-days: 30
+      code-charset: BASE32_ALPHABET  # 去除易混淆字符
+    register:
+      enable-phone-verify: true
+      enable-email-verify: false
+      default-tenant-role: MEMBER
+      password-min-length: 10
+      password-require-special: true
+    session:
+      jwt-secret: ENC(6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c)  # JWT 签名密钥
+      jwt-ttl-minutes: 120
+      refresh-ttl-hours: 24
+    oauth2:
+      wechat:
+        app-id: ENC(7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d)
+        app-secret: ENC(8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e)
+        enabled: true
+      dingtalk:
+        app-key: ENC(9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f)
+        app-secret: ENC(0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a)
+        enabled: true
+
+# MyBatis-Plus
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.opc.user.domain
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+      logic-delete-field: deleted
+
+logging:
+  level:
+    com.ruoyi.opc.user: info

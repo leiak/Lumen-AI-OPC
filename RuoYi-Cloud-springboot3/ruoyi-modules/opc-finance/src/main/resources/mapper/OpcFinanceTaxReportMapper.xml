@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.finance.mapper.OpcFinanceTaxReportMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.finance.domain.OpcFinanceTaxReport">
+        <id property="id" column="id" />
+        <result property="reportCode" column="report_code" />
+        <result property="companyId" column="company_id" />
+        <result property="taxType" column="tax_type" />
+        <result property="period" column="period" />
+        <result property="declarationNo" column="declaration_no" />
+        <result property="taxableAmount" column="taxable_amount" />
+        <result property="taxAmount" column="tax_amount" />
+        <result property="payAmount" column="pay_amount" />
+        <result property="paidAmount" column="paid_amount" />
+        <result property="dueDate" column="due_date" />
+        <result property="submitTime" column="submit_time" />
+        <result property="agentTaskId" column="agent_task_id" />
+        <result property="status" column="status" />
+        <result property="attachments" column="attachments" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Columns">
+        id, report_code, company_id, tax_type, period, declaration_no,
+        taxable_amount, tax_amount, pay_amount, paid_amount,
+        due_date, submit_time, agent_task_id, status, attachments,
+        create_by, create_time, update_by, update_time
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_finance_tax_report
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectByCode" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_finance_tax_report
+        WHERE report_code = #{reportCode}
+    </select>
+
+    <select id="selectByCompanyAndPeriod" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_finance_tax_report
+        WHERE company_id = #{companyId}
+          AND period = #{period}
+          AND tax_type = #{taxType}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <select id="listByCompany" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_finance_tax_report
+        WHERE company_id = #{companyId}
+        <if test="period != null and period != ''">
+            AND period = #{period}
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY period DESC, id DESC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <insert id="insertTaxReport"
+            parameterType="com.ruoyi.opc.finance.domain.OpcFinanceTaxReport"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_finance_tax_report (
+            report_code, company_id, tax_type, period, declaration_no,
+            taxable_amount, tax_amount, pay_amount, paid_amount,
+            due_date, submit_time, agent_task_id, status, attachments,
+            create_by, create_time
+        ) VALUES (
+            #{reportCode}, #{companyId}, #{taxType}, #{period}, #{declarationNo},
+            #{taxableAmount}, #{taxAmount}, #{payAmount}, #{paidAmount},
+            #{dueDate}, #{submitTime}, #{agentTaskId}, #{status}, #{attachments},
+            #{createBy}, NOW()
+        )
+    </insert>
+
+    <update id="update" parameterType="com.ruoyi.opc.finance.domain.OpcFinanceTaxReport">
+        UPDATE opc_finance_tax_report
+        <set>
+            <if test="declarationNo != null">declaration_no = #{declarationNo},</if>
+            <if test="taxableAmount != null">taxable_amount = #{taxableAmount},</if>
+            <if test="taxAmount != null">tax_amount = #{taxAmount},</if>
+            <if test="payAmount != null">pay_amount = #{payAmount},</if>
+            <if test="paidAmount != null">paid_amount = #{paidAmount},</if>
+            <if test="dueDate != null">due_date = #{dueDate},</if>
+            <if test="submitTime != null">submit_time = #{submitTime},</if>
+            <if test="agentTaskId != null">agent_task_id = #{agentTaskId},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="attachments != null">attachments = #{attachments},</if>
+            update_by = #{updateBy},
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+</mapper>

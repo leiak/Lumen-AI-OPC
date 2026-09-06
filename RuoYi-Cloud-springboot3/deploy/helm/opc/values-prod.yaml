@@ -1,0 +1,138 @@
+# ============================================================
+# 生产环境（阿里云 ACK 多副本 + HPA + 灰度）
+# ============================================================
+# 用法：helm install opc ./opc -f values-prod.yaml
+# 特点：高规格、多副本、HPA 完整启用、PodDisruptionBudget、严格安全
+# ============================================================
+# 与 default (values.yaml) 的差异点:
+#   global.imagePullPolicy : Always (默认: IfNotPresent)
+#   nacos.serverAddr       : nacos.opc.svc.cluster.local:8848 (默认: 内网短名)
+#   middleware.*           : .opc.svc.cluster.local (默认: .opc.svc.cluster.local,一致)
+#   serviceMonitor.interval: 15s (默认: 30s)
+#   podDisruptionBudget.minAvailable: 2 (默认: 1)
+#   strategy.rollingUpdate : maxSurge=1 maxUnavailable=0 (默认: 25%/25%)
+#   ingress.annotations     : 增加 cert-manager.io/cluster-issuer + X-Real-IP
+#   ingress.tls            : opc-tls-prod (默认: opc-tls)
+#   nodeSelector           : node-role.kubernetes.io/opc=true (默认: {})
+#   tolerations            : opc-dedicated:NoSchedule (默认: [])
+#   services.gateway.replicaCount  : 3 (默认: 2) + 资源扩到 4Gi/4CPU
+#   services.ai-core.replicaCount : 4 (默认: 2) + HPA min4 max16 cpu60
+#   services.ai-core.resources    : 4Gi/4CPU (默认: 2Gi/2CPU)
+#   services.agent-hub.hpa        : 启用 (min3 max12 cpu70) — 默认关闭
+#   services.user-center.replicaCount : 3 (默认: 2)
+#   services.billing.replicaCount    : 2 (默认: 2,一致;计费交易量小)
+#   services.finance.replicaCount   : 3 (默认: 2)
+#   services.system.replicaCount    : 3 (默认: 2)
+# 资源渲染: 29 个 K8s 资源(7 Deploy + 7 Service + 2 HPA + 7 PDB + 1 Ingress + 1 CM + 1 NS + 1 SA + 1 SM)
+# ============================================================
+
+global:
+  namespace: opc
+  imageRegistry: registry.cn-hangzhou.aliyuncs.com
+  imageTag: "1.0.0"
+  imagePullPolicy: Always
+  profile: prod
+
+  nacos:
+    serverAddr: nacos.opc.svc.cluster.local:8848
+    namespace: opc-prod
+    username: nacos
+    password: ""
+
+  middleware:
+    mysqlHost: mysql.opc.svc.cluster.local
+    mysqlPort: 3306
+    redisHost: redis.opc.svc.cluster.local
+    redisPort: 6379
+    rabbitmqHost: rabbitmq.opc.svc.cluster.local
+    rabbitmqPort: 5672
+    qdrantHost: qdrant.opc.svc.cluster.local
+    qdrantPort: 6333
+
+services:
+  gateway:
+    enabled: true
+    replicaCount: 3
+    resources:
+      requests: { cpu: 1000m, memory: 2Gi }
+      limits:   { cpu: 4000m, memory: 4Gi }
+    jvmOpts: "-Xms2g -Xmx4g -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+  ai-core:
+    enabled: true
+    replicaCount: 4  # 比 staging 多，AI 是核心
+    resources:
+      requests: { cpu: 1000m, memory: 2Gi }
+      limits:   { cpu: 4000m, memory: 4Gi }
+    jvmOpts: "-Xms2g -Xmx4g -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
+    hpa:
+      enabled: true
+      minReplicas: 4
+      maxReplicas: 16
+      cpuAverageUtilization: 60  # 更敏感
+  agent-hub:
+    enabled: true
+    replicaCount: 3
+    hpa:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 12
+      cpuAverageUtilization: 70
+  user-center:
+    enabled: true
+    replicaCount: 3
+  billing:
+    enabled: true
+    replicaCount: 2  # 计费交易量小
+  finance:
+    enabled: true
+    replicaCount: 3
+  system:
+    enabled: true
+    replicaCount: 3
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_set_header X-Real-IP $remote_addr;
+  hosts:
+    - host: opc.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: gateway
+          port: 8080
+  tls:
+    - secretName: opc-tls-prod
+      hosts:
+        - opc.example.com
+
+serviceMonitor:
+  enabled: true
+  interval: 15s  # 生产更频繁
+  scrapeTimeout: 5s
+
+# 生产环境 PDB 更严格
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0  # 生产永不中断
+
+# 调度到专用节点池
+nodeSelector:
+  node-role.kubernetes.io/opc: "true"
+tolerations:
+  - key: "opc-dedicated"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"

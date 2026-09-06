@@ -1,0 +1,59 @@
+============================================================
+ OPC Helm Chart 部署成功！
+============================================================
+
+Release:       {{ .Release.Name }}
+Namespace:     {{ .Values.global.namespace | default "opc" }}
+Chart:         {{ .Chart.Name }}-{{ .Chart.Version }}
+App Version:   {{ .Chart.AppVersion }}
+
+------------------------------------------------------------
+ 已部署的服务
+------------------------------------------------------------
+{{- range $name, $svc := .Values.services }}
+{{- if $svc.enabled }}
+  ✓ {{ $name | default $svc.name }}  ({{ $svc.name }}:{{ $svc.port }})
+{{- end }}
+{{- end }}
+
+------------------------------------------------------------
+ 验证部署
+------------------------------------------------------------
+  kubectl get pods -n {{ .Values.global.namespace | default "opc" }}
+  kubectl get svc -n {{ .Values.global.namespace | default "opc" }}
+  kubectl get ingress -n {{ .Values.global.namespace | default "opc" }}
+
+------------------------------------------------------------
+ 访问入口
+------------------------------------------------------------
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  https://{{ .host }}
+{{- end }}
+{{- else }}
+  kubectl port-forward -n {{ .Values.global.namespace | default "opc" }} svc/ruoyi-gateway 8080:8080
+  然后访问 http://localhost:8080
+{{- end }}
+
+------------------------------------------------------------
+ 下一步
+------------------------------------------------------------
+  1. 确认外部 Secrets 已创建（参考 README.md §Secrets）：
+     kubectl create secret generic opc-ai-secrets \
+       --from-literal=openai-api-key=$OPENAI_API_KEY \
+       --from-literal=zhipuai-api-key=$ZHIPUAI_API_KEY \
+       -n {{ .Values.global.namespace | default "opc" }}
+
+     kubectl create secret generic opc-jasypt-secrets \
+       --from-literal=password=$JASYPT_PASSWORD \
+       -n {{ .Values.global.namespace | default "opc" }}
+
+  2. 初始化数据库（首次）：
+     kubectl exec -it -n {{ .Values.global.namespace | default "opc" }} mysql-0 -- \
+       mysql -uroot -p"$MYSQL_ROOT_PASSWORD" < /sql/opc_20260903.sql
+
+  3. 查看 Grafana 大盘：kubectl port-forward svc/grafana 3000:80
+
+============================================================
+ 遇到问题？查看 deploy/runbooks/incident-response.md
+============================================================

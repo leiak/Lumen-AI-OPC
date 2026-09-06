@@ -1,0 +1,31 @@
+{{- /*
+  HorizontalPodAutoscaler — 单文件 + range over services.{name}.hpa.enabled
+  当前 ai-core 默认启用 HPA;其他服务在 values-*.yaml 中按需开启。
+*/ -}}
+{{- range $name, $svc := .Values.services }}
+{{- if and $svc.enabled $svc.hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $svc.name }}
+  namespace: {{ $.Values.global.namespace | quote }}
+  labels:
+    {{- include "opc.labels" $ | nindent 4 }}
+    app: {{ $svc.name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $svc.name }}
+  minReplicas: {{ $svc.hpa.minReplicas }}
+  maxReplicas: {{ $svc.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $svc.hpa.cpuAverageUtilization }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,52 @@
+# Tomcat
+server:
+  port: 9301
+
+# Spring
+spring:
+  application:
+    name: opc-ai-core
+  profiles:
+    # 默认 dev；prod 部署通过 -Dspring.profiles.active=prod 或环境变量 SPRING_PROFILES_ACTIVE=prod 切换
+    active: dev
+  cloud:
+    nacos:
+      # ====== 服务发现 ======
+      discovery:
+        server-addr: 127.0.0.1:8848
+        namespace: ${NACOS_NAMESPACE:public}
+        # prod 必须显式开启；fail-fast 后启动失败直接退出
+        fail-fast: true
+        fail-fast-on-connection-refused: true
+        watch:
+          enabled: true
+          watch-delay: 30000
+      # ====== 配置中心 ======
+      config:
+        server-addr: 127.0.0.1:8848
+        namespace: ${NACOS_NAMESPACE:public}
+        file-extension: yml
+        # prod 配置拉取失败立即抛错（Spring Cloud Alibaba 原生支持）
+        fail-fast: true
+        refresh-enabled: true
+        # 重试机制：解决 Nacos 短暂抖动
+        retry-time: 3000   # 重试间隔 ms
+        max-retry-time: 60000  # 最大累计重试时间
+        ext-config:
+          - data-id: opc-common-prod.yml
+            group: DEFAULT_GROUP
+            refresh: true
+  config:
+    file-extension: yml
+    import:
+      - nacos:application-${spring.profiles.active}.${spring.config.file-extension}
+      - nacos:${spring.application.name}-${spring.profiles.active}.${spring.config.file-extension}
+      - nacos:opc-common-${spring.profiles.active}.${spring.config.file-extension}
+
+# 日志
+logging:
+  level:
+    com.ruoyi.opc: debug
+    dev.langchain4j: info
+    # Nacos 客户端调试日志（prod 启动排障临时开）
+    com.alibaba.cloud.nacos: info

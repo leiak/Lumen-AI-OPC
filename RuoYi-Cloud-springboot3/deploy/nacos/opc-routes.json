@@ -1,0 +1,32 @@
+[
+  {
+    "id": "opc-ai-core",
+    "uri": "lb://opc-ai-core",
+    "predicates": [{"name": "Path", "args": {"_genkey_0": "/opc/llm/**"}}],
+    "filters": [{"name": "StripPrefix", "args": {"_genkey_0": "1"}}]
+  },
+  {
+    "id": "opc-user-center",
+    "uri": "lb://opc-user-center",
+    "predicates": [{"name": "Path", "args": {"_genkey_0": "/opc/user/**"}}],
+    "filters": [{"name": "StripPrefix", "args": {"_genkey_0": "1"}}]
+  },
+  {
+    "id": "opc-agent-hub",
+    "uri": "lb://opc-agent-hub",
+    "predicates": [{"name": "Path", "args": {"_genkey_0": "/opc/agent/**"}}],
+    "filters": [{"name": "StripPrefix", "args": {"_genkey_0": "1"}}]
+  },
+  {
+    "id": "opc-billing",
+    "uri": "lb://opc-billing",
+    "predicates": [{"name": "Path", "args": {"_genkey_0": "/opc/billing/**"}}],
+    "filters": [{"name": "StripPrefix", "args": {"_genkey_0": "1"}}]
+  },
+  {
+    "id": "opc-finance",
+    "uri": "lb://opc-finance",
+    "predicates": [{"name": "Path", "args": {"_genkey_0": "/opc/finance/**"}}],
+    "filters": [{"name": "StripPrefix", "args": {"_genkey_0": "1"}}]
+  }
+]

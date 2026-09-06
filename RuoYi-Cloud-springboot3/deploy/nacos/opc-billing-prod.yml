@@ -1,0 +1,76 @@
+# ============================================================
+# opc-billing prod 配置
+# 命名空间：opc-prod
+# DataID：opc-billing-prod.yml
+# ============================================================
+
+server:
+  port: 9304
+
+spring:
+  application:
+    name: opc-billing
+  cloud:
+    nacos:
+      discovery:
+        server-addr: opc-nacos-prod:8848
+        namespace: opc-prod
+        group: DEFAULT_GROUP
+        metadata:
+          version: 1.0.0
+      config:
+        server-addr: opc-nacos-prod:8848
+        namespace: opc-prod
+        group: DEFAULT_GROUP
+        file-extension: yml
+        refresh-enabled: true
+
+# 计费特有配置
+opc:
+  billing:
+    wallet:
+      currency: CNY
+      min-recharge: 10.00
+      max-recharge: 50000.00
+      daily-spend-cap: 10000.00    # 单日消费上限（防异常）
+    pricing:
+      llm-input-per-1k: 0.001       # 元/千token
+      llm-output-per-1k: 0.002
+      workflow-per-run: 0.05
+      tool-call-base: 0.001
+    invoice:
+      types-supported:
+        - NORMAL
+        - ELECTRONIC_SPECIAL
+        - ELECTRONIC_COMMON
+      auto-apply-hours: 24          # 自动开票时间窗
+      max-monthly-amount: 100000.00
+    payment:
+      channels:
+        - WECHAT_JSAPI
+        - WECHAT_H5
+        - ALIPAY
+        - BANK_TRANSFER
+      callback-url: https://api.opc.example.com/opc/billing/callback
+      wechat-mch-id: ENC(1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b)
+      wechat-mch-key: ENC(2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c)
+      alipay-app-id: ENC(3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d)
+      alipay-private-key: ENC(4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e)
+    quota:
+      free-tier:
+        monthly-tokens: 50000
+        monthly-workflows: 100
+
+# MyBatis-Plus
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.opc.billing.domain
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+
+logging:
+  level:
+    com.ruoyi.opc.billing: info

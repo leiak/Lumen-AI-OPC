@@ -1,0 +1,99 @@
+# ============================================================
+# opc-common prod 共享配置（被 6 个 OPC 服务共同引用）
+# 命名空间：opc-prod
+# DataID：opc-common-prod.yml
+# 包含跨服务通用：限流、灰度、链路追踪、安全基线
+# ============================================================
+
+opc:
+  common:
+    gray:
+      enabled: true
+      strategy: header  # header | weight | ip
+      header-name: X-OPC-Gray-Tag
+      default-tag: stable
+      tags:
+        - stable
+        - canary
+        - beta
+    cors:
+      allowed-origins:
+        - https://app.opc.example.com
+        - https://admin.opc.example.com
+      allowed-methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      allowed-headers: "*"
+      allow-credentials: true
+      max-age: 3600
+    rate-limit:
+      global-qps: 1000
+      per-user-qps: 50
+      per-ip-qps: 100
+    request:
+      max-body-size: 20MB
+      read-timeout-ms: 30000
+      connect-timeout-ms: 5000
+    security:
+      csrf-enabled: false
+      xss-filter-enabled: true
+      sql-injection-filter: true
+      sensitive-header-list:
+        - Authorization
+        - Cookie
+        - X-API-Key
+    audit:
+      enabled: true
+      log-path: /var/log/opc/audit
+      retention-days: 180
+      include-uri-patterns:
+        - /opc/finance/**
+        - /opc/billing/**
+        - /opc/user/**
+
+# 全局 OpenFeign 调优（prod）
+feign:
+  okhttp:
+    enabled: true
+  httpclient:
+    enabled: false
+    max-connections: 200
+    max-connections-per-route: 50
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 30000
+        loggerLevel: basic
+        retryer:
+          period: 100
+          maxPeriod: 3000
+          maxAttempts: 3
+
+# 全局 Sentinel 兜底（prod）
+sentinel:
+  web-context-unify: true
+  http-method-specify: true
+  filter:
+    enabled: true
+    order: 1
+  metric:
+    file:
+      single-size: 16384
+      total-size: 524288
+    charset: UTF-8
+
+# 分布式追踪（prod）
+opentracing:
+  tracer:
+    type: skywalking  # skywalking | jaeger
+
+# 日志归档
+logging:
+  config: classpath:logback-spring.xml
+  level:
+    com.alibaba.nacos: warn
+    com.ruoyi: info

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.finance.mapper.OpcFinanceBankFlowMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.finance.domain.OpcFinanceBankFlow">
+        <id property="id" column="id" />
+        <result property="flowCode" column="flow_code" />
+        <result property="companyId" column="company_id" />
+        <result property="bankAccount" column="bank_account" />
+        <result property="bankName" column="bank_name" />
+        <result property="tradeTime" column="trade_time" />
+        <result property="direction" column="direction" />
+        <result property="amount" column="amount" />
+        <result property="currency" column="currency" />
+        <result property="counterParty" column="counter_party" />
+        <result property="memo" column="memo" />
+        <result property="rawText" column="raw_text" />
+        <result property="extracted" column="extracted" />
+        <result property="voucherId" column="voucher_id" />
+        <result property="agentTaskId" column="agent_task_id" />
+        <result property="status" column="status" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Columns">
+        id, flow_code, company_id, bank_account, bank_name, trade_time, direction,
+        amount, currency, counter_party, memo, raw_text, extracted, voucher_id,
+        agent_task_id, status, create_by, create_time, update_by, update_time
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_finance_bank_flow WHERE id = #{id}
+    </select>
+
+    <select id="selectByCompany" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_finance_bank_flow
+        WHERE company_id = #{companyId}
+        <if test="extracted != null">AND extracted = #{extracted}</if>
+        ORDER BY trade_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.finance.domain.OpcFinanceBankFlow" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_finance_bank_flow (
+            flow_code, company_id, bank_account, bank_name, trade_time, direction,
+            amount, currency, counter_party, memo, raw_text, extracted,
+            status, create_by, create_time
+        ) VALUES (
+            #{flowCode}, #{companyId}, #{bankAccount}, #{bankName}, #{tradeTime}, #{direction},
+            #{amount}, #{currency}, #{counterParty}, #{memo}, #{rawText}, #{extracted},
+            #{status}, #{createBy}, NOW()
+        )
+    </insert>
+
+    <insert id="insertBatch" parameterType="java.util.List">
+        INSERT INTO opc_finance_bank_flow (
+            flow_code, company_id, bank_account, bank_name, trade_time, direction,
+            amount, currency, counter_party, memo, raw_text, extracted,
+            status, create_by, create_time
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.flowCode}, #{item.companyId}, #{item.bankAccount}, #{item.bankName}, #{item.tradeTime}, #{item.direction},
+             #{item.amount}, #{item.currency}, #{item.counterParty}, #{item.memo}, #{item.rawText}, #{item.extracted},
+             #{item.status}, #{item.createBy}, NOW())
+        </foreach>
+    </insert>
+
+    <update id="update" parameterType="com.ruoyi.opc.finance.domain.OpcFinanceBankFlow">
+        UPDATE opc_finance_bank_flow
+        <set>
+            <if test="extracted != null">extracted = #{extracted},</if>
+            <if test="voucherId != null">voucher_id = #{voucherId},</if>
+            <if test="agentTaskId != null">agent_task_id = #{agentTaskId},</if>
+            <if test="status != null">status = #{status},</if>
+            update_by = #{updateBy},
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+</mapper>

@@ -1,0 +1,75 @@
+# ============================================================
+# opc-agent-hub prod 配置
+# 命名空间：opc-prod
+# DataID：opc-agent-hub-prod.yml
+# ============================================================
+
+server:
+  port: 9303
+
+spring:
+  application:
+    name: opc-agent-hub
+  cloud:
+    nacos:
+      discovery:
+        server-addr: opc-nacos-prod:8848
+        namespace: opc-prod
+        group: DEFAULT_GROUP
+        metadata:
+          version: 1.0.0
+      config:
+        server-addr: opc-nacos-prod:8848
+        namespace: opc-prod
+        group: DEFAULT_GROUP
+        file-extension: yml
+        refresh-enabled: true
+
+# Agent Hub 特有配置
+opc:
+  agent-hub:
+    workflow:
+      max-concurrent: 100          # 并发执行工作流上限
+      queue-capacity: 500
+      step-retry-max: 3
+      step-retry-interval-ms: 2000
+    tools:
+      registry-cache-ttl: 300
+      max-tools-per-step: 5
+      execution-timeout-seconds: 120
+    trigger:
+      cron-poll-interval-ms: 30000
+      dedup-window-seconds: 60      # 同 code 60s 内去重
+    safety:
+      enable-prompt-guard: true
+      enable-tool-whitelist: true
+      sensitive-word-filter: true
+    memory:
+      short-term-backend: redis
+      long-term-backend: qdrant
+      short-term-key-prefix: "opc:agent:st:"
+  rabbitmq:
+    exchange: opc.agent.exchange
+    queue-workflow: opc.workflow.run
+    queue-event: opc.agent.event
+    routing-key-workflow: workflow.run
+    routing-key-event: agent.event
+
+# MyBatis-Plus
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.opc.agent.domain
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: false
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# 日志
+logging:
+  level:
+    com.ruoyi.opc.agent: info

@@ -1,0 +1,4 @@
+# EnvironmentPostProcessor 实现注册
+# 作用：prod profile 启动期强制校验 JASYPT_PASSWORD + 禁止明文敏感字段
+org.springframework.boot.env.EnvironmentPostProcessor=\
+  com.ruoyi.opc.common.bootstrap.JasyptEnvironmentPosture

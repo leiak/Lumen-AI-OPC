@@ -1,0 +1,40 @@
+# ============================================================
+# OPC 网关本地 application.yml
+# ============================================================
+# 作用:为 ruoyi-gateway 提供本地默认值,作为 Nacos 配置缺失时的
+#      fallback。当 Nacos application-{env}.yml 正常加载时,以下
+#      内容会被 Nacos 同名配置覆盖(因为 spring.config.import 顺序)。
+#
+# ⚠️ 注意:此处的 security.ignore.whites 只是安全网,生产环境必须
+#    通过 deploy/nacos/apply-whitelist.sh 把 OPC 业务条目
+#    推到 Nacos。
+# ============================================================
+
+server:
+  port: 8080
+
+spring:
+  profiles:
+    active: dev
+
+security:
+  ignore:
+    whites:
+      # OPC 邀请落地页公开查接口(GET /opc/user/invitations/{code})
+      # 与 Nacos application-{env}.yml 保持一致
+      - /opc/user/invitations/*
+
+      # RuoYi 默认白名单(精简版,完整列表见 Nacos)
+      - /auth/logout
+      - /auth/register
+      - /auth/login
+      - /auth/smsCode
+      - /code
+      - /captcha/image
+      - /register
+      - /social/*
+
+# 文档参考
+logging:
+  level:
+    com.ruoyi.gateway: info

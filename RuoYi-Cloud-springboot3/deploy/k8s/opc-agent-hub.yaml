@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opc-agent-hub
+  namespace: opc
+  labels:
+    app: opc-agent-hub
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: opc-agent-hub
+  template:
+    metadata:
+      labels:
+        app: opc-agent-hub
+      annotations:
+        prometheus.io/scrape: "true"
+    spec:
+      containers:
+        - name: opc-agent-hub
+          image: registry.cn-hangzhou.aliyuncs.com/opc/opc-agent-hub:1.0.0
+          ports:
+            - containerPort: 9303
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "prod"
+            - name: JASYPT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opc-jasypt-secrets
+                  key: password
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opc-agent-hub
+  namespace: opc
+spec:
+  selector:
+    app: opc-agent-hub
+  ports:
+    - port: 9303
+      targetPort: 9303

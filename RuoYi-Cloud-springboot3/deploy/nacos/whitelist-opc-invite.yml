@@ -1,0 +1,54 @@
+# ============================================================
+# OPC 邀请落地页 — 网关白名单补丁片段
+# OPC Invite Landing — Gateway Whitelist Patch Snippet
+# ============================================================
+# 用途:把以下片段合并到 Nacos ruoyi-gateway 配置的
+#      application-{env}.yml 的 security.ignore.whites 列表里。
+#      (env ∈ {dev, staging, prod})
+#
+# 影响的接口:
+#   GET /opc/user/invitations/{code}     ← 落地页匿名访问必需
+#
+# 已知限制:
+#   RuoYi AuthFilter 使用 AntPathMatcher + 路径白名单,
+#   不支持 HTTP method 维度。因此 `/opc/user/invitations/*`
+#   会同时豁免:
+#     - POST /opc/user/invitations/generate  ← 期望:需登录
+#     - POST /opc/user/invitations/accept    ← 期望:需登录
+#     - GET  /opc/user/invitations/*         ← 期望:落地页匿名
+#
+#   但下游 controller 在缺少 userId 时会抛 OpcException("userId 不能为空"),
+#   即 controller 内 SecurityUtils.getUserId() == null → 500,
+#   因此匿名 POST 不会真正创建邀请码 / 接受邀请 / 发放奖励。
+#   风险评估:🟡 低 (只暴露 500 错误,不暴露数据)
+#
+# 长期方案(后续 Task):改造 IgnoreWhiteProperties 支持 method+path,
+#   例:whites: ["GET /opc/user/invitations/*"]
+#   届时把本文件路径换成精准匹配。
+# ============================================================
+
+security:
+  ignore:
+    whites:
+      # ===== OPC 业务(本 patch 新增)=====
+      # 邀请落地页公开查接口 (Ant: * = 一层路径段,** = 多层)
+      - /opc/user/invitations/*
+
+      # ===== 以下为 RuoYi 既有白名单(保留,不要删)=====
+      # 认证相关
+      - /auth/logout
+      - /auth/register
+      - /auth/login
+      - /auth/smsCode
+      # 验证码
+      - /code
+      - /captcha/image
+      # 注册
+      - /register
+      # 第三方 OAuth
+      - /social/*
+      # 测试/演示
+      - /test/**
+      # 静态资源
+      - /*/v2/api-docs
+      - /*/v3/api-docs

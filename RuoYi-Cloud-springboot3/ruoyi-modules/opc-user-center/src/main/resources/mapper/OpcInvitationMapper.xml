@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.user.mapper.OpcInvitationMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.user.domain.OpcInvitation">
+        <id property="id" column="id" />
+        <result property="inviteCode" column="invite_code" />
+        <result property="inviterId" column="inviter_id" />
+        <result property="inviteeId" column="invitee_id" />
+        <result property="inviteeMobile" column="invitee_mobile" />
+        <result property="maxUses" column="max_uses" />
+        <result property="usedCount" column="used_count" />
+        <result property="expireTime" column="expire_time" />
+        <result property="usedTime" column="used_time" />
+        <result property="status" column="status" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Columns">
+        id, invite_code, inviter_id, invitee_id, invitee_mobile, max_uses, used_count,
+        expire_time, used_time, status, create_by, create_time, update_by, update_time
+    </sql>
+
+    <select id="selectByCode" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_invitation WHERE invite_code = #{code}
+    </select>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_invitation WHERE id = #{id}
+    </select>
+
+    <select id="selectByInviter" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_invitation WHERE inviter_id = #{inviterId}
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="countActiveByInviter" resultType="int">
+        SELECT COUNT(*) FROM opc_invitation
+        WHERE inviter_id = #{inviterId}
+          AND status = 'ACTIVE'
+          AND (expire_time IS NULL OR expire_time > NOW())
+    </select>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.user.domain.OpcInvitation" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_invitation (
+            invite_code, inviter_id, max_uses, used_count, expire_time, status,
+            create_by, create_time
+        ) VALUES (
+            #{inviteCode}, #{inviterId}, #{maxUses}, 0, #{expireTime}, #{status},
+            #{createBy}, NOW()
+        )
+    </insert>
+
+    <update id="incrementUsedCount" parameterType="long">
+        UPDATE opc_invitation
+        SET used_count = used_count + 1,
+            update_time = NOW()
+        WHERE id = #{id}
+          AND used_count &lt; max_uses
+    </update>
+
+    <update id="bindInvitee" parameterType="com.ruoyi.opc.user.domain.OpcInvitation">
+        UPDATE opc_invitation
+        <set>
+            <if test="inviteeId != null">invitee_id = #{inviteeId},</if>
+            <if test="inviteeMobile != null">invitee_mobile = #{inviteeMobile},</if>
+            <if test="usedTime != null">used_time = #{usedTime},</if>
+            <if test="status != null">status = #{status},</if>
+            update_by = #{updateBy},
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateStatus" parameterType="com.ruoyi.opc.user.domain.OpcInvitation">
+        UPDATE opc_invitation
+        <set>
+            <if test="status != null">status = #{status},</if>
+            update_by = #{updateBy},
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+</mapper>

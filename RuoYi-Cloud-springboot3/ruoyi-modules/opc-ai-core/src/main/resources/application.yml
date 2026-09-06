@@ -1,0 +1,70 @@
+# OPC AI 中台默认配置（Nacos 中可覆盖）
+spring:
+  datasource:
+    dynamic:
+      primary: master
+      datasource:
+        master:
+          url: jdbc:mysql://127.0.0.1:3306/ry-vue-opc?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=Asia/Shanghai
+          username: root
+          password: root
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    password:
+
+# Spring AI 配置
+ai:
+  openai:
+    api-key: ${OPENAI_API_KEY:sk-placeholder}
+    base-url: https://api.deepseek.com/v1
+    chat:
+      options:
+        model: deepseek-chat
+        temperature: 0.3
+  zhipuai:
+    api-key: ${ZHIPUAI_API_KEY:placeholder}
+
+# LangChain4j
+langchain4j:
+  chat-model:
+    model-name: gpt-4o-mini
+    temperature: 0.3
+    max-tokens: 2048
+    timeout: 60s
+
+# Qdrant 向量数据库
+qdrant:
+  host: 127.0.0.1
+  port: 6334
+  api-key: ${QDRANT_API_KEY:}
+
+# OPC LLM Gateway 配置
+opc:
+  llm:
+    primary: deepseek-v3
+    fallback: gpt-4o-mini
+    enable-cache: true
+    cache-ttl: 3600
+    max-retries: 3
+    timeout-seconds: 60
+  memory:
+    short-term-ttl: 86400
+    long-term-collection: opc_memory
+    enable-compression: true
+    max-context-tokens: 8000
+  agent:
+    max-steps: 10
+    step-timeout-seconds: 30
+    enable-trace: true
+
+# Jasypt 加密
+jasypt:
+  encryptor:
+    password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
+    algorithm: PBEWithMD5AndDES
+
+# MyBatis
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.opc.ai.domain

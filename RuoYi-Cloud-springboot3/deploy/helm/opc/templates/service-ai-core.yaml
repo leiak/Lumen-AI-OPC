@@ -1,0 +1,21 @@
+{{- if (index .Values.services "ai-core").enabled }}
+{{- $svc := index .Values.services "ai-core" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc.name }}
+  namespace: {{ $.Values.global.namespace | quote }}
+  labels:
+    {{- include "opc.labels" $ | nindent 4 }}
+    app: {{ $svc.name }}
+    tier: ai
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $svc.name }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

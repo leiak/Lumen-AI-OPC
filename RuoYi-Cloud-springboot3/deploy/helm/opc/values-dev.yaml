@@ -1,0 +1,86 @@
+# ============================================================
+# 本地开发环境（Docker Desktop / minikube）
+# ============================================================
+# 用法：helm install opc ./opc -f values-dev.yaml
+# 特点：1 副本、本地镜像 tag latest、宽松资源、关闭 HPA 和 Ingress
+# ============================================================
+# 与 default (values.yaml) 的差异点:
+#   global.namespace       : opc-dev (默认: opc)
+#   global.imageRegistry   : ""     (默认: registry.cn-hangzhou.aliyuncs.com)
+#   global.imageTag        : latest (默认: 1.0.0)
+#   global.imagePullPolicy : Never  (默认: IfNotPresent)
+#   global.profile         : dev    (默认: prod)
+#   global.imagePullSecrets: []     (默认: [aliyun-registry-secret])
+#   nacos.namespace        : opc-dev (默认: opc-prod)
+#   middleware.*           : 用短主机名 (默认: *.opc.svc.cluster.local)
+#   ingress.enabled        : false  (默认: true)
+#   serviceMonitor.enabled : false  (默认: true)
+#   podDisruptionBudget.enabled : false (默认: true)
+#   services.*.replicaCount : 1     (默认: 2)
+#   services.ai-core.hpa.enabled : false (默认: true)
+#   podSecurityContext     : {}     (默认: runAsNonRoot=true)
+#   securityContext        : {}     (默认: allowPrivilegeEscalation=false)
+# 资源渲染: 18 个 K8s 资源(7 Deploy + 7 Service + 1 CM + 1 NS + 1 SA)
+# ============================================================
+
+global:
+  namespace: opc-dev
+  imageRegistry: ""
+  imageTag: "latest"
+  imagePullPolicy: Never  # 用本地 docker image
+  profile: dev
+  imagePullSecrets: []
+
+  nacos:
+    serverAddr: nacos:8848
+    namespace: opc-dev
+    username: nacos
+    password: nacos
+
+  middleware:
+    mysqlHost: mysql
+    mysqlPort: 3306
+    mysqlDb: ry-vue-opc
+    redisHost: redis
+    redisPort: 6379
+    rabbitmqHost: rabbitmq
+    rabbitmqPort: 5672
+    qdrantHost: qdrant
+    qdrantPort: 6333
+
+services:
+  gateway:
+    enabled: true
+    replicaCount: 1
+  ai-core:
+    enabled: true
+    replicaCount: 1
+    hpa: { enabled: false }
+  agent-hub:
+    enabled: true
+    replicaCount: 1
+  user-center:
+    enabled: true
+    replicaCount: 1
+  billing:
+    enabled: true
+    replicaCount: 1
+  finance:
+    enabled: true
+    replicaCount: 1
+  system:
+    enabled: true
+    replicaCount: 1
+
+ingress:
+  enabled: false  # 用 port-forward 访问
+
+serviceMonitor:
+  enabled: false
+
+podDisruptionBudget:
+  enabled: false
+
+# 开发环境不强制 runAsNonRoot（本地镜像可能 root）
+podSecurityContext: {}
+securityContext: {}

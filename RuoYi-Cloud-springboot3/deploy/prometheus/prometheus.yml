@@ -1,0 +1,69 @@
+# ============================================================
+# Prometheus 监控配置
+# ============================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Nacos
+  - job_name: 'nacos'
+    static_configs:
+      - targets: ['nacos1:8848']
+
+  # OPC 后端服务（通过 Spring Boot Actuator）
+  - job_name: 'opc-gateway'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+
+  - job_name: 'opc-system'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:9201']
+
+  - job_name: 'opc-ai-core'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:9301']
+
+  - job_name: 'opc-user-center'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:9302']
+
+  - job_name: 'opc-agent-hub'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:9303']
+
+  - job_name: 'opc-billing'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:9304']
+
+  - job_name: 'opc-finance'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:9305']
+
+  # MySQL
+  - job_name: 'mysql'
+    static_configs:
+      - targets: ['host.docker.internal:9104']
+
+  # Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['host.docker.internal:9121']
+
+  # RabbitMQ
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['host.docker.internal:15692']
+
+  # Qdrant
+  - job_name: 'qdrant'
+    static_configs:
+      - targets: ['host.docker.internal:6333']

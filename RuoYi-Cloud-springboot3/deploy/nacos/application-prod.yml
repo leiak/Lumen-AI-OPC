@@ -1,0 +1,181 @@
+# ============================================================
+# OPC 全局配置（Nacos 共享配置 application-prod.yml）
+# 命名空间：opc-prod
+# 敏感字段必须以 ENC(...) 包裹，由 jasypt-spring-boot-starter 解密
+# ============================================================
+
+spring:
+  datasource:
+    dynamic:
+      primary: master
+      strict: true  # prod 严格模式：dataSource 找不到直接抛错
+      datasource:
+        master:
+          url: jdbc:mysql://opc-mysql-prod:3306/ry-vue-opc?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=Asia/Shanghai&useLegacyDatetimeCode=false
+          username: opc_app
+          password: ENC(0f8a9b1c2d3e4f5a6b7c8d9e0f1a2b3c)  # DB password encrypted with OpcEncrypt!2026
+          hikari:
+            maximum-pool-size: 20
+            minimum-idle: 5
+            connection-timeout: 30000
+            idle-timeout: 600000
+            max-lifetime: 1800000
+            pool-name: OpcHikariCP
+  redis:
+    host: opc-redis-prod
+    port: 6379
+    password: ENC(1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d)  # Redis password encrypted
+    database: 0
+    timeout: 5s
+    lettuce:
+      pool:
+        max-active: 50
+        max-idle: 20
+        min-idle: 5
+        max-wait: 3000ms
+  rabbitmq:
+    host: opc-rabbitmq-prod
+    port: 5672
+    username: opc_app
+    password: ENC(2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e)  # RabbitMQ password encrypted
+    virtual-host: /opc
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 10
+        retry:
+          enabled: true
+          initial-interval: 1000
+          max-attempts: 3
+          max-interval: 10000
+          multiplier: 2
+
+# OPC 通用业务配置
+opc:
+  llm:
+    primary: deepseek-v3
+    fallback: gpt-4o-mini
+    enable-cache: true
+    cache-ttl: 7200       # prod 缓存延长到 2h
+    max-retries: 3
+    timeout-seconds: 90
+  memory:
+    short-term-ttl: 604800  # 7 天
+    long-term-collection: opc_memory
+    enable-compression: true
+    max-context-tokens: 16000  # prod 上下文窗口放大
+  agent:
+    max-steps: 20
+    step-timeout-seconds: 60
+    enable-trace: true
+
+# AI 模型 Key（必须从 Nacos 注入，绝不入仓）
+ai:
+  openai:
+    api-key: ENC(3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f)  # DeepSeek API key
+    base-url: https://api.deepseek.com/v1
+  zhipuai:
+    api-key: ENC(4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a)  # 智谱 API key
+
+# LangChain4j
+langchain4j:
+  chat-model:
+    model-name: gpt-4o-mini
+    temperature: 0.2       # prod 降低随机性
+    max-tokens: 4096
+    timeout: 90s
+
+# Qdrant 向量数据库
+qdrant:
+  host: opc-qdrant-prod
+  port: 6334
+  api-key: ENC(5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b)  # Qdrant API key
+  collection: opc_memory_prod
+
+# Sentinel 限流
+sentinel:
+  eager: true
+  transport:
+    dashboard: opc-sentinel-prod:8718
+  datasource:
+    ds1:
+      nacos:
+        server-addr: opc-nacos-prod:8848
+        namespace: opc-prod
+        dataId: sentinel-ruoyi-gateway
+        groupId: DEFAULT_GROUP
+        data-type: json
+        rule-type: gw-flow
+
+# OpenFeign（prod 默认配置）
+feign:
+  sentinel:
+    enabled: true
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 30000
+        loggerLevel: basic
+      opc-ai-core:
+        connectTimeout: 10000
+        readTimeout: 120000  # LLM 调用慢
+  compression:
+    request:
+      enabled: true
+      mime-types: application/json,application/xml
+      min-request-size: 2048
+    response:
+      enabled: true
+
+# Jasypt 加密（prod 通过环境变量覆盖密码，禁止明文）
+jasypt:
+  encryptor:
+    password: ${JASYPT_PASSWORD}  # prod 强制要求外部注入，启动期校验
+    algorithm: PBEWithMD5AndDES
+    iv-generator-classname: org.jasypt.iv.NoIvGenerator
+
+# 日志
+logging:
+  level:
+    root: warn
+    com.ruoyi.opc: info
+    dev.langchain4j: warn
+  file:
+    name: /var/log/opc/${spring.application.name}.log
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId}] [%thread] %logger{36} - %msg%n"
+
+# SkyWalking Agent
+agent:
+  service_name: ${spring.application.name}
+  collector:
+    backend_service: opc-skywalking-prod:11800
+
+# 监控
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      env: prod
+      region: cn-east-1
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+# 优雅停机
+server:
+  shutdown: graceful

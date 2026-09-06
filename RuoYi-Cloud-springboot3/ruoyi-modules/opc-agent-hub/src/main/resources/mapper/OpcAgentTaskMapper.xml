@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.agent.mapper.OpcAgentTaskMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.agent.domain.OpcAgentTask">
+        <id property="id" column="id" />
+        <result property="taskCode" column="task_code" />
+        <result property="companyId" column="company_id" />
+        <result property="instanceId" column="instance_id" />
+        <result property="definitionId" column="definition_id" />
+        <result property="taskType" column="task_type" />
+        <result property="sessionId" column="session_id" />
+        <result property="input" column="input" />
+        <result property="output" column="output" />
+        <result property="toolCalls" column="tool_calls" />
+        <result property="steps" column="steps" />
+        <result property="status" column="status" />
+        <result property="errorMessage" column="error_message" />
+        <result property="tokenInput" column="token_input" />
+        <result property="tokenOutput" column="token_output" />
+        <result property="tokenTotal" column="token_total" />
+        <result property="cost" column="cost" />
+        <result property="reviewRequired" column="review_required" />
+        <result property="reviewedBy" column="reviewed_by" />
+        <result property="reviewedTime" column="reviewed_time" />
+        <result property="reviewOpinion" column="review_opinion" />
+        <result property="startTime" column="start_time" />
+        <result property="endTime" column="end_time" />
+        <result property="durationMs" column="duration_ms" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Columns">
+        id, task_code, company_id, instance_id, definition_id, task_type, session_id,
+        input, output, tool_calls, steps, status, error_message,
+        token_input, token_output, token_total, cost, review_required,
+        reviewed_by, reviewed_time, review_opinion,
+        start_time, end_time, duration_ms,
+        create_by, create_time, update_by, update_time
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_agent_task WHERE id = #{id}
+    </select>
+
+    <select id="selectByCode" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_agent_task WHERE task_code = #{taskCode}
+    </select>
+
+    <select id="selectByCompany" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_agent_task
+        WHERE company_id = #{companyId}
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectByInstance" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_agent_task
+        WHERE instance_id = #{instanceId}
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.agent.domain.OpcAgentTask" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_agent_task (
+            task_code, company_id, instance_id, definition_id, task_type, session_id,
+            input, output, tool_calls, steps, status, error_message,
+            token_input, token_output, token_total, cost, review_required,
+            start_time, create_by, create_time
+        ) VALUES (
+            #{taskCode}, #{companyId}, #{instanceId}, #{definitionId}, #{taskType}, #{sessionId},
+            #{input}, #{output}, #{toolCalls}, #{steps}, #{status}, #{errorMessage},
+            #{tokenInput}, #{tokenOutput}, #{tokenTotal}, #{cost}, #{reviewRequired},
+            #{startTime}, #{createBy}, NOW()
+        )
+    </insert>
+
+    <update id="update" parameterType="com.ruoyi.opc.agent.domain.OpcAgentTask">
+        UPDATE opc_agent_task
+        <set>
+            <if test="output != null">output = #{output},</if>
+            <if test="toolCalls != null">tool_calls = #{toolCalls},</if>
+            <if test="steps != null">steps = #{steps},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="errorMessage != null">error_message = #{errorMessage},</if>
+            <if test="tokenInput != null">token_input = #{tokenInput},</if>
+            <if test="tokenOutput != null">token_output = #{tokenOutput},</if>
+            <if test="tokenTotal != null">token_total = #{tokenTotal},</if>
+            <if test="cost != null">cost = #{cost},</if>
+            <if test="reviewRequired != null">review_required = #{reviewRequired},</if>
+            <if test="reviewedBy != null">reviewed_by = #{reviewedBy},</if>
+            <if test="reviewedTime != null">reviewed_time = #{reviewedTime},</if>
+            <if test="reviewOpinion != null">review_opinion = #{reviewOpinion},</if>
+            <if test="endTime != null">end_time = #{endTime},</if>
+            <if test="durationMs != null">duration_ms = #{durationMs},</if>
+            update_by = #{updateBy},
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+</mapper>

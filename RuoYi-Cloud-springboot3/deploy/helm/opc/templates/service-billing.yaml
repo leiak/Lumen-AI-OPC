@@ -1,0 +1,21 @@
+{{- if .Values.services.billing.enabled }}
+{{- $svc := .Values.services.billing }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc.name }}
+  namespace: {{ $.Values.global.namespace | quote }}
+  labels:
+    {{- include "opc.labels" $ | nindent 4 }}
+    app: {{ $svc.name }}
+    tier: business
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $svc.name }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

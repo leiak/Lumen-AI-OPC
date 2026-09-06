@@ -1,0 +1,69 @@
+# ============================================================
+# opc-finance prod 配置
+# 命名空间：opc-prod
+# DataID：opc-finance-prod.yml
+# ============================================================
+
+server:
+  port: 9305
+
+spring:
+  application:
+    name: opc-finance
+  cloud:
+    nacos:
+      discovery:
+        server-addr: opc-nacos-prod:8848
+        namespace: opc-prod
+        group: DEFAULT_GROUP
+        metadata:
+          version: 1.0.0
+      config:
+        server-addr: opc-nacos-prod:8848
+        namespace: opc-prod
+        group: DEFAULT_GROUP
+        file-extension: yml
+        refresh-enabled: true
+
+# 财务特有配置
+opc:
+  finance:
+    voucher:
+      auto-audit: false                # 凭证需人工审核（合规）
+      max-monthly-amount: 5000000.00
+      require-attachment: true
+      categories:
+          收入: REV
+          支出: EXP
+          应收: REC
+          应付: PAY
+          报销: REI
+          转账: TRF
+          退款: REF
+          工资: SAL
+          税费: TAX
+    tax-report:
+      generate-cron: "0 0 1 * * ?"     # 每月 1 号 0 点生成上月报表
+      retention-days: 2555            # 7 年留存（合规）
+      vat-rate: 0.13                  # 13% 增值税
+      cit-rate: 0.25                  # 25% 企业所得税
+      include-stamp-duty: true
+      include-surtax: true
+    account-subject:
+      system-version: GBAS-2024-v1     # 国标 GB/T 4754-2017
+      strict-mode: true               # 严格模式：未映射科目拒绝入账
+
+# MyBatis-Plus
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.opc.finance.domain
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+
+logging:
+  level:
+    com.ruoyi.opc.finance: info
+    org.springframework.jdbc.core: warn

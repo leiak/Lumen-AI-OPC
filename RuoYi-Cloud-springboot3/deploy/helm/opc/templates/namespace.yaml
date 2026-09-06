@@ -1,0 +1,9 @@
+{{- if .Values.global.namespaceCreate }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.global.namespace | quote }}
+  labels:
+    {{- include "opc.labels" . | nindent 4 }}
+    name: {{ .Values.global.namespace | quote }}
+{{- end }}

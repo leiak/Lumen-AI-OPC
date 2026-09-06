@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.agent.mapper.OpcAgentInstanceMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.agent.domain.OpcAgentInstance">
+        <id property="id" column="id" />
+        <result property="instanceCode" column="instance_code" />
+        <result property="companyId" column="company_id" />
+        <result property="definitionId" column="definition_id" />
+        <result property="nickname" column="nickname" />
+        <result property="hireType" column="hire_type" />
+        <result property="hireDuration" column="hire_duration" />
+        <result property="startTime" column="start_time" />
+        <result property="expireTime" column="expire_time" />
+        <result property="autoRenew" column="auto_renew" />
+        <result property="configOverride" column="config_override" />
+        <result property="memoryNamespace" column="memory_namespace" />
+        <result property="tokenUsed" column="token_used" />
+        <result property="tokenQuota" column="token_quota" />
+        <result property="taskCount" column="task_count" />
+        <result property="lastActiveTime" column="last_active_time" />
+        <result property="status" column="status" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+        <result property="remark" column="remark" />
+    </resultMap>
+
+    <sql id="Base_Columns">
+        id, instance_code, company_id, definition_id, nickname, hire_type, hire_duration,
+        start_time, expire_time, auto_renew, config_override, memory_namespace,
+        token_used, token_quota, task_count, last_active_time, status,
+        create_by, create_time, update_by, update_time, remark
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_agent_instance WHERE id = #{id}
+    </select>
+
+    <select id="selectByCode" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_agent_instance WHERE instance_code = #{instanceCode}
+    </select>
+
+    <select id="selectByCompany" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_agent_instance
+        WHERE company_id = #{companyId}
+        ORDER BY id DESC
+    </select>
+
+    <select id="selectRunningByUser" resultMap="BaseResultMap">
+        SELECT i.* FROM opc_agent_instance i
+        INNER JOIN opc_company_member m ON m.company_id = i.company_id
+        WHERE m.user_id = #{userId} AND i.status = 'RUNNING'
+        ORDER BY i.id DESC
+    </select>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.agent.domain.OpcAgentInstance" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_agent_instance (
+            instance_code, company_id, definition_id, nickname, hire_type, hire_duration,
+            start_time, expire_time, auto_renew, config_override, memory_namespace,
+            token_used, token_quota, task_count, status,
+            create_by, create_time
+        ) VALUES (
+            #{instanceCode}, #{companyId}, #{definitionId}, #{nickname}, #{hireType}, #{hireDuration},
+            #{startTime}, #{expireTime}, #{autoRenew}, #{configOverride}, #{memoryNamespace},
+            #{tokenUsed}, #{tokenQuota}, #{taskCount}, #{status},
+            #{createBy}, NOW()
+        )
+    </insert>
+
+    <update id="update" parameterType="com.ruoyi.opc.agent.domain.OpcAgentInstance">
+        UPDATE opc_agent_instance
+        <set>
+            <if test="nickname != null">nickname = #{nickname},</if>
+            <if test="autoRenew != null">auto_renew = #{autoRenew},</if>
+            <if test="configOverride != null">config_override = #{configOverride},</if>
+            <if test="tokenQuota != null">token_quota = #{tokenQuota},</if>
+            <if test="lastActiveTime != null">last_active_time = #{lastActiveTime},</if>
+            <if test="status != null">status = #{status},</if>
+            update_by = #{updateBy},
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <update id="incrementTaskCount">
+        UPDATE opc_agent_instance SET task_count = task_count + 1, last_active_time = NOW() WHERE id = #{id}
+    </update>
+
+    <update id="addTokenUsed">
+        UPDATE opc_agent_instance SET token_used = token_used + #{delta} WHERE id = #{id}
+    </update>
+
+</mapper>

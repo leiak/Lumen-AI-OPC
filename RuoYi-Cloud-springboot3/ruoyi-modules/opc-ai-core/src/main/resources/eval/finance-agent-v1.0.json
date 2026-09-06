@@ -1,0 +1,92 @@
+[
+  {
+    "case_code": "eval-finance-001",
+    "agent_code": "finance-agent",
+    "scene": "EXTRACT",
+    "input": "2026-09-03 10:23 支付宝收款 客户A有限公司 转账 12680.00 元 备注 货款",
+    "expected": {"direction":"IN","amount":12680.00,"counter_party":"客户A有限公司","subject_code":"1122","summary":"收客户A货款","need_review":false,"confidence":0.95},
+    "difficulty": "EASY",
+    "tags": "收入,货款"
+  },
+  {
+    "case_code": "eval-finance-002",
+    "agent_code": "finance-agent",
+    "scene": "EXTRACT",
+    "input": "2026-09-03 14:55 微信支出 -1500.00 深圳市南山区税务局 代扣个税",
+    "expected": {"direction":"OUT","amount":1500.00,"counter_party":"税务局","subject_code":"2221","summary":"代扣个税","need_review":false,"confidence":0.93},
+    "difficulty": "EASY",
+    "tags": "支出,税费"
+  },
+  {
+    "case_code": "eval-finance-003",
+    "agent_code": "finance-agent",
+    "scene": "EXTRACT",
+    "input": "2026-09-03 09:00 银联收款 京东商城 退货款 3280.50",
+    "expected": {"direction":"IN","amount":3280.50,"counter_party":"京东商城","subject_code":"1122","summary":"京东退货款","need_review":false,"confidence":0.90},
+    "difficulty": "NORMAL",
+    "tags": "退货"
+  },
+  {
+    "case_code": "eval-finance-004",
+    "agent_code": "finance-agent",
+    "scene": "EXTRACT",
+    "input": "2026-09-03 16:30 转出 85000.00 对方 深圳市某某咨询有限公司 用途 服务费",
+    "expected": {"direction":"OUT","amount":85000.00,"counter_party":"深圳市某某咨询有限公司","subject_code":"6602","summary":"支付服务费","need_review":true,"confidence":0.85},
+    "difficulty": "HARD",
+    "tags": "大额,服务费"
+  },
+  {
+    "case_code": "eval-finance-005",
+    "agent_code": "finance-agent",
+    "scene": "EXTRACT",
+    "input": "2026-09-03 11:11 银行收款 100.00 红包",
+    "expected": {"direction":"IN","amount":100.00,"subject_code":"6603","summary":"收到红包","need_review":true,"confidence":0.70},
+    "difficulty": "NORMAL",
+    "tags": "小额,红包"
+  },
+  {
+    "case_code": "eval-finance-006",
+    "agent_code": "finance-agent",
+    "scene": "EXTRACT",
+    "input": "2026-09-03 19:30 信用卡还款 -3200.00",
+    "expected": {"direction":"OUT","amount":3200.00,"subject_code":"6602","summary":"信用卡还款","need_review":true,"confidence":0.75},
+    "difficulty": "EASY",
+    "tags": "信用卡"
+  },
+  {
+    "case_code": "eval-finance-007",
+    "agent_code": "finance-agent",
+    "scene": "EXTRACT",
+    "input": "2026-09-03 08:00 工资发放 -25000.00 备注 9月工资",
+    "expected": {"direction":"OUT","amount":25000.00,"subject_code":"2211","summary":"发放9月工资","need_review":true,"confidence":0.88},
+    "difficulty": "NORMAL",
+    "tags": "工资"
+  },
+  {
+    "case_code": "eval-finance-008",
+    "agent_code": "finance-agent",
+    "scene": "EXTRACT",
+    "input": "2026-09-03 22:00 支付宝转出 999999.00",
+    "expected": {"direction":"OUT","amount":999999.00,"subject_code":"","summary":"异常大额转出","need_review":true,"confidence":0.30},
+    "difficulty": "HARD",
+    "tags": "异常,大额"
+  },
+  {
+    "case_code": "eval-finance-009",
+    "agent_code": "finance-agent",
+    "scene": "SUMMARIZE",
+    "input": "{\"date\":\"2026-09-03\",\"today_revenue\":126800,\"today_expense\":45200,\"month_revenue\":1234500,\"month_expense\":876200,\"pending_review\":3,\"anomaly_count\":2}",
+    "expected": "应包含 4 个核心指标 + 今日亮点 + 风险预警 + 明日建议",
+    "difficulty": "NORMAL",
+    "tags": "日报"
+  },
+  {
+    "case_code": "eval-finance-010",
+    "agent_code": "finance-agent",
+    "scene": "EXTRACT",
+    "input": "2026-09-03 03:00 转账 -200000.00",
+    "expected": {"direction":"OUT","amount":200000.00,"subject_code":"","summary":"凌晨大额转账","need_review":true,"confidence":0.40},
+    "difficulty": "HARD",
+    "tags": "凌晨,大额,异常"
+  }
+]

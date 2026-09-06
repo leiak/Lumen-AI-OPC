@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.billing.mapper.OpcBillingOrderMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.billing.domain.OpcBillingOrder">
+        <id property="id" column="id" />
+        <result property="orderNo" column="order_no" />
+        <result property="companyId" column="company_id" />
+        <result property="userId" column="user_id" />
+        <result property="orderType" column="order_type" />
+        <result property="bizType" column="biz_type" />
+        <result property="bizId" column="biz_id" />
+        <result property="title" column="title" />
+        <result property="amount" column="amount" />
+        <result property="discount" column="discount" />
+        <result property="paidAmount" column="paid_amount" />
+        <result property="payMethod" column="pay_method" />
+        <result property="payStatus" column="pay_status" />
+        <result property="payTime" column="pay_time" />
+        <result property="payTradeNo" column="pay_trade_no" />
+        <result property="expireTime" column="expire_time" />
+        <result property="closedTime" column="closed_time" />
+        <result property="refundAmount" column="refund_amount" />
+        <result property="invoiceId" column="invoice_id" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+        <result property="remark" column="remark" />
+    </resultMap>
+
+    <sql id="Base_Columns">
+        id, order_no, company_id, user_id, order_type, biz_type, biz_id,
+        title, amount, discount, paid_amount, pay_method, pay_status,
+        pay_time, pay_trade_no, expire_time, closed_time, refund_amount,
+        invoice_id, create_by, create_time, update_by, update_time, remark
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" /> FROM opc_billing_order WHERE id = #{id}
+    </select>
+
+    <select id="selectByOrderNo" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" /> FROM opc_billing_order WHERE order_no = #{orderNo}
+    </select>
+
+    <select id="selectByCompany" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_billing_order
+        WHERE company_id = #{companyId}
+        <if test="payStatus != null and payStatus != ''">AND pay_status = #{payStatus}</if>
+        ORDER BY id DESC LIMIT #{limit}
+    </select>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.billing.domain.OpcBillingOrder" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_billing_order (
+            order_no, company_id, user_id, order_type, biz_type, biz_id,
+            title, amount, discount, paid_amount, pay_method, pay_status,
+            expire_time, create_by, create_time
+        ) VALUES (
+            #{orderNo}, #{companyId}, #{userId}, #{orderType}, #{bizType}, #{bizId},
+            #{title}, #{amount}, #{discount}, #{paidAmount}, #{payMethod}, #{payStatus},
+            #{expireTime}, #{createBy}, NOW()
+        )
+    </insert>
+
+    <update id="update" parameterType="com.ruoyi.opc.billing.domain.OpcBillingOrder">
+        UPDATE opc_billing_order
+        <set>
+            <if test="payStatus != null">pay_status = #{payStatus},</if>
+            <if test="payTime != null">pay_time = #{payTime},</if>
+            <if test="payTradeNo != null">pay_trade_no = #{payTradeNo},</if>
+            <if test="paidAmount != null">paid_amount = #{paidAmount},</if>
+            <if test="refundAmount != null">refund_amount = #{refundAmount},</if>
+            <if test="invoiceId != null">invoice_id = #{invoiceId},</if>
+            <if test="closedTime != null">closed_time = #{closedTime},</if>
+            update_by = #{updateBy},
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <update id="markPaid">
+        UPDATE opc_billing_order
+        SET pay_status = 'PAID', pay_time = NOW(), pay_trade_no = #{payTradeNo}, paid_amount = amount
+        WHERE order_no = #{orderNo} AND pay_status = 'PENDING'
+    </update>
+
+</mapper>

@@ -1,0 +1,151 @@
+// Jenkinsfile: OPC Helm Chart 流水线
+// 放在项目根目录
+//
+// 触发:
+//   - develop / main 分支 push
+//   - PR (validate only,no deploy)
+//
+// 阶段:
+//   1. helm lint -f values-{dev,staging,prod}.yaml (parallel)
+//   2. helm template per env + artifact
+//   3. diff-envs.py 跨环境等价性 (Sub-task 6.3)
+//   4. helm install --dry-run (确认能 dry-run 安装)
+//   5. helm deploy (main + manual approval only)
+//
+// 依赖: helm v3.14+, python 3.10+, pyyaml 6+
+//      Jenkins agent 需要 kubectl + helm 安装在 PATH
+
+pipeline {
+    agent any
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    environment {
+        CHART_DIR = 'deploy/helm/opc'
+        RELEASE_NAME = 'opc'
+    }
+
+    stages {
+        // Stage 1: helm lint per env (parallel)
+        stage('Helm Lint (matrix)') {
+            matrix {
+                axes {
+                    axis { name 'ENV'; values 'dev', 'staging', 'prod' }
+                }
+                stages {
+                    stage("lint ${ENV}") {
+                        steps {
+                            sh """
+                                helm version --short
+                                helm lint ${CHART_DIR} -f ${CHART_DIR}/values-${ENV}.yaml
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        // Stage 2: helm template per env + artifact
+        stage('Helm Template') {
+            steps {
+                sh """
+                    for env in dev staging prod; do
+                        echo "=== render values-\${env}.yaml ==="
+                        helm template ${RELEASE_NAME} ${CHART_DIR} \\
+                            -f ${CHART_DIR}/values-\${env}.yaml \\
+                            --set global.imageTag=${BUILD_NUMBER} > rendered-\${env}.yaml
+                        echo "  docs: \$(grep -c '^kind:' rendered-\${env}.yaml)"
+                    done
+                """
+                archiveArtifacts artifacts: 'rendered-*.yaml', fingerprint: true, allowEmptyArchive: false
+            }
+        }
+
+        // Stage 3: diff-envs.py (Sub-task 6.3 verification)
+        stage('Helm Diff-Envs') {
+            steps {
+                sh """
+                    pip install pyyaml
+                    python ${CHART_DIR}/ci/diff-envs.py
+                """
+            }
+        }
+
+        // Stage 4: dry-run install (确认 manifests 能被 helm 接受)
+        stage('Helm Install Dry-Run') {
+            matrix {
+                axes {
+                    axis { name 'ENV'; values 'dev', 'staging', 'prod' }
+                }
+                stages {
+                    stage("install-dry-run ${ENV}") {
+                        steps {
+                            sh """
+                                helm install ${RELEASE_NAME} ${CHART_DIR} \\
+                                    -f ${CHART_DIR}/values-${ENV}.yaml \\
+                                    --dry-run=client \\
+                                    --namespace opc-${ENV}
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        // Stage 5: deploy (main only, manual approval for prod)
+        stage('Deploy Staging') {
+            when {
+                branch 'develop'
+            }
+            steps {
+                sh """
+                    helm upgrade --install ${RELEASE_NAME} ${CHART_DIR} \\
+                        -f ${CHART_DIR}/values-staging.yaml \\
+                        --set global.imageTag=${BUILD_NUMBER} \\
+                        --namespace opc-staging \\
+                        --create-namespace \\
+                        --wait --timeout 10m \\
+                        --record
+                """
+            }
+        }
+
+        stage('Deploy Production') {
+            when {
+                branch 'main'
+            }
+            options {
+                timeout(time: 30, unit: 'MINUTES')
+            }
+            steps {
+                // 手动确认(防止误推)
+                input message: 'Deploy to production?', ok: 'Deploy'
+                sh """
+                    helm upgrade --install ${RELEASE_NAME} ${CHART_DIR} \\
+                        -f ${CHART_DIR}/values-prod.yaml \\
+                        --set global.imageTag=${BUILD_NUMBER} \\
+                        --namespace opc \\
+                        --create-namespace \\
+                        --wait --timeout 15m \\
+                        --record
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Helm validation passed for all envs"
+        }
+        failure {
+            echo "Helm validation failed - check rendered-*.yaml and diff-envs.py output"
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
