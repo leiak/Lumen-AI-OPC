@@ -1,0 +1,225 @@
+@use './mixin.scss' as *;
+
+/**
+ * OPC 响应式全局样式 (W1 Sub-task 5.3)
+ *
+ * <p>断点定义(对齐 Bootstrap 5):
+ * <ul>
+ *   <li>xs — &lt; 576px (手机竖屏)</li>
+ *   <li>sm — 576 ~ 768px (大屏手机 / 小平板)</li>
+ *   <li>md — 768 ~ 992px (平板 / 桌面小屏)</li>
+ *   <li>lg — &gt; 992px (桌面)</li>
+ * </ul>
+ *
+ * <p>触摸目标 ≥ 44 × 44px(iOS HIG / Material Design 一致):
+ * 所有交互元素(button / link / input / cell)在 < 768px 自动放大命中区域。
+ *
+ * <p>使用示例:
+ * <pre>
+ *   .my-component {
+ *     padding: 20px;
+ *     @include respond-below(sm) {
+ *       padding: 12px;
+ *     }
+ *   }
+ * </pre>
+ */
+
+// ============= 断点常量 =============
+$bp-xs: 576px;
+$bp-sm: 768px;
+$bp-md: 992px;
+$bp-lg: 1200px;
+
+// ============= 断点 mixin =============
+
+/** 仅在 &lt; $bp 生效 */
+@mixin respond-below($bp) {
+  @if $bp == xs {
+    @media (max-width: #{$bp-xs - 0.02}) { @content; }
+  } @else if $bp == sm {
+    @media (max-width: #{$bp-sm - 0.02}) { @content; }
+  } @else if $bp == md {
+    @media (max-width: #{$bp-md - 0.02}) { @content; }
+  } @else if $bp == lg {
+    @media (max-width: #{$bp-lg - 0.02}) { @content; }
+  }
+}
+
+/** 仅在 &gt;= $bp 生效 */
+@mixin respond-above($bp) {
+  @if $bp == xs {
+    @media (min-width: #{$bp-xs}) { @content; }
+  } @else if $bp == sm {
+    @media (min-width: #{$bp-sm}) { @content; }
+  } @else if $bp == md {
+    @media (min-width: #{$bp-md}) { @content; }
+  } @else if $bp == lg {
+    @media (min-width: #{$bp-lg}) { @content; }
+  }
+}
+
+/** 在 $lower ~ $upper 区间生效 */
+@mixin respond-between($lower, $upper) {
+  $min: $bp-sm;
+  $max: $bp-md;
+  @if $lower == xs { $min: $bp-xs; } @else if $lower == sm { $min: $bp-sm; }
+  @else if $lower == md { $min: $bp-md; } @else if $lower == lg { $min: $bp-lg; }
+  @if $upper == xs { $max: $bp-xs; } @else if $upper == sm { $max: $bp-sm; }
+  @else if $upper == md { $max: $bp-md; } @else if $upper == lg { $max: $bp-lg; }
+  @media (min-width: #{$min}) and (max-width: #{$max - 0.02}) { @content; }
+}
+
+// ============= 触摸目标 =============
+
+/** iOS HIG ≥ 44 × 44 */
+@mixin touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+// ============= 字号 mixin =============
+
+@mixin fs-xs { font-size: 12px; }
+@mixin fs-sm { font-size: 14px; }
+@mixin fs-md { font-size: 16px; }
+@mixin fs-lg { font-size: 18px; }
+@mixin fs-xl { font-size: 20px; }
+@mixin fs-2xl { font-size: 24px; }
+@mixin fs-3xl { font-size: 28px; }
+
+/** 全局根字号 (360px 基准 — 让所有 rem/相关字号按比例缩放) */
+@mixin fluid-base-font {
+  font-size: 14px; // desktop 默认
+  @include respond-below(sm) {
+    font-size: calc(13px + 0.5vw); // 360 → 13.18, 414 → 13.57
+  }
+  @include respond-below(xs) {
+    font-size: 13px; // 极窄屏防溢出
+  }
+}
+
+// ============= 移动端全局修正 =============
+
+/** 在 < 768px 下,Element Plus 触控元素放大命中区 */
+@media (max-width: #{$bp-sm - 0.02}) {
+  .el-button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 16px;
+    &.el-button--small {
+      min-height: 36px; // 列表行内 small 保持紧凑
+      padding: 0 12px;
+    }
+    &.el-button--mini {
+      min-height: 32px;
+      padding: 0 10px;
+    }
+    // link 按钮(纯文字)不需要这些
+    &.is-link {
+      min-height: auto;
+      min-width: auto;
+      padding: 4px 8px;
+    }
+  }
+
+  // 弹窗类按钮也保证 44
+  .el-message-box__btns .el-button,
+  .el-dialog__footer .el-button {
+    min-height: 44px;
+  }
+
+  // 输入框
+  .el-input__wrapper,
+  .el-textarea__inner,
+  .el-select .el-input__wrapper {
+    min-height: 44px;
+  }
+
+  // 单/复选
+  .el-checkbox__inner,
+  .el-radio__inner {
+    min-width: 22px;
+    min-height: 22px;
+  }
+
+  // 卡片间距收紧
+  .app-container {
+    padding: 12px !important;
+  }
+
+  // OPC 全局通用页面 padding
+  .page {
+    padding: 0 !important;
+  }
+
+  // 路由切换容器加底部安全区
+  body {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+}
+
+// ============= 极窄屏(< 576px)紧致字号 =============
+@media (max-width: #{$bp-xs - 0.02}) {
+  .hero .hero-text h1 {
+    font-size: 22px !important;
+  }
+  .hero .hero-text p {
+    font-size: 14px !important;
+  }
+  .big-num {
+    font-size: 22px !important;
+  }
+  .el-card__header {
+    padding: 10px 12px !important;
+  }
+  .el-card__body {
+    padding: 12px !important;
+  }
+  // OPC 业务侧大字号
+  .opc-home .balance,
+  .balance {
+    font-size: 32px !important;
+    padding: 16px 0 !important;
+  }
+  .opc-home .reward-stat .big,
+  .reward-stat .big {
+    font-size: 24px !important;
+  }
+  .page .header .title {
+    font-size: 16px !important;
+  }
+  // .header 在 OPC 页面是卡片头部工具条(标题 + 按钮组)
+  // xs 下强制垂直堆叠 + 按钮占满
+  .page > .el-card > .el-card__header .header,
+  .header {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 12px;
+  }
+  .header .el-select,
+  .header > div {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+  .header > .el-button {
+    width: 100%;
+  }
+  // el-row 多列(<768)在 xs 下强制单列
+  .el-row.is-mobile-stack > .el-col {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+    margin-bottom: 12px;
+  }
+  // 描述列表置顶
+  .el-descriptions {
+    font-size: 13px !important;
+  }
+}
+
+// ============= 平板(768 ~ 992)微调 =============
+@media (min-width: #{$bp-sm}) and (max-width: #{$bp-md - 0.02}) {
+  .app-container {
+    padding: 16px !important;
+  }
+}
