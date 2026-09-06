@@ -5,6 +5,7 @@ import com.ruoyi.opc.ai.gateway.llm.ChatModelProvider;
 import com.ruoyi.opc.ai.gateway.llm.ChatResponse;
 import com.ruoyi.opc.ai.gateway.llm.LlmGateway;
 import com.ruoyi.opc.ai.memory.Memory;
+import com.ruoyi.opc.ai.security.PromptGuard;
 import com.ruoyi.opc.ai.tools.ToolExecutor;
 import com.ruoyi.opc.ai.tools.ToolSpec;
 import com.ruoyi.opc.common.exception.OpcException;
@@ -35,6 +36,7 @@ public class AgentRuntime {
     private final LlmGateway llmGateway;
     private final Memory memory;
     private final ToolExecutor toolExecutor;
+    private final PromptGuard promptGuard;
 
     /** 默认配置 */
     private static final int DEFAULT_MAX_STEPS = 8;
@@ -103,6 +105,8 @@ public class AgentRuntime {
 
                     String toolResult;
                     try {
+                        // v0.3：即使工具已注册，也必须在 PromptGuard 白名单内（防御纵深）
+                        promptGuard.validateToolName(tc.getFunction().getName());
                         toolResult = toolExecutor.execute(tc.getFunction().getName(),
                                 tc.getFunction().getArguments(), request);
                     } catch (Exception e) {
@@ -161,7 +165,8 @@ public class AgentRuntime {
         List<ChatMessage> history = memory.loadShortTerm(request.getSessionId(), 10);
         list.addAll(history);
 
-        list.add(ChatMessage.user(request.getUserInput()));
+        // v0.3：用户输入进入 LLM 之前先过 PromptGuard（注入 + 红队 5 类攻击模式）
+        list.add(ChatMessage.user(promptGuard.sanitize(request.getUserInput())));
         return list;
     }
 
