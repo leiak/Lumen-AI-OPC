@@ -3,7 +3,7 @@
 ## 一键启动（本地开发）
 
 ```bash
-cd RuoYi-Cloud-springboot3/deploy
+cd springboot3/deploy
 docker-compose up -d
 
 # 初始化数据库（首次）
@@ -24,7 +24,7 @@ mvn spring-boot:run -pl ruoyi-modules/opc-billing
 mvn spring-boot:run -pl ruoyi-modules/opc-finance
 
 # 启动前端
-cd ../RuoYi-Cloud-Vue3-typescript
+cd ../vue3-typescript
 npm install
 npm run dev
 ```

@@ -107,8 +107,8 @@
 
 | 文件 | 状态 | 行数 | 备注 |
 |------|------|------|------|
-| `RuoYi-Cloud-Vue3-typescript/src/views/opc/invitations.vue` | 已存在 | 182 | 本次未修改；调用 `SharePoster` 弹窗 |
-| `RuoYi-Cloud-Vue3-typescript/src/views/opc/components/SharePoster.vue` | **编辑** | 178→184 | 唯一改动：QR 失败时画占位 + 文字（`SharePoster.vue:121-141`） |
+| `vue3-typescript/src/views/opc/invitations.vue` | 已存在 | 182 | 本次未修改；调用 `SharePoster` 弹窗 |
+| `vue3-typescript/src/views/opc/components/SharePoster.vue` | **编辑** | 178→184 | 唯一改动：QR 失败时画占位 + 文字（`SharePoster.vue:121-141`） |
 
 依赖：
 - `qrcode@1.5.4`（已在 package.json）
@@ -120,12 +120,12 @@
 
 ### 6.1 本机无法跑 `npm run build`
 
-`RuoYi-Cloud-Vue3-typescript/node_modules` 在本机不存在（`ls node_modules/ | wc -l = 0`），
+`vue3-typescript/node_modules` 在本机不存在（`ls node_modules/ | wc -l = 0`），
 因此无法执行 `npm run type-check` / `npm run build` 做编译验证。
 **依赖 CI / 用户本机执行以下命令做最终验收**：
 
 ```bash
-cd RuoYi-Cloud-Vue3-typescript
+cd vue3-typescript
 npm install
 npm run type-check   # vue-tsc --noEmit
 npm run build       # vite build

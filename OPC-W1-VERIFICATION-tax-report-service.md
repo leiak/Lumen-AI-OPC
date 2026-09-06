@@ -230,7 +230,7 @@ opc-finance (本子任务改动)
 **运行验证**(待 CI / 手动):
 
 ```bash
-cd RuoYi-Cloud-springboot3
+cd springboot3
 mvn test -pl opc-finance -Dtest=OpcFinanceTaxReportServiceImplTest
 # 期望:Tests run: 8, Failures: 0, Errors: 0
 ```

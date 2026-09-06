@@ -1,7 +1,7 @@
 # W1 Task #2.1 Nacos 6 个 prod 配置 — 验证报告
 
 > 验证日期:2026-09-04
-> 范围:`RuoYi-Cloud-springboot3/deploy/nacos/`
+> 范围:`springboot3/deploy/nacos/`
 > 命名空间:`opc-prod`(需先在 Nacos 控制台创建)
 > 验证人:Claude (静态审查)
 
@@ -23,7 +23,7 @@
 ## 1. 文件清单(实际产出)
 
 ```
-RuoYi-Cloud-springboot3/deploy/nacos/
+springboot3/deploy/nacos/
 ├── application-prod.yml      4933 B  ← 共享:DB/Redis/RabbitMQ/Qdrant/AI/Sentinel/Jasypt
 ├── application-dev.yml       2154 B  ← 共享:开发环境
 ├── opc-common-prod.yml       2317 B  ← 共享:灰度/CORS/限流/审计/追踪
@@ -131,7 +131,7 @@ RuoYi-Cloud-springboot3/deploy/nacos/
 ## 8. 推送清单(给运维的运行手册)
 
 ```bash
-cd RuoYi-Cloud-springboot3/deploy/nacos
+cd springboot3/deploy/nacos
 
 # Step 1: 准备生产密码
 export JASYPT_PASSWORD='<强密码,由 Vault 或 KMS 管理>'

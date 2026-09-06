@@ -22,11 +22,11 @@
 ## 1. 实际交付物
 
 ```
-RuoYi-Cloud-springboot3/ruoyi-modules/opc-finance/
+springboot3/ruoyi-modules/opc-finance/
 └── src/main/java/com/ruoyi/opc/finance/controller/
     └── OpcFinanceTaxReportController.java    新增 (75 行,3 端点)
 
-RuoYi-Cloud-Vue3-typescript/src/
+vue3-typescript/src/
 ├── api/opc/finance.ts                        +10 行 (3 方法)
 ├── router/index.ts                           +6 行 (路由注册)
 └── views/opc/finance/
@@ -244,7 +244,7 @@ opens  self=closes (期望 closes = opens - self):
 
 ```bash
 # 1) 启动 gateway + opc-finance
-cd RuoYi-Cloud-springboot3 && mvn spring-boot:run -pl opc-finance -am
+cd springboot3 && mvn spring-boot:run -pl opc-finance -am
 
 # 2) Postman 测 3 个接口
 #    - 假设用户已登录(token 从 ruoyi-gateway 获取),companyId=1001
@@ -290,7 +290,7 @@ GET    http://localhost:8080/opc/finance/tax-reports/<id>
 ## 10. 变更清单(供 review)
 
 ```diff
-++ RuoYi-Cloud-springboot3/ruoyi-modules/opc-finance/src/main/java/com/ruoyi/opc/finance/controller/OpcFinanceTaxReportController.java
+++ springboot3/ruoyi-modules/opc-finance/src/main/java/com/ruoyi/opc/finance/controller/OpcFinanceTaxReportController.java
 +    @PostMapping("/generate")
 +    public AjaxResult generate(@RequestParam Long companyId, @RequestParam String period) {
 +        Long reportId = taxReportService.generateMonthlyReport(companyId, period, SecurityUtils.getUsername());
@@ -305,12 +305,12 @@ GET    http://localhost:8080/opc/finance/tax-reports/<id>
 +    @GetMapping("/{id}")
 +    public AjaxResult detail(@PathVariable Long id) { ... }
 +
-  RuoYi-Cloud-Vue3-typescript/src/api/opc/finance.ts
+  vue3-typescript/src/api/opc/finance.ts
 +    export function generateTaxReport(companyId, period)
 +    export function listTaxReports(companyId, period?, status?, limit=20)
 +    export function taxReportDetail(id)
 +
-  RuoYi-Cloud-Vue3-typescript/src/router/index.ts
+  vue3-typescript/src/router/index.ts
 +      {
 +        path: 'finance/tax-reports',
 +        component: () => import('@/views/opc/finance/tax-reports.vue'),
@@ -318,5 +318,5 @@ GET    http://localhost:8080/opc/finance/tax-reports/<id>
 +        meta: { title: '税务报表', icon: 'postcard' }
 +      },
 +
-++ RuoYi-Cloud-Vue3-typescript/src/views/opc/finance/tax-reports.vue
+++ vue3-typescript/src/views/opc/finance/tax-reports.vue
 ```

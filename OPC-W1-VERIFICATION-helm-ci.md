@@ -344,16 +344,16 @@ PR 创建后会自动跑 `.github/workflows/helm-validate.yml`,预期:
 ## 11. 变更清单(供 review)
 
 ```diff
-++ RuoYi-Cloud-springboot3/Jenkinsfile
-++ RuoYi-Cloud-springboot3/.github/workflows/helm-validate.yml
+++ springboot3/Jenkinsfile
+++ springboot3/.github/workflows/helm-validate.yml
 
-~ RuoYi-Cloud-springboot3/deploy/helm/opc/README.md
+~ springboot3/deploy/helm/opc/README.md
   - §CI/CD 集成 章节重写(引用实际文件,5 Jenkins stage,3 GH Actions job)
   + 新 §回滚命令 小节(helm rollback 语法 + dry-run 限制说明)
   + 新 §完整 deploy/upgrade/rollback 流程(3 步命令)
   - 版本 v1.1 → v1.2,加 v1.2 changelog
 
-~ RuoYi-Cloud-springboot3/deploy/helm/opc/ci/diff-envs.py
+~ springboot3/deploy/helm/opc/ci/diff-envs.py
   - HELM 硬编码 Windows 路径 → find_helm() 自动检测(shutil.which + Windows glob fallback)
 ```
 

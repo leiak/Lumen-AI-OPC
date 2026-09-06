@@ -302,11 +302,11 @@ pod/ruoyi-system-xxx                  2/2     Running   0          1m
 ## 10. 变更清单(供 review)
 
 ```diff
-++ RuoYi-Cloud-springboot3/deploy/helm/opc/templates/service-{ai-core,agent-hub,user-center,billing,finance,gateway,system}.yaml
-++ RuoYi-Cloud-springboot3/deploy/helm/opc/templates/hpa.yaml
-++ RuoYi-Cloud-springboot3/deploy/helm/opc/templates/pdb.yaml
+++ springboot3/deploy/helm/opc/templates/service-{ai-core,agent-hub,user-center,billing,finance,gateway,system}.yaml
+++ springboot3/deploy/helm/opc/templates/hpa.yaml
+++ springboot3/deploy/helm/opc/templates/pdb.yaml
 
-~ RuoYi-Cloud-springboot3/deploy/helm/opc/templates/deployment-{ai-core,agent-hub,user-center,billing,finance,gateway,system}.yaml
+~ springboot3/deploy/helm/opc/templates/deployment-{ai-core,agent-hub,user-center,billing,finance,gateway,system}.yaml
   - 移除 Service 块(每文件 -22 行)
   - 移除 PDB 块(每文件 -12 行)
   - ai-core 还移除 HPA 块(-23 行)

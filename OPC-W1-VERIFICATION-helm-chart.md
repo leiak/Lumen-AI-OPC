@@ -1,7 +1,7 @@
 # W1 Task #6 Helm Chart — 验证报告
 
 > 验证日期:2026-09-04
-> 范围:`RuoYi-Cloud-springboot3/deploy/helm/opc/`
+> 范围:`springboot3/deploy/helm/opc/`
 > Helm 版本:v4.2.4 (本地)
 > 验证人:Claude (`helm lint` + `helm template` 真实运行)
 
@@ -27,7 +27,7 @@
 ## 1. 实际交付物
 
 ```
-RuoYi-Cloud-springboot3/deploy/helm/opc/
+springboot3/deploy/helm/opc/
 ├── Chart.yaml              468 B   ← apiVersion: v2, version: 1.0.0
 ├── .helmignore             545 B   ← 排除 .git/ IDE/ tests 等
 ├── values.yaml            9.6 KB   ← 默认 values (9602 字节)

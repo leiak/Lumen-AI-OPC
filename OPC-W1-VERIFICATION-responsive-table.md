@@ -1,7 +1,7 @@
 # W1 Sub-task 5.2 表格 < 768px 改卡片式 — 验证报告
 
 > 验证日期:2026-09-04
-> 范围:`RuoYi-Cloud-Vue3-typescript/src/views/opc/` 7 个页面 + `components/ResponsiveTable.vue`
+> 范围:`vue3-typescript/src/views/opc/` 7 个页面 + `components/ResponsiveTable.vue`
 > 验证手段:静态标签平衡检查 + grep 替换率统计 + 列映射脚本回放
 > 验证人:Claude
 

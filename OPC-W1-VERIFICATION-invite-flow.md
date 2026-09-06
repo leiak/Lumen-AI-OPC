@@ -153,7 +153,7 @@
 ### 3.2 编译 & 启动
 
 ```bash
-cd RuoYi-Cloud-springboot3
+cd springboot3
 mvn clean install -DskipTests
 mvn spring-boot:run -pl ruoyi-gateway
 mvn spring-boot:run -pl ruoyi-modules/opc-user-center

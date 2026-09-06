@@ -23,9 +23,9 @@
 
 | 文件 | 行数 | 用途 |
 |------|------|------|
-| `RuoYi-Cloud-Vue3-typescript/src/views/opc/invite.vue` | 281 | 落地页主体(单文件组件) |
-| `RuoYi-Cloud-Vue3-typescript/src/router/index.ts` 第 79-84 行 | — | `/opc/invite` 路由配置(`noAuth: true` + `hidden: true`) |
-| `RuoYi-Cloud-Vue3-typescript/src/api/opc/user.ts` 第 44-50 行 | — | `getInvitationPublic()` + `acceptInvitation()` |
+| `vue3-typescript/src/views/opc/invite.vue` | 281 | 落地页主体(单文件组件) |
+| `vue3-typescript/src/router/index.ts` 第 79-84 行 | — | `/opc/invite` 路由配置(`noAuth: true` + `hidden: true`) |
+| `vue3-typescript/src/api/opc/user.ts` 第 44-50 行 | — | `getInvitationPublic()` + `acceptInvitation()` |
 
 ✅ **3 文件齐备**(本推进为静态再验证,无代码改动)。
 

@@ -12,7 +12,7 @@
 ├─ init.md                              # 完整需求规格
 ├─ OPC-MVP-DELIVERY.md                  # 本文档（交付总览）
 │
-├─ RuoYi-Cloud-springboot3/             # 后端基座
+├─ springboot3/             # 后端基座
 │  ├─ pom.xml                           # 父 POM（已加 Spring AI / LangChain4j / Qdrant / Jasypt）
 │  ├─ opc-common/                       # OPC 公共模块（常量、异常、Snowflake）
 │  ├─ ruoyi-modules/
@@ -35,7 +35,7 @@
 │      ├─ runbooks/incident-response.md # F-01..F-07 故障手册
 │      └─ README.md                     # 部署指南
 │
-└─ RuoYi-Cloud-Vue3-typescript/         # 前端基座
+└─ vue3-typescript/         # 前端基座
    ├─ src/api/opc/                       # 5 个 API 模块（user/agent/finance/billing/llm）
    ├─ src/views/opc/
    │   ├─ index.vue                     # OPC 首页（钱包 + Agent + 凭证）
@@ -74,7 +74,7 @@
 
 ```bash
 # Step 1: 基础设施（5~10 分钟）
-cd RuoYi-Cloud-springboot3/deploy
+cd springboot3/deploy
 docker-compose up -d nacos1 nacos2 nacos3 mysql redis rabbitmq qdrant minio es prometheus grafana skywalking-oap
 
 # Step 2: 数据库（首次，2 分钟）
@@ -96,7 +96,7 @@ mvn spring-boot:run -pl ruoyi-modules/opc-billing &
 mvn spring-boot:run -pl ruoyi-modules/opc-finance &
 
 # Step 4: 前端（3 分钟）
-cd ../RuoYi-Cloud-Vue3-typescript
+cd ../vue3-typescript
 npm install && npm run dev
 # 浏览器访问 http://localhost:5173 → 登录 → /opc
 ```

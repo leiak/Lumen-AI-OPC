@@ -237,9 +237,9 @@ Day 5 末 Checkpoint：所有任务完成 + 验收
 
 **Files**：
 - `opc-finance/src/main/java/com/ruoyi/opc/finance/controller/OpcFinanceTaxReportController.java`（新增）
-- `RuoYi-Cloud-Vue3-typescript/src/api/opc/finance.ts`（编辑，加 3 个方法）
-- `RuoYi-Cloud-Vue3-typescript/src/views/opc/finance/tax-reports.vue`（新增）
-- `RuoYi-Cloud-Vue3-typescript/src/router/index.ts`（编辑，加路由）
+- `vue3-typescript/src/api/opc/finance.ts`（编辑，加 3 个方法）
+- `vue3-typescript/src/views/opc/finance/tax-reports.vue`（新增）
+- `vue3-typescript/src/router/index.ts`（编辑，加路由）
 
 ---
 
@@ -260,8 +260,8 @@ Day 5 末 Checkpoint：所有任务完成 + 验收
 - [ ] 点击外部区域自动关闭
 
 **Files**：
-- `RuoYi-Cloud-Vue3-typescript/src/layout/components/Sidebar/index.vue`（编辑）
-- `RuoYi-Cloud-Vue3-typescript/src/views/opc/components/MobileDrawer.vue`（新增）
+- `vue3-typescript/src/layout/components/Sidebar/index.vue`（编辑）
+- `vue3-typescript/src/views/opc/components/MobileDrawer.vue`（新增）
 
 ### Sub-task 5.2 — 表格 < 768px 改卡片式
 
@@ -273,7 +273,7 @@ Day 5 末 Checkpoint：所有任务完成 + 验收
 - [ ] 768px 以上保持原表格
 
 **Files**：
-- `RuoYi-Cloud-Vue3-typescript/src/views/opc/components/ResponsiveTable.vue`（新增）
+- `vue3-typescript/src/views/opc/components/ResponsiveTable.vue`（新增）
 - 9 个 OPC 页面（编辑替换 `<el-table>`）
 
 ### Sub-task 5.3 — 全局字号间距响应式
@@ -286,8 +286,8 @@ Day 5 末 Checkpoint：所有任务完成 + 验收
 - [ ] `npm run dev` 在 Chrome DevTools 4 个断点切换无错位
 
 **Files**：
-- `RuoYi-Cloud-Vue3-typescript/src/assets/styles/responsive.scss`（新增）
-- `RuoYi-Cloud-Vue3-typescript/src/main.ts`（编辑 import）
+- `vue3-typescript/src/assets/styles/responsive.scss`（新增）
+- `vue3-typescript/src/main.ts`（编辑 import）
 
 ---
 
@@ -380,9 +380,9 @@ Day 5 末 Checkpoint：所有任务完成 + 验收
 - [ ] 移动端样式良好
 
 **Files**：
-- `RuoYi-Cloud-Vue3-typescript/src/views/opc/invite.vue`（新增）
-- `RuoYi-Cloud-Vue3-typescript/src/router/index.ts`（编辑加路由）
-- `RuoYi-Cloud-Vue3-typescript/src/api/opc/user.ts`（编辑加 3 个方法）
+- `vue3-typescript/src/views/opc/invite.vue`（新增）
+- `vue3-typescript/src/router/index.ts`（编辑加路由）
+- `vue3-typescript/src/api/opc/user.ts`（编辑加 3 个方法）
 
 ### Sub-task 7.3 — 分享卡片 + 二维码
 
@@ -394,8 +394,8 @@ Day 5 末 Checkpoint：所有任务完成 + 验收
 - [ ] 卡片尺寸适配微信朋友圈（1080×1080）
 
 **Files**：
-- `RuoYi-Cloud-Vue3-typescript/src/views/opc/invitations.vue`（新增）
-- `RuoYi-Cloud-Vue3-typescript/src/views/opc/components/SharePoster.vue`（新增，使用 `qrcode` + `html2canvas`）
+- `vue3-typescript/src/views/opc/invitations.vue`（新增）
+- `vue3-typescript/src/views/opc/components/SharePoster.vue`（新增，使用 `qrcode` + `html2canvas`）
 
 ---
 

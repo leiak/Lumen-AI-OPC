@@ -1,7 +1,7 @@
 # W1 Sub-task 5.3 全局字号间距响应式 — 验证报告
 
 > 验证日期:2026-09-04
-> 范围:`RuoYi-Cloud-Vue3-typescript/src/assets/styles/responsive.scss` +
+> 范围:`vue3-typescript/src/assets/styles/responsive.scss` +
 >      `index.scss` import + 5 个 OPC 页面补丁
 > 验证手段:`npx sass --no-source-map` 真实编译 + media query 计数 + 模板标签平衡
 > 验证人:Claude
@@ -23,11 +23,11 @@
 ## 1. 实际交付物
 
 ```
-RuoYi-Cloud-Vue3-typescript/src/assets/styles/
+vue3-typescript/src/assets/styles/
 ├── responsive.scss               5.7 KB (新增) ← 174 行 + 注释
 └── index.scss                    +1 行 @use './responsive.scss'
 
-RuoYi-Cloud-Vue3-typescript/src/views/opc/
+vue3-typescript/src/views/opc/
 ├── index.vue                     hero / hero-stats 媒体查询 (新增 19 行)
 ├── user/profile.vue              el-row 加 is-mobile-stack
 ├── billing/wallet.vue            el-row 加 is-mobile-stack
@@ -191,7 +191,7 @@ $ grep -E "^\s*\.|^@media" /tmp/out.css | wc -l
 ⚠️ 运行时验证步骤:
 
 ```
-1. cd RuoYi-Cloud-Vue3-typescript && npm install && npm run dev
+1. cd vue3-typescript && npm install && npm run dev
 2. Chrome DevTools → Toggle Device Toolbar (Ctrl+Shift+M)
 3. 切换至 iPhone SE (375×667) / iPhone 14 Pro (390×844) / iPad Mini (768×1024) / Desktop 1280×800
 4. 逐页走查:
@@ -251,7 +251,7 @@ $ grep -E "^\s*\.|^@media" /tmp/out.css | wc -l
 - ✅ 4 个 OPC 关键页 ≤ 4 行改动,其余依赖全局
 
 **总产出**(5.1 → 5.2 → 5.3):
-- `RuoYi-Cloud-Vue3-typescript/src/assets/styles/responsive.scss` — 5.7KB 全局响应式
+- `vue3-typescript/src/assets/styles/responsive.scss` — 5.7KB 全局响应式
 - `index.scss` — 多 1 行 `@use`
 - `opc/index.vue` — 19 行 hero 媒体查询
 - 4 OPC 页 — 4 行 `is-mobile-stack` class

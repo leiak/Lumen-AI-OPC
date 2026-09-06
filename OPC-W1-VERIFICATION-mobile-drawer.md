@@ -1,7 +1,7 @@
 # W1 Sub-task 5.1 侧边栏 < 768px 抽屉化 — 验证报告
 
 > 验证日期:2026-09-04
-> 范围:`RuoYi-Cloud-Vue3-typescript/src/layout/` + `RuoYi-Cloud-Vue3-typescript/src/views/opc/components/`
+> 范围:`vue3-typescript/src/layout/` + `vue3-typescript/src/views/opc/components/`
 > 验证手段:静态代码审查 + 现有 CSS transition 时长核对
 > 验证人:Claude
 
@@ -22,7 +22,7 @@
 ## 1. 实际交付物
 
 ```
-RuoYi-Cloud-Vue3-typescript/
+vue3-typescript/
 ├── src/layout/index.vue                  ← WIDTH 992 → 768 (1 行)
 └── src/views/opc/components/
     └── MobileDrawer.vue                  ← 新建 (174 行,含 element-plus el-drawer 包装)
