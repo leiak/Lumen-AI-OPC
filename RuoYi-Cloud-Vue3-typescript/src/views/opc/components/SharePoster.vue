@@ -122,7 +122,8 @@ async function drawPoster() {
     const qrDataUrl = await QRCode.toDataURL(shareUrl.value, {
       width: 360,
       margin: 1,
-      color: { dark: '#1d2129', light: '#ffffff' }
+      color: { dark: '#1d2129', light: '#ffffff' },
+      errorCorrectionLevel: 'H'
     })
     const qrImg = await loadImage(qrDataUrl)
     const qrSize = 240, qrX = (W - qrSize) / 2, qrY = 780
@@ -131,6 +132,12 @@ async function drawPoster() {
     ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
   } catch (e) {
     console.error('QR code generation failed', e)
+    // 二维码失败时仍画一个占位块，确保海报整体可下载
+    ctx.fillStyle = '#f0f1f3'
+    ctx.fillRect((W - 240) / 2 - 10, 770, 260, 260)
+    ctx.fillStyle = '#86909c'
+    ctx.font = '20px sans-serif'
+    ctx.fillText('二维码生成失败，请重试', W / 2, 900)
   }
 
   // 10. 底部提示
