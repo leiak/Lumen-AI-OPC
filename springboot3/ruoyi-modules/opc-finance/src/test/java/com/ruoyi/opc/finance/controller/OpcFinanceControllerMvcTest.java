@@ -135,18 +135,18 @@ class OpcFinanceControllerMvcTest {
     }
 
     @Test
-    @DisplayName("createVoucher — service 抛 OpcException(code=400) → HTTP 500 + JSON msg（code 字段被 advice 忽略）")
-    void createVoucher_serviceThrowsOpcExceptionWithCode_returns500IgnoringCode() throws Exception {
-        // 注意：GlobalExceptionHandler.handleRuntimeException 只取 e.getMessage()，OpcException.code 字段被忽略
-        // 这是一个 OPC 设计发现：OpcException 应继承 ServiceException 才能被 handleServiceException 接住
+    @DisplayName("createVoucher — service 抛 OpcException(code=400) → HTTP 200 + JSON code=400（W7 修复验证）")
+    void createVoucher_serviceThrowsOpcExceptionWithCode_returns200WithCodeInJson() throws Exception {
+        // W7 修复：OpcException 现在继承 ServiceException，handleServiceException 接住后会尊重 code 字段
+        // 响应：HTTP 200（@ExceptionHandler 返回 body 不改 status）+ JSON code=400
         when(voucherService.create(any(OpcFinanceVoucher.class)))
                 .thenThrow(new OpcException(400, "凭证已存在"));
 
         mockMvc.perform(post("/opc/finance/voucher")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(voucherJson()))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.code").value(500))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.msg").value("凭证已存在"));
     }
 

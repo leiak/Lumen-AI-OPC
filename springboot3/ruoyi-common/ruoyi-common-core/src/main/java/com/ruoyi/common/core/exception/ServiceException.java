@@ -2,10 +2,14 @@ package com.ruoyi.common.core.exception;
 
 /**
  * 业务异常
- * 
+ *
+ * <p>W7 改动：移除 {@code final} 修饰符，使 {@code OpcException} 可以继承以复用
+ * {@link com.ruoyi.common.security.handler.GlobalExceptionHandler#handleServiceException} 的
+ * 异常映射逻辑（{@code code} 字段会被 advice 写入 {@code AjaxResult.code}）。
+ *
  * @author ruoyi
  */
-public final class ServiceException extends RuntimeException
+public class ServiceException extends RuntimeException
 {
     private static final long serialVersionUID = 1L;
 
