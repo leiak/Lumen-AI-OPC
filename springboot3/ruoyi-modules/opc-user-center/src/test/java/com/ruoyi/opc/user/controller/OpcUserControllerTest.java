@@ -125,6 +125,7 @@ class OpcUserControllerTest {
         assertSame(p, result.get("data"));
         verify(userProfileService).getByUserId(USER_ID);
         securityMock.verify(() -> SecurityUtils.getUserId(), atLeastOnce());
+        verifyNoMoreInteractions(userProfileService);
     }
 
     @Test
@@ -141,6 +142,7 @@ class OpcUserControllerTest {
                 "空 profile 应携带当前 userId（前端用）");
         assertNull(data.getRealName(), "空 profile 不应携带真实姓名");
         verify(userProfileService).getByUserId(USER_ID);
+        verifyNoMoreInteractions(userProfileService);
     }
 
     // ==================== POST /profile ====================
@@ -158,6 +160,7 @@ class OpcUserControllerTest {
         assertEquals(USER_ID, incoming.getUserId(),
                 "Controller 必须用 SecurityUtils 的 userId 覆盖客户端值");
         verify(userProfileService).createOrUpdate(incoming);
+        verifyNoMoreInteractions(userProfileService);
     }
 
     @Test
@@ -172,6 +175,8 @@ class OpcUserControllerTest {
         assertSame(incoming, result.get("data"),
                 "Controller 应返回修改后的 profile 对象（含正确的 userId）");
         assertEquals(USER_ID, ((OpcUserProfile) result.get("data")).getUserId());
+        verify(userProfileService).createOrUpdate(incoming);
+        verifyNoMoreInteractions(userProfileService);
     }
 
     @Test
@@ -184,6 +189,7 @@ class OpcUserControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.saveProfile(incoming));
         assertTrue(ex.getMessage().contains("userId"));
+        verifyNoMoreInteractions(userProfileService);
     }
 
     // ==================== GET /companies ====================
@@ -201,6 +207,7 @@ class OpcUserControllerTest {
         assertEquals(2, ((List<?>) result.get("data")).size());
         verify(userProfileService).listCompaniesByOwner(USER_ID);
         securityMock.verify(() -> SecurityUtils.getUserId(), atLeastOnce());
+        verifyNoMoreInteractions(userProfileService);
     }
 
     @Test
@@ -212,6 +219,7 @@ class OpcUserControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(0, ((List<?>) result.get("data")).size());
+        verifyNoMoreInteractions(userProfileService);
     }
 
     // ==================== POST /company ====================
@@ -229,6 +237,7 @@ class OpcUserControllerTest {
         assertEquals(USER_ID, incoming.getOwnerUserId(),
                 "Controller 必须用 SecurityUtils 的 userId 作为 ownerUserId");
         verify(userProfileService).createCompany(incoming);
+        verifyNoMoreInteractions(userProfileService);
     }
 
     @Test
@@ -245,6 +254,7 @@ class OpcUserControllerTest {
         Map<String, Object> data = (Map<String, Object>) result.get("data");
         assertNotNull(data);
         assertEquals(NEW_COMPANY_ID, data.get("companyId"));
+        verifyNoMoreInteractions(userProfileService);
     }
 
     @Test
@@ -257,6 +267,7 @@ class OpcUserControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.createCompany(incoming));
         assertTrue(ex.getMessage().contains("ownerUserId"));
+        verifyNoMoreInteractions(userProfileService);
     }
 
     // ==================== GET /company/{id} ====================
@@ -272,6 +283,7 @@ class OpcUserControllerTest {
         assertEquals(200, result.get("code"));
         assertSame(c, result.get("data"));
         verify(userProfileService).getCompany(COMPANY_ID);
+        verifyNoMoreInteractions(userProfileService);
     }
 
     @Test
@@ -283,6 +295,7 @@ class OpcUserControllerTest {
 
         assertEquals(200, result.get("code"));
         assertNull(result.get("data"));
+        verifyNoMoreInteractions(userProfileService);
     }
 
     // ==================== PUT /company ====================
@@ -300,6 +313,7 @@ class OpcUserControllerTest {
         assertEquals(Boolean.TRUE, result.get("data"),
                 "rows=1 应映射为 success(true)");
         verify(userProfileService).updateCompany(c);
+        verifyNoMoreInteractions(userProfileService);
     }
 
     @Test
@@ -314,6 +328,7 @@ class OpcUserControllerTest {
         assertEquals(200, result.get("code"),
                 "rows=0 不应抛 HTTP 500，应返回 success(false) 让前端判断");
         assertEquals(Boolean.FALSE, result.get("data"));
+        verifyNoMoreInteractions(userProfileService);
     }
 
     // ==================== GET /home ====================
@@ -337,6 +352,7 @@ class OpcUserControllerTest {
         verify(userProfileService).getByUserId(USER_ID);
         verify(userProfileService).listCompaniesByOwner(USER_ID);
         securityMock.verify(() -> SecurityUtils.getUserId(), atLeastOnce());
+        verifyNoMoreInteractions(userProfileService);
     }
 
     @Test
@@ -353,5 +369,6 @@ class OpcUserControllerTest {
         assertNull(data.get("profile"),
                 "service 返回 null → controller 透传 null（不像 myProfile 自动建空）");
         assertNotNull(data.get("companies"));
+        verifyNoMoreInteractions(userProfileService);
     }
 }

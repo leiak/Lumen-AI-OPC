@@ -99,6 +99,7 @@ class OpcInvitationControllerTest {
         assertSame(inv, result.get("data"));
         verify(invitationService).generate(USER_ID);
         securityMock.verify(() -> SecurityUtils.getUserId(), atLeastOnce());
+        verifyNoMoreInteractions(invitationService);
     }
 
     @Test
@@ -110,6 +111,7 @@ class OpcInvitationControllerTest {
 
         assertEquals(200, result.get("code"));
         assertNull(result.get("data"));
+        verifyNoMoreInteractions(invitationService);
     }
 
     @Test
@@ -121,6 +123,7 @@ class OpcInvitationControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.generate());
         assertTrue(ex.getMessage().contains("50"));
+        verifyNoMoreInteractions(invitationService);
     }
 
     // ==================== GET / ====================
@@ -137,6 +140,7 @@ class OpcInvitationControllerTest {
         assertSame(list, result.get("data"));
         verify(invitationService).listByInviter(USER_ID);
         securityMock.verify(() -> SecurityUtils.getUserId(), atLeastOnce());
+        verifyNoMoreInteractions(invitationService);
     }
 
     @Test
@@ -148,6 +152,7 @@ class OpcInvitationControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(0, ((List<?>) result.get("data")).size());
+        verifyNoMoreInteractions(invitationService);
     }
 
     // ==================== GET /{code} ====================
@@ -168,6 +173,7 @@ class OpcInvitationControllerTest {
         verify(invitationService).getPublicByCode(CODE);
         // 公开 endpoint 不应调 SecurityUtils
         securityMock.verify(() -> SecurityUtils.getUserId(), never());
+        verifyNoMoreInteractions(invitationService);
     }
 
     @Test
@@ -179,6 +185,7 @@ class OpcInvitationControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.getPublic("NOPE"));
         assertTrue(ex.getMessage().contains("不存在"));
+        verifyNoMoreInteractions(invitationService);
     }
 
     @Test
@@ -196,6 +203,7 @@ class OpcInvitationControllerTest {
         assertEquals(200, result.get("code"));
         assertEquals(CODE, ((Map<?, ?>) result.get("data")).get("inviteCode"));
         assertNull(((Map<?, ?>) result.get("data")).get("inviter"));
+        verifyNoMoreInteractions(invitationService);
     }
 
     // ==================== POST /accept ====================
@@ -220,6 +228,7 @@ class OpcInvitationControllerTest {
         assertSame(mockResult, result.get("data"));
         verify(invitationService).accept(CODE, USER_ID, MOBILE);
         securityMock.verify(() -> SecurityUtils.getUserId(), atLeastOnce());
+        verifyNoMoreInteractions(invitationService);
     }
 
     @Test
@@ -236,6 +245,7 @@ class OpcInvitationControllerTest {
 
         assertEquals(200, result.get("code"));
         verify(invitationService).accept(CODE, USER_ID, null);
+        verifyNoMoreInteractions(invitationService);
     }
 
     @Test
@@ -252,6 +262,7 @@ class OpcInvitationControllerTest {
                 () -> controller.accept(body));
         assertTrue(ex.getMessage().contains("邀请码不能为空"));
         verify(invitationService).accept(null, USER_ID, MOBILE);
+        verifyNoMoreInteractions(invitationService);
     }
 
     @Test
@@ -263,6 +274,7 @@ class OpcInvitationControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.accept(new HashMap<>()));
         assertTrue(ex.getMessage().contains("邀请码不能为空"));
+        verifyNoMoreInteractions(invitationService);
     }
 
     @Test
@@ -278,6 +290,7 @@ class OpcInvitationControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.accept(body));
         assertTrue(ex.getMessage().contains("不能接受自己"));
+        verifyNoMoreInteractions(invitationService);
     }
 
     @Test
@@ -294,5 +307,6 @@ class OpcInvitationControllerTest {
 
         assertEquals(200, result.get("code"));
         verify(invitationService).accept(CODE, USER_ID, "");
+        verifyNoMoreInteractions(invitationService);
     }
 }

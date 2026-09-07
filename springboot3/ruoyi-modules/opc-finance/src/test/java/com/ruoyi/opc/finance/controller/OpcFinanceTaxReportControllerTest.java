@@ -107,6 +107,7 @@ class OpcFinanceTaxReportControllerTest {
         assertEquals(REPORT_ID, data.get("reportId"));
         verify(taxReportService).generateMonthlyReport(COMPANY_ID, PERIOD, USERNAME);
         securityMock.verify(() -> SecurityUtils.getUsername(), atLeastOnce());
+        verifyNoMoreInteractions(taxReportService);
     }
 
     @Test
@@ -119,6 +120,7 @@ class OpcFinanceTaxReportControllerTest {
         assertTrue(result.get("msg").toString().contains("companyId"),
                 "错误信息应提及 companyId");
         verify(taxReportService, never()).generateMonthlyReport(any(), any(), any());
+        verifyNoMoreInteractions(taxReportService);
     }
 
     @Test
@@ -131,6 +133,7 @@ class OpcFinanceTaxReportControllerTest {
         assertTrue(result.get("msg").toString().contains("period"),
                 "错误信息应提及 period");
         verify(taxReportService, never()).generateMonthlyReport(any(), any(), any());
+        verifyNoMoreInteractions(taxReportService);
     }
 
     @Test
@@ -143,6 +146,7 @@ class OpcFinanceTaxReportControllerTest {
         assertTrue(result.get("msg").toString().contains("period"),
                 "错误信息应提及 period");
         verify(taxReportService, never()).generateMonthlyReport(any(), any(), any());
+        verifyNoMoreInteractions(taxReportService);
     }
 
     @Test
@@ -154,6 +158,7 @@ class OpcFinanceTaxReportControllerTest {
         controller.generate(COMPANY_ID, PERIOD);
 
         verify(taxReportService).generateMonthlyReport(eq(COMPANY_ID), eq(PERIOD), eq(USERNAME));
+        verifyNoMoreInteractions(taxReportService);
     }
 
     @Test
@@ -165,6 +170,7 @@ class OpcFinanceTaxReportControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.generate(COMPANY_ID, PERIOD));
         assertTrue(ex.getMessage().contains("公司不存在"));
+        verifyNoMoreInteractions(taxReportService);
     }
 
     // ==================== GET / ====================
@@ -181,6 +187,7 @@ class OpcFinanceTaxReportControllerTest {
         assertEquals(HttpStatus.SUCCESS, result.get("code"));
         assertSame(mockList, result.get("data"));
         verify(taxReportService).listByCompany(COMPANY_ID, PERIOD, "DRAFT", 20);
+        verifyNoMoreInteractions(taxReportService);
     }
 
     @Test
@@ -193,6 +200,7 @@ class OpcFinanceTaxReportControllerTest {
 
         assertEquals(HttpStatus.SUCCESS, result.get("code"));
         verify(taxReportService).listByCompany(COMPANY_ID, null, null, 20);
+        verifyNoMoreInteractions(taxReportService);
     }
 
     @Test
@@ -205,6 +213,7 @@ class OpcFinanceTaxReportControllerTest {
 
         assertEquals(HttpStatus.SUCCESS, result.get("code"));
         verify(taxReportService).listByCompany(COMPANY_ID, null, null, 20);
+        verifyNoMoreInteractions(taxReportService);
     }
 
     @Test
@@ -216,6 +225,7 @@ class OpcFinanceTaxReportControllerTest {
         controller.list(COMPANY_ID, "2026-08", "SUBMITTED", 50);
 
         verify(taxReportService).listByCompany(COMPANY_ID, "2026-08", "SUBMITTED", 50);
+        verifyNoMoreInteractions(taxReportService);
     }
 
     @Test
@@ -227,6 +237,7 @@ class OpcFinanceTaxReportControllerTest {
                 "companyId=null 应返回 error（HTTP 500）");
         assertTrue(result.get("msg").toString().contains("companyId"));
         verify(taxReportService, never()).listByCompany(any(), any(), any(), any());
+        verifyNoMoreInteractions(taxReportService);
     }
 
     @Test
@@ -240,6 +251,7 @@ class OpcFinanceTaxReportControllerTest {
         assertEquals(HttpStatus.SUCCESS, result.get("code"));
         assertNotNull(result.get("data"));
         assertEquals(0, ((List<?>) result.get("data")).size());
+        verifyNoMoreInteractions(taxReportService);
     }
 
     // ==================== GET /{id} ====================
@@ -255,6 +267,7 @@ class OpcFinanceTaxReportControllerTest {
         assertEquals(HttpStatus.SUCCESS, result.get("code"));
         assertSame(r, result.get("data"));
         verify(taxReportService).getById(REPORT_PK_ID);
+        verifyNoMoreInteractions(taxReportService);
     }
 
     @Test
@@ -268,5 +281,6 @@ class OpcFinanceTaxReportControllerTest {
                 "找不到报表应返回 error（HTTP 500）");
         assertEquals("报表不存在", result.get("msg"));
         verify(taxReportService).getById(999L);
+        verifyNoMoreInteractions(taxReportService);
     }
 }

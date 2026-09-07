@@ -120,6 +120,7 @@ class OpcBillingControllerTest {
         assertSame(w, result.get("data"));
         verify(walletService).getOrCreate(COMPANY_ID, USER_ID);
         securityMock.verify(() -> SecurityUtils.getUserId(), atLeastOnce());
+        verifyNoMoreInteractions(walletService, orderMapper);
     }
 
     @Test
@@ -131,6 +132,7 @@ class OpcBillingControllerTest {
 
         assertEquals(200, result.get("code"));
         assertNull(result.get("data"));
+        verifyNoMoreInteractions(walletService, orderMapper);
     }
 
     // ==================== POST /wallet/recharge ====================
@@ -165,6 +167,7 @@ class OpcBillingControllerTest {
         assertEquals("PENDING", order.getPayStatus(),
                 "insert 时 payStatus 应为 PENDING（标记已支付前）");
         assertEquals(String.valueOf(USER_ID), order.getCreateBy());
+        verifyNoMoreInteractions(walletService, orderMapper);
     }
 
     @Test
@@ -180,6 +183,7 @@ class OpcBillingControllerTest {
         verify(orderMapper).insert(captor.capture());
         assertEquals("ALIPAY", captor.getValue().getPayMethod(),
                 "payMethod 为 null 时应默认 ALIPAY");
+        verifyNoMoreInteractions(walletService, orderMapper);
     }
 
     @Test
@@ -197,6 +201,7 @@ class OpcBillingControllerTest {
         // 验证 walletService.recharge 的 bizType 参数
         verify(walletService).recharge(eq(COMPANY_ID), eq(USER_ID), eq(AMOUNT),
                 eq("WECHAT"), anyString(), anyString());
+        verifyNoMoreInteractions(walletService, orderMapper);
     }
 
     @Test
@@ -217,6 +222,7 @@ class OpcBillingControllerTest {
         verify(walletService, times(1)).recharge(eq(COMPANY_ID), eq(USER_ID), eq(AMOUNT),
                 eq("ALIPAY"), argThat(s -> s != null && s.startsWith("MOCK-")),
                 anyString());
+        verifyNoMoreInteractions(walletService, orderMapper);
     }
 
     @Test
@@ -236,6 +242,7 @@ class OpcBillingControllerTest {
         assertTrue(data.get("orderNo").toString().startsWith("O"));
         assertEquals("PAID", data.get("status"),
                 "controller 模拟立即到账 → 返回 status='PAID'");
+        verifyNoMoreInteractions(walletService, orderMapper);
     }
 
     @Test
@@ -251,6 +258,7 @@ class OpcBillingControllerTest {
         // 验证前面两步（insert + markPaid）已经执行
         verify(orderMapper).insert(any(OpcBillingOrder.class));
         verify(orderMapper).markPaid(anyString(), anyString(), anyString());
+        verifyNoMoreInteractions(walletService, orderMapper);
     }
 
     @Test
@@ -266,6 +274,7 @@ class OpcBillingControllerTest {
         ArgumentCaptor<OpcBillingOrder> captor = ArgumentCaptor.forClass(OpcBillingOrder.class);
         verify(orderMapper).insert(captor.capture());
         assertEquals("钱包充值 ¥250.50", captor.getValue().getTitle());
+        verifyNoMoreInteractions(walletService, orderMapper);
     }
 
     // ==================== GET /orders ====================
@@ -281,6 +290,7 @@ class OpcBillingControllerTest {
         assertEquals(200, result.get("code"));
         assertSame(mockList, result.get("data"));
         verify(orderMapper).selectByCompany(COMPANY_ID, "PAID", 50);
+        verifyNoMoreInteractions(walletService, orderMapper);
     }
 
     @Test
@@ -292,6 +302,7 @@ class OpcBillingControllerTest {
 
         assertEquals(200, result.get("code"));
         verify(orderMapper).selectByCompany(COMPANY_ID, null, 20);
+        verifyNoMoreInteractions(walletService, orderMapper);
     }
 
     // ==================== GET /order/{orderNo} ====================
@@ -307,6 +318,7 @@ class OpcBillingControllerTest {
         assertEquals(200, result.get("code"));
         assertSame(o, result.get("data"));
         verify(orderMapper).selectByOrderNo("O20260907ABCDEF");
+        verifyNoMoreInteractions(walletService, orderMapper);
     }
 
     @Test
@@ -318,5 +330,6 @@ class OpcBillingControllerTest {
 
         assertEquals(200, result.get("code"));
         assertNull(result.get("data"));
+        verifyNoMoreInteractions(walletService, orderMapper);
     }
 }

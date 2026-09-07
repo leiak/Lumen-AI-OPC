@@ -121,6 +121,7 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"), "应返回 200 成功码");
         assertSame(mockList, result.get("data"));
         verify(voucherService).listByCompany(COMPANY_ID, "2026-09", "POSTED", 50);
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     @Test
@@ -133,6 +134,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         verify(voucherService).listByCompany(COMPANY_ID, null, null, 20);
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     // ==================== GET /voucher/{id} ====================
@@ -148,6 +150,7 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"));
         assertSame(v, result.get("data"));
         verify(voucherService).getById(VOUCHER_ID);
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     // ==================== POST /voucher ====================
@@ -164,6 +167,7 @@ class OpcFinanceControllerTest {
         assertEquals(123L, result.get("voucherId"),
                 "data.voucherId 应等于 service.create 返回值");
         verify(voucherService).create(v);
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     @Test
@@ -176,6 +180,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertNull(result.get("voucherId"));
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     // ==================== PUT /voucher ====================
@@ -191,6 +196,7 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.TRUE, result.get("data"),
                 "rows > 0 → data 应为 true");
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     @Test
@@ -204,6 +210,7 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.FALSE, result.get("data"),
                 "rows == 0 → data 应为 false（controller 不主动 error）");
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     // ==================== POST /voucher/{id}/review-pass ====================
@@ -219,6 +226,7 @@ class OpcFinanceControllerTest {
         assertEquals(Boolean.TRUE, result.get("data"));
         verify(voucherService).reviewPass(VOUCHER_ID, USERNAME);
         securityMock.verify(() -> SecurityUtils.getUsername(), atLeastOnce());
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     @Test
@@ -230,6 +238,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.FALSE, result.get("data"));
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     // ==================== POST /voucher/{id}/review-reject ====================
@@ -245,6 +254,7 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.TRUE, result.get("data"));
         verify(voucherService).reviewReject(VOUCHER_ID, USERNAME, "凭证借贷不平衡");
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     @Test
@@ -256,6 +266,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         verify(voucherService).reviewReject(VOUCHER_ID, USERNAME, null);
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     @Test
@@ -267,6 +278,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.FALSE, result.get("data"));
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     // ==================== POST /voucher/{id}/post ====================
@@ -281,6 +293,7 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.TRUE, result.get("data"));
         verify(voucherService).post(VOUCHER_ID, USERNAME);
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     @Test
@@ -292,6 +305,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.FALSE, result.get("data"));
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     @Test
@@ -303,6 +317,7 @@ class OpcFinanceControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.post(VOUCHER_ID));
         assertTrue(ex.getMessage().contains("未通过审核"));
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     // ==================== POST /flows/upload ====================
@@ -319,6 +334,7 @@ class OpcFinanceControllerTest {
         assertEquals(3, result.get("data"));
         verify(bankFlowService).uploadBatch(flows, USERNAME);
         securityMock.verify(() -> SecurityUtils.getUsername(), atLeastOnce());
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     @Test
@@ -330,6 +346,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(0, result.get("data"));
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     // ==================== GET /flows/pending ====================
@@ -345,6 +362,7 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"));
         assertSame(mockList, result.get("data"));
         verify(bankFlowService).listPending(COMPANY_ID, 30);
+        verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
     // ==================== POST /flows/extract ====================
