@@ -5,7 +5,7 @@ import com.ruoyi.common.core.web.domain.AjaxResult;
 import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.finance.domain.OpcFinanceBankFlow;
 import com.ruoyi.opc.finance.domain.OpcFinanceVoucher;
-import com.ruoyi.opc.finance.mapper.OpcFinanceBankFlowMapper;
+import com.ruoyi.opc.finance.service.IOpcFinanceBankFlowService;
 import com.ruoyi.opc.finance.service.IOpcFinanceVoucherService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -28,7 +28,7 @@ import java.util.Map;
 public class OpcFinanceController extends BaseController {
 
     private final IOpcFinanceVoucherService voucherService;
-    private final OpcFinanceBankFlowMapper flowMapper;
+    private final IOpcFinanceBankFlowService bankFlowService;
 
     @Operation(summary = "凭证列表")
     @GetMapping("/vouchers")
@@ -81,14 +81,7 @@ public class OpcFinanceController extends BaseController {
     @Operation(summary = "上传银行流水（批量）")
     @PostMapping("/flows/upload")
     public AjaxResult uploadFlows(@RequestBody List<OpcFinanceBankFlow> flows) {
-        if (flows == null || flows.isEmpty()) return success(0);
-        for (OpcFinanceBankFlow flow : flows) {
-            flow.setFlowCode("F" + System.currentTimeMillis() + Math.abs(flow.hashCode() % 10000));
-            flow.setExtracted(0);
-            flow.setStatus("IMPORTED");
-            flow.setCreateBy(SecurityUtils.getUsername());
-        }
-        int n = flowMapper.insertBatch(flows);
+        int n = bankFlowService.uploadBatch(flows, SecurityUtils.getUsername());
         return success(n);
     }
 
@@ -96,7 +89,7 @@ public class OpcFinanceController extends BaseController {
     @GetMapping("/flows/pending")
     public AjaxResult pendingFlows(@RequestParam Long companyId,
                                     @RequestParam(defaultValue = "20") Integer limit) {
-        return success(flowMapper.selectByCompany(companyId, 0, limit));
+        return success(bankFlowService.listPending(companyId, limit));
     }
 
     @Operation(summary = "AI 提取并生成凭证（异步任务入口）")
