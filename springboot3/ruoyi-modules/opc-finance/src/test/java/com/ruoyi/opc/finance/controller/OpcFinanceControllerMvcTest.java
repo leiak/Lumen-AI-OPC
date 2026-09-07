@@ -85,6 +85,11 @@ class OpcFinanceControllerMvcTest {
 
     private static String voucherJson() {
         // 最小化有效 JSON：只含必填字段
+        return "{\"companyId\":1001,\"period\":\"2026-09\",\"summary\":\"test\",\"createBy\":\"spoofed-by-client\"}";
+    }
+
+    private static String voucherJsonWithoutCreateBy() {
+        // 客户端不传 createBy，由 controller 注入 SecurityContextHolder 中的 username
         return "{\"companyId\":1001,\"period\":\"2026-09\",\"summary\":\"test\"}";
     }
 
@@ -103,6 +108,41 @@ class OpcFinanceControllerMvcTest {
                 .andExpect(jsonPath("$.data.voucherId").value(VOUCHER_ID));
 
         verify(voucherService).create(any(OpcFinanceVoucher.class));
+    }
+
+    @Test
+    @DisplayName("createVoucher — W8 修复：controller override createBy（防止客户端伪造）")
+    void createVoucher_overridesCreateByFromSecurityContext() throws Exception {
+        when(voucherService.create(any(OpcFinanceVoucher.class))).thenReturn(VOUCHER_ID);
+
+        mockMvc.perform(post("/opc/finance/voucher")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(voucherJson()))
+                .andExpect(status().isOk());
+
+        // 验证 controller 把 spoofed-by-client 替换为 SecurityContextHolder 中的 username
+        org.mockito.ArgumentCaptor<OpcFinanceVoucher> captor =
+                org.mockito.ArgumentCaptor.forClass(OpcFinanceVoucher.class);
+        verify(voucherService).create(captor.capture());
+        assertEquals(USERNAME, captor.getValue().getCreateBy(),
+                "W8 修复：createBy 必须被 override 为 SecurityContextHolder 中的 username（不能信任客户端值）");
+    }
+
+    @Test
+    @DisplayName("createVoucher — 客户端未传 createBy 时，controller 自动注入 username")
+    void createVoucher_injectsCreateByWhenClientOmits() throws Exception {
+        when(voucherService.create(any(OpcFinanceVoucher.class))).thenReturn(VOUCHER_ID);
+
+        mockMvc.perform(post("/opc/finance/voucher")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(voucherJsonWithoutCreateBy()))
+                .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<OpcFinanceVoucher> captor =
+                org.mockito.ArgumentCaptor.forClass(OpcFinanceVoucher.class);
+        verify(voucherService).create(captor.capture());
+        assertEquals(USERNAME, captor.getValue().getCreateBy(),
+                "客户端未传 createBy 时，controller 必须从 SecurityContextHolder 注入");
     }
 
     @Test

@@ -48,6 +48,8 @@ public class OpcFinanceController extends BaseController {
     @Operation(summary = "创建凭证")
     @PostMapping("/voucher")
     public AjaxResult createVoucher(@RequestBody OpcFinanceVoucher voucher) {
+        // W8 修复：override createdBy — 防止客户端伪造身份 (W6 钉死的漏洞)
+        voucher.setCreateBy(SecurityUtils.getUsername());
         Long id = voucherService.create(voucher);
         Map<String, Object> data = new HashMap<>();
         data.put("voucherId", id);

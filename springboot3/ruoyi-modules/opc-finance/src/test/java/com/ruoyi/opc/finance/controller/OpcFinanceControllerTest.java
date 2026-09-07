@@ -93,6 +93,7 @@ class OpcFinanceControllerTest {
         v.setTotalDebit(new BigDecimal("1000.00"));
         v.setTotalCredit(new BigDecimal("1000.00"));
         v.setStatus("DRAFT");
+        v.setCreateBy("spoofed-user");  // W8: 客户端伪造值，验证 controller 必须 override
         return v;
     }
 
@@ -166,6 +167,8 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"));
         assertEquals(123L, result.get("voucherId"),
                 "data.voucherId 应等于 service.create 返回值");
+        assertEquals(USERNAME, v.getCreateBy(),
+                "W8 修复：controller 必须 override createBy = SecurityUtils.getUsername()");
         verify(voucherService).create(v);
         verifyNoMoreInteractions(voucherService, bankFlowService);
     }
