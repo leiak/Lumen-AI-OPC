@@ -12,7 +12,9 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "test:cov": "vitest run --coverage"
   },
   "repository": {
     "type": "git",
@@ -41,6 +43,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "5.2.4",
+    "@vitest/coverage-v8": "^5.0.0",
     "@vue/test-utils": "^2.5.0",
     "@vue/tsconfig": "0.5.1",
     "axios-mock-adapter": "^2.1.0",
