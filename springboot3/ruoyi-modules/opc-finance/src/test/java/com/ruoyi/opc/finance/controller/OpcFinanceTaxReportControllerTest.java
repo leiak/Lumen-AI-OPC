@@ -134,6 +134,18 @@ class OpcFinanceTaxReportControllerTest {
     }
 
     @Test
+    @DisplayName("generate — period=\"\"（空字符串）→ error，不调 service（W5.1 mutation fix M5）")
+    void generate_periodEmptyString_returnsError() {
+        AjaxResult result = controller.generate(COMPANY_ID, "");
+
+        assertEquals(HttpStatus.ERROR, result.get("code"),
+                "period=\"\" 应被 controller 拦截，不能透传到 service");
+        assertTrue(result.get("msg").toString().contains("period"),
+                "错误信息应提及 period");
+        verify(taxReportService, never()).generateMonthlyReport(any(), any(), any());
+    }
+
+    @Test
     @DisplayName("generate — 完整 URL 透传：companyId + period + SecurityUtils.getUsername() 都传给 service")
     void generate_passesAllArgs() {
         when(taxReportService.generateMonthlyReport(any(), any(), any()))

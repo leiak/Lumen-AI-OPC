@@ -169,6 +169,31 @@ class OpcUserProfileServiceImplTest {
     }
 
     @Test
+    @DisplayName("createOrUpdate — 新用户 invitationCode=\"\"（空字符串）→ 视为未提供，自动生成（W5.1 mutation fix M6）")
+    void createOrUpdate_newProfileEmptyInvitationCode_autoGenerates() {
+        OpcUserProfile p = new OpcUserProfile();
+        p.setUserId(USER_ID);
+        p.setInvitationCode("");  // 空字符串（与 null 语义等价 — 应触发自动生成）
+        when(userMapper.selectByUserId(USER_ID)).thenReturn(null);
+        when(userMapper.insert(any(OpcUserProfile.class))).thenAnswer(inv -> {
+            OpcUserProfile arg = inv.getArgument(0);
+            arg.setId(NEXT_USER_ID.getAndIncrement());
+            return 1;
+        });
+
+        service.createOrUpdate(p);
+
+        ArgumentCaptor<OpcUserProfile> captor = ArgumentCaptor.forClass(OpcUserProfile.class);
+        verify(userMapper).insert(captor.capture());
+        OpcUserProfile inserted = captor.getValue();
+        assertNotNull(inserted.getInvitationCode(), "空字符串 invitationCode 应触发自动生成");
+        assertEquals(8, inserted.getInvitationCode().length(),
+                "自动生成的 invitationCode 长度应为 8（与 null 等价行为）");
+        assertNotEquals("", inserted.getInvitationCode(),
+                "inserted invitationCode 不应仍是空字符串");
+    }
+
+    @Test
     @DisplayName("createOrUpdate — 已存在用户 → 更新：设置 id=exist.id + updateBy=userId，不改 status/verified")
     void createOrUpdate_existingProfile_updates() {
         OpcUserProfile exist = new OpcUserProfile();
