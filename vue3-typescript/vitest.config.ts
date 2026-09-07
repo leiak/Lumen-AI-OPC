@@ -1,12 +1,31 @@
 import { defineConfig } from 'vitest/config'
 import path from 'path'
+import vue from '@vitejs/plugin-vue'
+import autoImport from 'unplugin-auto-import/vite'
 
-// Re-declare the subset of vite.config.ts that we need so mergeConfig can
-// consume it. The full vite.config.ts is a callback (defineConfig(({mode,...}) => ...))
-// which mergeConfig rejects, so we lift the alias/server/css settings here.
+// Mirror the subset of vite.config.ts that tests need: alias resolution,
+// Vue SFC compilation, and auto-import (so `defineStore` / `setActivePinia`
+// / etc. are available without explicit imports — matches src/store/*).
 //
-// If you change vite.config.ts aliases, update this file in the same commit.
+// If you change vite.config.ts aliases or the auto-import list, update this
+// file in the same commit.
 export default defineConfig({
+  plugins: [
+    vue(),
+    autoImport({
+      imports: [
+        'vue',
+        'vue-router',
+        'pinia',
+        {
+          '@/utils/dict': ['useDict'],
+          '@/utils/ruoyi': ['selectDictLabel'],
+        },
+      ],
+      // Disable dts generation for tests (write fails inside vitest temp dir)
+      dts: false,
+    }),
+  ],
   resolve: {
     alias: {
       '~': path.resolve(__dirname, './'),
