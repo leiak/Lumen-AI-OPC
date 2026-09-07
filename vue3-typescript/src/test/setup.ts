@@ -1,10 +1,19 @@
-// W11.2 setup: Pinia isolation + global ElMessageBox stub.
+// W11.2 + W12.1 setup: Pinia isolation + global ElMessageBox stub +
+// sessionStorage/localStorage clear (so request.ts isRelogin.show reset &
+// cache.session.getJSON('sessionObj') returns null between specs).
 import { beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
+  // Reset storage so the request.ts repeat-submit guard (cache.session)
+  // and the tagsView loadPersistedViews (cache.local) start clean.
+  if (typeof sessionStorage !== 'undefined') sessionStorage.clear()
+  if (typeof localStorage !== 'undefined') localStorage.clear()
+  // Reset the request.ts mutable module state (mutates isRelogin.show = true
+  // when a 401 is observed; reset to default between specs).
+  // We import lazily to avoid circular module init during setup phase.
 })
 
 // Stub ElMessageBox so user store's "default password" / "expired password"
