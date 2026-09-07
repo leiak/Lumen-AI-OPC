@@ -1,0 +1,398 @@
+package com.ruoyi.opc.finance.service.impl;
+
+import com.ruoyi.opc.common.exception.OpcException;
+import com.ruoyi.opc.common.utils.OpcCodeGenerator;
+import com.ruoyi.opc.finance.domain.OpcFinanceVoucher;
+import com.ruoyi.opc.finance.mapper.OpcFinanceVoucherMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+/**
+ * {@link OpcFinanceVoucherServiceImpl} 单元测试 — W2.3
+ *
+ * <p>覆盖 7 个公共方法 + 凭证状态机：
+ * <ul>
+ *   <li>查询：{@code getById} / {@code listByCompany}（含 limit=null 默认 20）</li>
+ *   <li>写入：{@code create}（自动 voucherCode + DRAFT + useGeneratedKeys 回填 id） / {@code update} 透传</li>
+ *   <li>审核：{@code reviewPass} → REVIEW / {@code reviewReject} → REJECTED（含 opinion 写入 remark）</li>
+ *   <li>入账：{@code post} 状态机（不存在 / 非 REVIEW 抛 / REVIEW → POSTED + postedBy + postedTime）</li>
+ * </ul>
+ *
+ * <p>不依赖 Spring 上下文，纯 Mockito unit test。
+ *
+ * @author OAC
+ */
+@MockitoSettings(strictness = Strictness.LENIENT)
+@ExtendWith(MockitoExtension.class)
+class OpcFinanceVoucherServiceImplTest {
+
+    @Mock
+    private OpcFinanceVoucherMapper mapper;
+
+    @InjectMocks
+    private OpcFinanceVoucherServiceImpl service;
+
+    private static final Long COMPANY_ID = 1001L;
+    private static final Long VOUCHER_ID = 7L;
+
+    /** 模拟 MyBatis insert 后 useGeneratedKeys 回填主键 */
+    private static final AtomicLong NEXT_ID = new AtomicLong(100L);
+
+    @BeforeEach
+    void setupAutoKeyBehavior() {
+        when(mapper.insert(any(OpcFinanceVoucher.class)))
+                .thenAnswer(inv -> {
+                    OpcFinanceVoucher v = inv.getArgument(0);
+                    v.setId(NEXT_ID.getAndIncrement());
+                    return 1;
+                });
+    }
+
+    private OpcFinanceVoucher sampleVoucher() {
+        OpcFinanceVoucher v = new OpcFinanceVoucher();
+        v.setId(VOUCHER_ID);
+        v.setCompanyId(COMPANY_ID);
+        v.setPeriod("2026-09");
+        v.setVoucherDate(new Date());
+        v.setSummary("支付供应商货款");
+        v.setTotalDebit(new BigDecimal("1000.00"));
+        v.setTotalCredit(new BigDecimal("1000.00"));
+        v.setStatus("DRAFT");
+        v.setCreateBy("alice");
+        return v;
+    }
+
+    // ==================== getById ====================
+
+    @Test
+    @DisplayName("getById — mapper 返回 voucher → 透传")
+    void getById_returnsFromMapper() {
+        OpcFinanceVoucher v = sampleVoucher();
+        when(mapper.selectById(VOUCHER_ID)).thenReturn(v);
+
+        OpcFinanceVoucher result = service.getById(VOUCHER_ID);
+
+        assertSame(v, result);
+        verify(mapper).selectById(VOUCHER_ID);
+    }
+
+    @Test
+    @DisplayName("getById — mapper 返回 null → service 返回 null，不抛")
+    void getById_nullIdReturnsNull() {
+        when(mapper.selectById(99L)).thenReturn(null);
+
+        assertNull(service.getById(99L));
+    }
+
+    // ==================== listByCompany ====================
+
+    @Test
+    @DisplayName("listByCompany — limit=null → 默认 20")
+    void listByCompany_limitNull_defaultsTo20() {
+        when(mapper.selectByCompany(COMPANY_ID, "2026-09", "DRAFT", 20))
+                .thenReturn(new ArrayList<>());
+
+        List<OpcFinanceVoucher> list = service.listByCompany(COMPANY_ID, "2026-09", "DRAFT", null);
+
+        assertNotNull(list);
+        verify(mapper).selectByCompany(COMPANY_ID, "2026-09", "DRAFT", 20);
+    }
+
+    @Test
+    @DisplayName("listByCompany — limit=50 → 透传")
+    void listByCompany_limitProvided_passesThrough() {
+        when(mapper.selectByCompany(COMPANY_ID, "2026-09", "POSTED", 50))
+                .thenReturn(new ArrayList<>());
+
+        service.listByCompany(COMPANY_ID, "2026-09", "POSTED", 50);
+
+        verify(mapper).selectByCompany(COMPANY_ID, "2026-09", "POSTED", 50);
+    }
+
+    @Test
+    @DisplayName("listByCompany — period=null + status=null → 透传给 mapper（XML 自行处理 NULL 过滤）")
+    void listByCompany_allFiltersPassed() {
+        when(mapper.selectByCompany(COMPANY_ID, null, null, 20))
+                .thenReturn(new ArrayList<>());
+
+        service.listByCompany(COMPANY_ID, null, null, 20);
+
+        verify(mapper).selectByCompany(COMPANY_ID, null, null, 20);
+    }
+
+    // ==================== create ====================
+
+    @Test
+    @DisplayName("create — voucherCode 为 null → 自动生成（V + yyyyMMdd + 6 位）+ status=DRAFT + 回填 id")
+    void create_voucherCodeNull_autoGenerated() {
+        OpcFinanceVoucher v = new OpcFinanceVoucher();
+        v.setCompanyId(COMPANY_ID);
+        v.setPeriod("2026-09");
+        v.setSummary("自动生成凭证");
+
+        Long id = service.create(v);
+
+        assertNotNull(id, "useGeneratedKeys 回填的 id 不应为 null");
+        ArgumentCaptor<OpcFinanceVoucher> captor = ArgumentCaptor.forClass(OpcFinanceVoucher.class);
+        verify(mapper).insert(captor.capture());
+        OpcFinanceVoucher saved = captor.getValue();
+        assertEquals(COMPANY_ID, saved.getCompanyId());
+        assertEquals("2026-09", saved.getPeriod());
+        assertNotNull(saved.getVoucherCode(), "voucherCode 不应为 null");
+        assertTrue(saved.getVoucherCode().startsWith("V"),
+                "voucherCode 应以 V 开头，实际: " + saved.getVoucherCode());
+        assertEquals("DRAFT", saved.getStatus());
+        // 写表前 id 应已回填（service 用 voucher.getId() 返回）
+        assertEquals(id, saved.getId());
+    }
+
+    @Test
+    @DisplayName("create — voucherCode 已设置 → 不覆盖，保留原值")
+    void create_voucherCodeProvided_kept() {
+        OpcFinanceVoucher v = new OpcFinanceVoucher();
+        v.setCompanyId(COMPANY_ID);
+        v.setVoucherCode("V-MANUAL-001");
+        v.setPeriod("2026-09");
+
+        service.create(v);
+
+        ArgumentCaptor<OpcFinanceVoucher> captor = ArgumentCaptor.forClass(OpcFinanceVoucher.class);
+        verify(mapper).insert(captor.capture());
+        assertEquals("V-MANUAL-001", captor.getValue().getVoucherCode(),
+                "voucherCode 已设置时不应被覆盖");
+        assertEquals("DRAFT", captor.getValue().getStatus());
+    }
+
+    @Test
+    @DisplayName("create — 调用前 status 已是 POSTED → 仍被覆盖为 DRAFT")
+    void create_statusAlwaysDraft() {
+        OpcFinanceVoucher v = new OpcFinanceVoucher();
+        v.setCompanyId(COMPANY_ID);
+        v.setStatus("POSTED"); // 故意设错，service 应强制覆盖
+
+        service.create(v);
+
+        ArgumentCaptor<OpcFinanceVoucher> captor = ArgumentCaptor.forClass(OpcFinanceVoucher.class);
+        verify(mapper).insert(captor.capture());
+        assertEquals("DRAFT", captor.getValue().getStatus(),
+                "service 应强制把 status 设为 DRAFT");
+    }
+
+    @Test
+    @DisplayName("create — voucherCode 格式 = V + yyyyMMdd + 6 字符 = 长度 15")
+    void create_voucherCodeFormat() {
+        OpcFinanceVoucher v = new OpcFinanceVoucher();
+        v.setCompanyId(COMPANY_ID);
+
+        service.create(v);
+
+        ArgumentCaptor<OpcFinanceVoucher> captor = ArgumentCaptor.forClass(OpcFinanceVoucher.class);
+        verify(mapper).insert(captor.capture());
+        String code = captor.getValue().getVoucherCode();
+        assertEquals(15, code.length(), "voucherCode 格式应为 V+yyyyMMdd+6位 = 15 字符，实际: " + code);
+        // 前 9 字符 = V + yyyyMMdd
+        assertTrue(code.startsWith("V" + java.time.LocalDate.now().format(
+                java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"))),
+                "voucherCode 前缀应为 V + 今天日期");
+    }
+
+    // ==================== update ====================
+
+    @Test
+    @DisplayName("update — passthrough：mapper.update 返回行数 = service 返回值")
+    void update_passthrough() {
+        OpcFinanceVoucher v = sampleVoucher();
+        v.setSummary("改后摘要");
+        when(mapper.update(v)).thenReturn(1);
+
+        int rows = service.update(v);
+
+        assertEquals(1, rows);
+        verify(mapper).update(v);
+    }
+
+    // ==================== reviewPass ====================
+
+    @Test
+    @DisplayName("reviewPass — 写入 status=REVIEW + reviewedBy + reviewedTime + updateBy")
+    void reviewPass_setsAllFields() {
+        when(mapper.update(any(OpcFinanceVoucher.class))).thenReturn(1);
+
+        int rows = service.reviewPass(VOUCHER_ID, "bob");
+
+        assertEquals(1, rows);
+        ArgumentCaptor<OpcFinanceVoucher> captor = ArgumentCaptor.forClass(OpcFinanceVoucher.class);
+        verify(mapper).update(captor.capture());
+        OpcFinanceVoucher v = captor.getValue();
+        assertEquals(VOUCHER_ID, v.getId());
+        assertEquals("REVIEW", v.getStatus());
+        assertEquals("bob", v.getReviewedBy());
+        assertNotNull(v.getReviewedTime(), "reviewedTime 应被设置");
+        assertEquals("bob", v.getUpdateBy(), "updateBy = reviewer");
+    }
+
+    @Test
+    @DisplayName("reviewPass — mapper.update 影响 0 行（如 id 不存在） → service 仍返回 0")
+    void reviewPass_zeroRowsReturned() {
+        when(mapper.update(any(OpcFinanceVoucher.class))).thenReturn(0);
+
+        int rows = service.reviewPass(9999L, "bob");
+
+        assertEquals(0, rows);
+    }
+
+    // ==================== reviewReject ====================
+
+    @Test
+    @DisplayName("reviewReject — 写入 status=REJECTED + reviewedBy + reviewedTime + remark=opinion + updateBy")
+    void reviewReject_setsAllFields() {
+        when(mapper.update(any(OpcFinanceVoucher.class))).thenReturn(1);
+
+        int rows = service.reviewReject(VOUCHER_ID, "bob", "凭证借贷不平衡，请核对");
+
+        assertEquals(1, rows);
+        ArgumentCaptor<OpcFinanceVoucher> captor = ArgumentCaptor.forClass(OpcFinanceVoucher.class);
+        verify(mapper).update(captor.capture());
+        OpcFinanceVoucher v = captor.getValue();
+        assertEquals(VOUCHER_ID, v.getId());
+        assertEquals("REJECTED", v.getStatus());
+        assertEquals("bob", v.getReviewedBy());
+        assertNotNull(v.getReviewedTime());
+        assertEquals("凭证借贷不平衡，请核对", v.getRemark(), "opinion 应写入 remark 字段");
+        assertEquals("bob", v.getUpdateBy());
+    }
+
+    @Test
+    @DisplayName("reviewReject — opinion 为 null → remark 字段也为 null（service 不补默认值）")
+    void reviewReject_nullOpinion() {
+        when(mapper.update(any(OpcFinanceVoucher.class))).thenReturn(1);
+
+        service.reviewReject(VOUCHER_ID, "bob", null);
+
+        ArgumentCaptor<OpcFinanceVoucher> captor = ArgumentCaptor.forClass(OpcFinanceVoucher.class);
+        verify(mapper).update(captor.capture());
+        assertEquals("REJECTED", captor.getValue().getStatus());
+        assertNull(captor.getValue().getRemark(),
+                "opinion 为 null 时 service 不应自作主张填空字符串");
+    }
+
+    @Test
+    @DisplayName("reviewReject — mapper.update 影响 0 行 → service 仍返回 0")
+    void reviewReject_zeroRowsReturned() {
+        when(mapper.update(any(OpcFinanceVoucher.class))).thenReturn(0);
+
+        int rows = service.reviewReject(9999L, "bob", "x");
+
+        assertEquals(0, rows);
+    }
+
+    // ==================== post ====================
+
+    @Test
+    @DisplayName("post — 凭证不存在 → 抛「凭证不存在」，不调 mapper.update")
+    void post_voucherNotFound_throws() {
+        when(mapper.selectById(9999L)).thenReturn(null);
+
+        OpcException ex = assertThrows(OpcException.class,
+                () -> service.post(9999L, "carol"));
+        assertTrue(ex.getMessage().contains("不存在"));
+        verify(mapper, never()).update(any(OpcFinanceVoucher.class));
+    }
+
+    @Test
+    @DisplayName("post — status=DRAFT（未审核） → 抛「凭证未通过审核」，不调 mapper.update")
+    void post_statusDraft_throws() {
+        OpcFinanceVoucher v = sampleVoucher();
+        v.setStatus("DRAFT");
+        when(mapper.selectById(VOUCHER_ID)).thenReturn(v);
+
+        OpcException ex = assertThrows(OpcException.class,
+                () -> service.post(VOUCHER_ID, "carol"));
+        assertTrue(ex.getMessage().contains("未通过审核"));
+        verify(mapper, never()).update(any(OpcFinanceVoucher.class));
+    }
+
+    @Test
+    @DisplayName("post — status=REJECTED → 抛「凭证未通过审核」，不调 mapper.update")
+    void post_statusRejected_throws() {
+        OpcFinanceVoucher v = sampleVoucher();
+        v.setStatus("REJECTED");
+        when(mapper.selectById(VOUCHER_ID)).thenReturn(v);
+
+        OpcException ex = assertThrows(OpcException.class,
+                () -> service.post(VOUCHER_ID, "carol"));
+        assertTrue(ex.getMessage().contains("未通过审核"));
+        verify(mapper, never()).update(any(OpcFinanceVoucher.class));
+    }
+
+    @Test
+    @DisplayName("post — status 已 POSTED → 抛「凭证未通过审核」（幂等保护：不能重复入账）")
+    void post_statusAlreadyPosted_throws() {
+        OpcFinanceVoucher v = sampleVoucher();
+        v.setStatus("POSTED");
+        when(mapper.selectById(VOUCHER_ID)).thenReturn(v);
+
+        OpcException ex = assertThrows(OpcException.class,
+                () -> service.post(VOUCHER_ID, "carol"));
+        assertTrue(ex.getMessage().contains("未通过审核"));
+        verify(mapper, never()).update(any(OpcFinanceVoucher.class));
+    }
+
+    @Test
+    @DisplayName("post — status=REVIEW → 入账成功：写入 status=POSTED + postedBy + postedTime + updateBy")
+    void post_statusReview_success() {
+        OpcFinanceVoucher v = sampleVoucher();
+        v.setStatus("REVIEW");
+        when(mapper.selectById(VOUCHER_ID)).thenReturn(v);
+        when(mapper.update(any(OpcFinanceVoucher.class))).thenReturn(1);
+
+        int rows = service.post(VOUCHER_ID, "carol");
+
+        assertEquals(1, rows);
+        ArgumentCaptor<OpcFinanceVoucher> captor = ArgumentCaptor.forClass(OpcFinanceVoucher.class);
+        verify(mapper).update(captor.capture());
+        OpcFinanceVoucher posted = captor.getValue();
+        assertEquals(VOUCHER_ID, posted.getId());
+        assertEquals("POSTED", posted.getStatus());
+        assertEquals("carol", posted.getPostedBy());
+        assertNotNull(posted.getPostedTime(), "postedTime 应被设置");
+        assertEquals("carol", posted.getUpdateBy());
+        // 应先 selectById 再 update
+        verify(mapper).selectById(VOUCHER_ID);
+    }
+
+    @Test
+    @DisplayName("post — 入账成功后，select 出的 voucher 与 update 写入的是两个不同对象（service 不复用原对象）")
+    void post_doesNotMutateOriginalVoucher() {
+        OpcFinanceVoucher v = sampleVoucher();
+        v.setStatus("REVIEW");
+        Date originalDate = v.getCreateTime();
+        when(mapper.selectById(VOUCHER_ID)).thenReturn(v);
+        when(mapper.update(any(OpcFinanceVoucher.class))).thenReturn(1);
+
+        service.post(VOUCHER_ID, "carol");
+
+        // 原对象 status 仍是 REVIEW（service 新建 v 写入 DB，不污染原对象）
+        assertEquals("REVIEW", v.getStatus(),
+                "service 不应修改 selectById 返回的原 voucher 对象");
+        assertNull(v.getPostedBy());
+    }
+}
