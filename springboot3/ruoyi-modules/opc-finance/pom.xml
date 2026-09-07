@@ -95,4 +95,55 @@
         </plugins>
     </build>
 
+    <!-- ================ PIT mutation testing (W10.4) ================ -->
+    <!-- 仅在 -Ppit 激活，避免污染常规 build；CI 上 JDK 17 环境才能真正运行 -->
+    <profiles>
+        <profile>
+            <id>pit</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <version>1.16.1</version>
+                        <configuration>
+                            <targetClasses>
+                                <param>com.ruoyi.opc.finance.service.impl.OpcFinanceVoucherServiceImpl</param>
+                                <param>com.ruoyi.opc.finance.service.impl.OpcFinanceBankFlowServiceImpl</param>
+                                <param>com.ruoyi.opc.finance.service.impl.OpcFinanceTaxReportServiceImpl</param>
+                            </targetClasses>
+                            <targetTests>
+                                <param>com.ruoyi.opc.finance.*</param>
+                            </targetTests>
+                            <mutationThreshold>80</mutationThreshold>
+                            <coverageThreshold>80</coverageThreshold>
+                            <threads>4</threads>
+                            <timestampedReports>false</timestampedReports>
+                            <outputFormats>
+                                <format>HTML</format>
+                                <format>XML</format>
+                            </outputFormats>
+                            <excludedMethods>
+                                <!-- getter/setter/lombok 生成方法不算变异 -->
+                                <param>get*</param>
+                                <param>set*</param>
+                                <param>toString</param>
+                                <param>equals</param>
+                                <param>hashCode</param>
+                            </excludedMethods>
+                        </configuration>
+                        <dependencies>
+                            <!-- pitest-junit5-plugin 让 PIT 识别 JUnit 5 测试 -->
+                            <dependency>
+                                <groupId>org.pitest</groupId>
+                                <artifactId>pitest-junit5-plugin</artifactId>
+                                <version>1.2.1</version>
+                            </dependency>
+                        </dependencies>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
 </project>

@@ -114,4 +114,56 @@
         </plugins>
     </build>
 
+    <!-- ================ PIT mutation testing (W10.4) ================ -->
+    <!-- 仅在 -Ppit 激活，避免污染常规 build；CI 上 JDK 17 环境才能真正运行 -->
+    <profiles>
+        <profile>
+            <id>pit</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <version>1.16.1</version>
+                        <configuration>
+                            <targetClasses>
+                                <param>com.ruoyi.gateway.filter.AuthFilter</param>
+                                <param>com.ruoyi.gateway.filter.BlackListUrlFilter</param>
+                                <param>com.ruoyi.gateway.filter.ValidateCodeFilter</param>
+                                <param>com.ruoyi.gateway.filter.XssFilter</param>
+                                <param>com.ruoyi.gateway.handler.GatewayExceptionHandler</param>
+                            </targetClasses>
+                            <targetTests>
+                                <param>com.ruoyi.gateway.filter.*</param>
+                                <param>com.ruoyi.gateway.handler.*</param>
+                            </targetTests>
+                            <mutationThreshold>75</mutationThreshold>
+                            <coverageThreshold>75</coverageThreshold>
+                            <threads>4</threads>
+                            <timestampedReports>false</timestampedReports>
+                            <outputFormats>
+                                <format>HTML</format>
+                                <format>XML</format>
+                            </outputFormats>
+                            <excludedMethods>
+                                <param>get*</param>
+                                <param>set*</param>
+                                <param>toString</param>
+                                <param>equals</param>
+                                <param>hashCode</param>
+                            </excludedMethods>
+                        </configuration>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.pitest</groupId>
+                                <artifactId>pitest-junit5-plugin</artifactId>
+                                <version>1.2.1</version>
+                            </dependency>
+                        </dependencies>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
 </project>

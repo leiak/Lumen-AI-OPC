@@ -24,6 +24,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -91,6 +92,16 @@ class OpcFinanceControllerMvcTest {
     private static String voucherJsonWithoutCreateBy() {
         // 客户端不传 createBy，由 controller 注入 SecurityContextHolder 中的 username
         return "{\"companyId\":1001,\"period\":\"2026-09\",\"summary\":\"test\"}";
+    }
+
+    private static String voucherUpdateJson() {
+        // PUT /voucher：客户端伪造 updateBy 试图覆盖服务端身份
+        return "{\"id\":7,\"companyId\":1001,\"period\":\"2026-09\",\"summary\":\"updated\",\"updateBy\":\"spoofed-by-client\"}";
+    }
+
+    private static String voucherUpdateJsonWithoutUpdateBy() {
+        // PUT /voucher：客户端不传 updateBy，由 controller 注入 username
+        return "{\"id\":7,\"companyId\":1001,\"period\":\"2026-09\",\"summary\":\"updated\"}";
     }
 
     // ==================== POST /voucher — 正常路径 ====================
@@ -221,5 +232,71 @@ class OpcFinanceControllerMvcTest {
                 .andExpect(jsonPath("$.data.voucherId").value(VOUCHER_ID));
 
         verify(voucherService).create(any(OpcFinanceVoucher.class));
+    }
+
+    // ==================== PUT /voucher — W10.3 审计字段扩展 ====================
+
+    @Test
+    @DisplayName("updateVoucher — W10.3 修复：controller override updateBy（防止客户端伪造）")
+    void updateVoucher_overridesUpdateByFromSecurityContext() throws Exception {
+        when(voucherService.update(any(OpcFinanceVoucher.class))).thenReturn(1);
+
+        mockMvc.perform(put("/opc/finance/voucher")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(voucherUpdateJson()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").value(true));
+
+        // 验证 controller 把 spoofed-by-client 替换为 SecurityContextHolder 中的 username
+        org.mockito.ArgumentCaptor<OpcFinanceVoucher> captor =
+                org.mockito.ArgumentCaptor.forClass(OpcFinanceVoucher.class);
+        verify(voucherService).update(captor.capture());
+        assertEquals(USERNAME, captor.getValue().getUpdateBy(),
+                "W10.3 修复：updateBy 必须被 override 为 SecurityContextHolder 中的 username（不能信任客户端值）");
+    }
+
+    @Test
+    @DisplayName("updateVoucher — 客户端未传 updateBy 时，controller 自动注入 username")
+    void updateVoucher_injectsUpdateByWhenClientOmits() throws Exception {
+        when(voucherService.update(any(OpcFinanceVoucher.class))).thenReturn(1);
+
+        mockMvc.perform(put("/opc/finance/voucher")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(voucherUpdateJsonWithoutUpdateBy()))
+                .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<OpcFinanceVoucher> captor =
+                org.mockito.ArgumentCaptor.forClass(OpcFinanceVoucher.class);
+        verify(voucherService).update(captor.capture());
+        assertEquals(USERNAME, captor.getValue().getUpdateBy(),
+                "客户端未传 updateBy 时，controller 必须从 SecurityContextHolder 注入");
+    }
+
+    @Test
+    @DisplayName("updateVoucher — service 返回 0 → HTTP 200 + JSON data=false（不是 error）")
+    void updateVoucher_rowsZero_returns200WithFalse() throws Exception {
+        when(voucherService.update(any(OpcFinanceVoucher.class))).thenReturn(0);
+
+        mockMvc.perform(put("/opc/finance/voucher")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(voucherUpdateJson()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").value(false));
+    }
+
+    @Test
+    @DisplayName("updateVoucher — service 抛 OpcException → HTTP 500 + JSON msg（via @RestControllerAdvice）")
+    void updateVoucher_serviceThrowsOpcException_returns500ViaAdvice() throws Exception {
+        when(voucherService.update(any(OpcFinanceVoucher.class)))
+                .thenThrow(new OpcException("更新失败：乐观锁冲突"));
+
+        mockMvc.perform(put("/opc/finance/voucher")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(voucherUpdateJson()))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value(500))
+                .andExpect(jsonPath("$.msg").value("更新失败：乐观锁冲突"));
     }
 }

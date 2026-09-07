@@ -33,12 +33,19 @@ public class OpcFinanceVoucherServiceImpl implements IOpcFinanceVoucherService {
             voucher.setVoucherCode(OpcCodeGenerator.voucherCode());
         }
         voucher.setStatus("DRAFT");
+        // W10.3 审计字段：初始 updateBy = createBy（同一人创建即最后更新）
+        // updateTime 由 mapper XML 自动 NOW()
+        if (voucher.getUpdateBy() == null) {
+            voucher.setUpdateBy(voucher.getCreateBy());
+        }
         mapper.insert(voucher);
         return voucher.getId();
     }
 
     @Override
     public int update(OpcFinanceVoucher voucher) {
+        // W10.3 审计字段：updateBy 必传（controller 在 updateVoucher 注入 SecurityUtils.getUsername()）
+        // updateTime 由 mapper XML 自动 NOW()
         return mapper.update(voucher);
     }
 

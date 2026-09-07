@@ -199,6 +199,8 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.TRUE, result.get("data"),
                 "rows > 0 → data 应为 true");
+        assertEquals(USERNAME, v.getUpdateBy(),
+                "W10.3 修复：controller 必须 override updateBy = SecurityUtils.getUsername()");
         verifyNoMoreInteractions(voucherService, bankFlowService);
     }
 
@@ -213,7 +215,23 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.FALSE, result.get("data"),
                 "rows == 0 → data 应为 false（controller 不主动 error）");
+        assertEquals(USERNAME, v.getUpdateBy(),
+                "即使 update 失败（rows==0），controller 仍必须 override updateBy（防止伪造身份）");
         verifyNoMoreInteractions(voucherService, bankFlowService);
+    }
+
+    @Test
+    @DisplayName("updateVoucher — W10.3 修复：override updateBy（对称 W8.1 createBy 修复），防客户端伪造身份")
+    void updateVoucher_overridesUpdateByFromSecurityContext() {
+        OpcFinanceVoucher v = sampleVoucher();
+        v.setUpdateBy("spoofed-user");  // 客户端伪造值
+        when(voucherService.update(v)).thenReturn(1);
+
+        controller.updateVoucher(v);
+
+        assertEquals(USERNAME, v.getUpdateBy(),
+                "W10.3 修复：updateBy 必须被 override 为 SecurityUtils.getUsername()（对称 W8.1 createBy 修复）");
+        securityMock.verify(() -> SecurityUtils.getUsername(), atLeastOnce());
     }
 
     // ==================== POST /voucher/{id}/review-pass ====================

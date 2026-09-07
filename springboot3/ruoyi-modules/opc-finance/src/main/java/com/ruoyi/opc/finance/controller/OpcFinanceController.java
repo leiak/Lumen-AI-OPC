@@ -59,6 +59,8 @@ public class OpcFinanceController extends BaseController {
     @Operation(summary = "更新凭证")
     @PutMapping("/voucher")
     public AjaxResult updateVoucher(@RequestBody OpcFinanceVoucher voucher) {
+        // W10.3 审计字段：override updateBy — 防止客户端伪造身份（对称 W8.1 createBy 修复）
+        voucher.setUpdateBy(SecurityUtils.getUsername());
         return success(voucherService.update(voucher) > 0);
     }
 
