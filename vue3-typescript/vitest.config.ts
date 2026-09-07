@@ -46,7 +46,14 @@ export default defineConfig({
         'src/main.ts',
         'src/App.vue',
         'src/permission.ts',
-        'src/**/index.ts',
+        // Barrel re-export files (no logic to cover). Per-file exceptions
+        // (e.g. src/utils/index.ts) intentionally NOT excluded — they have
+        // real functions and are covered by W14.
+        'src/directive/index.ts',
+        'src/layout/components/index.ts',
+        'src/plugins/index.ts',
+        'src/router/index.ts',
+        'src/store/index.ts',
         'src/views/**',         // view templates not in scope for W12
         'src/types/**',
         // W12 scope focuses on utils + stores + api/opc + request. Vue SFC
@@ -70,10 +77,9 @@ export default defineConfig({
         // Store modules intentionally outside W12 scope (W13 adds permission).
         'src/store/modules/dict.ts',
         'src/store/modules/lock.ts',
-        // Utils deferred to W13+.
+        // Utils deferred to W15+.
         'src/utils/dict.ts',
         'src/utils/scroll-to.ts',
-        'src/utils/index.ts',
         'src/utils/dynamicTitle.ts',
       ],
       thresholds: {
