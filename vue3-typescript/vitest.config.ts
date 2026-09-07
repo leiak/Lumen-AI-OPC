@@ -67,10 +67,9 @@ export default defineConfig({
         'src/plugins/download.ts',
         'src/plugins/modal.ts',
         'src/plugins/tab.ts',
-        // Store modules intentionally outside W12 scope.
+        // Store modules intentionally outside W12 scope (W13 adds permission).
         'src/store/modules/dict.ts',
         'src/store/modules/lock.ts',
-        'src/store/modules/permission.ts',
         // Utils deferred to W13+.
         'src/utils/dict.ts',
         'src/utils/scroll-to.ts',
