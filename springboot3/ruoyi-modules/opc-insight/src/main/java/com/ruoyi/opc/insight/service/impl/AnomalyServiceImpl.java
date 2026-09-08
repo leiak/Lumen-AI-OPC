@@ -91,6 +91,13 @@ public class AnomalyServiceImpl implements IAnomalyService {
             }
         }
 
+        // ----- 1.5) 部分降级快照不应触发 LLM 软扫（数据不完整 + LLM = 幻觉异常） -----
+        if (snapshot.isPartial()) {
+            log.warn("[AnomalyService] scan(companyId={}, period={}, partial=true) — LLM 软扫跳过，仅返回硬规则结果",
+                    snapshot.getCompanyId(), snapshot.getPeriod());
+            return anomalies;
+        }
+
         // ----- 2) LLM 软扫（仅在无 HIGH 异常时） -----
         boolean hasHigh = anomalies.stream()
                 .anyMatch(a -> a.getLevel() == AnomalyLevel.HIGH);

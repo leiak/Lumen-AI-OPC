@@ -310,6 +310,29 @@ class AnomalyServiceImplTest {
     }
 
     // ============================================================
+    // 4. 部分降级快照跳过 LLM 软扫（数据不完整 → LLM 幻觉风险）
+    // ============================================================
+
+    @Test
+    void scan_partialSnapshot_skipsLlmAndReturnsOnlyHardRules() {
+        // partial=true 模拟「至少 1 个 Feign 数据源降级」场景。
+        // 触发 VOUCHER_OVER_100K 硬规则，但跳过 LLM 软扫（数据不可信）。
+        KpiSnapshot partial = KpiSnapshot.builder()
+                .companyId(COMPANY_ID)
+                .period(PERIOD)
+                .partial(true)
+                .totalExpense(new BigDecimal("200000"))   // > 100000 → VOUCHER_OVER_100K
+                .build();
+
+        List<AnomalyVo> result = service.scan(partial);
+
+        assertEquals(1, result.size(), "partial 快照应仅返回硬规则命中项");
+        assertEquals("VOUCHER_OVER_100K", result.get(0).getRuleCode());
+        // 关键断言：partial=true 时 LLM 软扫完全不被调用
+        verifyNoInteractions(softDetector);
+    }
+
+    // ============================================================
     // 辅助方法
     // ============================================================
 
