@@ -1,7 +1,6 @@
 package com.ruoyi.opc.common.exception;
 
 import com.ruoyi.common.core.exception.ServiceException;
-import lombok.Getter;
 
 import java.io.Serial;
 
@@ -26,16 +25,16 @@ import java.io.Serial;
  *   <li>{@link ServiceException#getMessage()} 被重写为返回其 {@code message} 字段 —
  *       {@code super(message)} 会调用 {@code ServiceException(String)} 构造函数正确填充该字段，
  *       子类 OpcException 无需额外赋值</li>
- *   <li>{@link ServiceException#getCode()} 返回 {@link Integer} —
- *       {@link OpcException#getCode()} 由 Lombok {@code @Getter} 生成返回 {@code int}（自动装箱为 Integer），
- *       子类覆盖父类，签名兼容</li>
+ *   <li>{@link ServiceException#getCode()} 返回 {@link Integer}，子类
+ *       {@link OpcException#getCode()} 必须用 {@code Integer}（不能用 {@code int}），
+ *       否则 JDK 17 javac 报 covariant return 不兼容（int vs Integer 是不同类型，
+ *       不能 override）</li>
  *   <li>{@link ServiceException} 的 4-arg {@code (String, Throwable)} 构造器不存在，
  *       故移除原 {@link OpcException#OpcException(String, Throwable)}（生产代码无引用）</li>
  * </ul>
  *
  * @author OAC
  */
-@Getter
 public class OpcException extends ServiceException {
 
     @Serial
@@ -67,5 +66,19 @@ public class OpcException extends ServiceException {
         super(message);
         this.code = code;
         this.errorLevel = errorLevel;
+    }
+
+    /**
+     * 重写父类 {@link ServiceException#getCode()} —— 父类返回 {@link Integer}，
+     * 不能用 {@code int} 覆盖（int 与 Integer 不是 covariant return）。
+     * 这里手写 getter 避免 Lombok {@code @Getter} 生成 {@code int} 签名。
+     */
+    @Override
+    public Integer getCode() {
+        return code;
+    }
+
+    public String getErrorLevel() {
+        return errorLevel;
     }
 }
