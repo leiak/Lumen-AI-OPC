@@ -1,6 +1,7 @@
 package com.ruoyi.opc.finance.controller;
 
 import com.ruoyi.common.core.domain.R;
+import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.finance.domain.OpcFinanceTaxReport;
 import com.ruoyi.opc.finance.service.IOpcFinanceBankFlowService;
 import com.ruoyi.opc.finance.service.IOpcFinanceTaxReportService;
@@ -162,6 +163,26 @@ class OpcFinanceAggControllerTest {
         assertEquals(new BigDecimal("180.5000"), r.getData().getTotalCost());
         assertEquals(420L, r.getData().getCallCount());
         verify(tokenUsageService).aggregateByPeriod(COMPANY_ID, PERIOD);
+    }
+
+    // ==================== W11.1 C1 修复验证：OpcException 走 controller 级 handler → R.fail ====================
+
+    @Test
+    @DisplayName("invalid period → controller 级 @ExceptionHandler 把 OpcException 转 R.fail(code,msg)（非 AjaxResult）")
+    void invalidPeriod_returnsRFailWithCodeAndMsgNotAjaxResult() {
+        // W11.1 C1：service 内部 AggSupport.validate(period="2026-13") 抛 OpcException，
+        // controller 级 @ExceptionHandler(OpcException.class) 把异常转成 R.fail(code, msg)。
+        // 验证点：
+        //   1. handler 真的存在，且返回 R<Void>（不是 AjaxResult — 否则 Feign 强类型 R<T> 解析失败）
+        //   2. R.code 来自 OpcException.getCode()（默认 500），不能硬编码成 HTTP 500
+        //   3. R.msg 来自 OpcException.getMessage()，data=null
+        R<Void> r = controller.handleOpcException(new OpcException("period 格式错误，应为 YYYY-MM"));
+
+        assertEquals(500, r.getCode(),
+                "OpcException 默认 code=500，必须出现在 R.code 而非 HTTP 500");
+        assertEquals("period 格式错误，应为 YYYY-MM", r.getMsg());
+        assertNull(r.getData(),
+                "失败响应 data 必须为 null（不是空 VO，避免下游误读 0 值）");
     }
 
 }

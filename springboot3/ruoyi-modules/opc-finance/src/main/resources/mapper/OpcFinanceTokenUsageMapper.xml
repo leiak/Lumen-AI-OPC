@@ -7,7 +7,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <!--
         月度 Token 消耗聚合（M4 Task 1）
         opc_agent_token_usage 由 opc-agent-hub 写入，本模块只读。
-        biz_date 列存 DATE，用 DATE_FORMAT 截取 YYYY-MM 与 #{period} 比较。
+        biz_date 列存 DATE，用范围 [月初, 下月初) 与 #{period}=YYYY-MM 比较。
+        W11 I1 修复：避免 DATE_FORMAT 截断索引；range query 可走 (company_id, biz_date) 复合索引。
     -->
     <select id="aggregateByPeriod" resultType="java.util.Map">
         SELECT
@@ -18,7 +19,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             COUNT(*)                        AS call_count
         FROM opc_agent_token_usage
         WHERE company_id = #{companyId}
-          AND DATE_FORMAT(biz_date, '%Y-%m') = #{period}
+          AND biz_date >= STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d')
+          AND biz_date <  DATE_ADD(STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d'), INTERVAL 1 MONTH)
     </select>
 
 </mapper>

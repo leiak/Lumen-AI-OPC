@@ -3,7 +3,9 @@ package com.ruoyi.opc.finance.controller;
 import com.ruoyi.common.core.domain.R;
 import com.ruoyi.common.core.web.controller.BaseController;
 import com.ruoyi.common.core.web.domain.AjaxResult;
+import com.ruoyi.common.security.annotation.InnerAuth;
 import com.ruoyi.common.security.utils.SecurityUtils;
+import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.finance.domain.OpcFinanceBankFlow;
 import com.ruoyi.opc.finance.domain.OpcFinanceTaxReport;
 import com.ruoyi.opc.finance.domain.OpcFinanceVoucher;
@@ -121,31 +123,59 @@ public class OpcFinanceController extends BaseController {
 
     // ==================== 聚合端点（M4 Task 1，供 opc-insight 经 Feign 拉取） ====================
     // 返回 R<T> 而非 AjaxResult：Feign 侧声明的是 R<VoucherAggVo> 等强类型，便于直接反序列化。
-    // companyId 由调用方显式传入（不读 SecurityUtils）——INSIGHT 已在自己的 controller 层
-    // 用 SecurityUtils.getCompanyId() 做过越权校验，这里是服务间只读聚合。
+    //
+    // C2 (W11 评审修复)：
+    //   1. 全部 4 个端点加 @InnerAuth —— 要求请求头 from-source: inner，网关 AuthFilter
+    //      会剥掉外部请求的该请求头，因此这些端点不会被公网触达。仅有 opc-insight 等
+    //      服务间 Feign 调用（Feign 客户端会带上 from-source: inner）能命中。
+    //   2. companyId 仍由调用方显式传入 —— INSIGHT 已在自己的 controller 层
+    //      用 SecurityUtils.getCompanyId() 做过越权校验；这里 + InnerAuth 是双保险。
+    //
+    // C1 (W11 评审修复)：
+    //   全局 GlobalExceptionHandler.handleServiceException 把 OpcException 转成 AjaxResult
+    //   （继承链 OpcException → ServiceException）。若任由 advice 兜底，Feign 侧声明的
+    //   R<VoucherAggVo> 解析会失败 —— 错误体是 AjaxResult 不是 R<T>。
+    //   这里用 controller 级 @ExceptionHandler 把 OpcException 转成 R.fail(code, msg)，
+    //   让 4 个 agg 端点的响应体永远是 R<T>。
 
     @Operation(summary = "凭证月度聚合（INSIGHT KPI）")
+    @InnerAuth
     @GetMapping("/agg/voucher")
     public R<VoucherAggVo> voucherAgg(@RequestParam Long companyId, @RequestParam String period) {
         return R.ok(voucherService.aggregateByPeriod(companyId, period));
     }
 
     @Operation(summary = "银行流水月度聚合（INSIGHT KPI）")
+    @InnerAuth
     @GetMapping("/agg/flow")
     public R<FlowAggVo> flowAgg(@RequestParam Long companyId, @RequestParam String period) {
         return R.ok(bankFlowService.aggregateByPeriod(companyId, period));
     }
 
     @Operation(summary = "当期税务报表（INSIGHT KPI，无报表时 data=null）")
+    @InnerAuth
     @GetMapping("/agg/tax-report")
     public R<OpcFinanceTaxReport> taxReport(@RequestParam Long companyId, @RequestParam String period) {
         return R.ok(taxReportService.getByCompanyAndPeriod(companyId, period));
     }
 
     @Operation(summary = "Token 消耗月度聚合（INSIGHT KPI）")
+    @InnerAuth
     @GetMapping("/agg/token-usage")
     public R<TokenUsageVo> tokenUsage(@RequestParam Long companyId, @RequestParam String period) {
         return R.ok(tokenUsageService.aggregateByPeriod(companyId, period));
+    }
+
+    /**
+     * 把 {@link OpcException} 转成 {@link R#fail(int, String)} —— 让 4 个聚合端点的响应体
+     * 形状永远是 {@code R<T>}，不会被全局 advice 转成 {@code AjaxResult}。
+     * <p>
+     * 仅作用于本 controller —— 其他端点（如 voucher CRUD）继续走 advice 返回 AjaxResult，
+     * 不破坏现有约定。
+     */
+    @ExceptionHandler(OpcException.class)
+    public R<Void> handleOpcException(OpcException e) {
+        return R.fail(e.getCode(), e.getMessage());
     }
 
 }

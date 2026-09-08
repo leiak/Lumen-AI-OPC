@@ -62,14 +62,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * @author OAC
  */
 @WebMvcTest(controllers = OpcFinanceController.class,
-        // W11.1 (M4 Task 1): 新增 OpcFinanceTokenUsageMapper 后,@MapperScan("com.ruoyi.**.mapper")
-        // 会把它作为 bean 注册 → @WebMvcTest 没有 sqlSessionFactory → 启动失败。
-        // 这里排除所有 Mapper 接口（测试里全部用 @MockBean 模拟）。
-        excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE,
-                classes = {com.ruoyi.opc.finance.mapper.OpcFinanceBankFlowMapper.class,
-                        com.ruoyi.opc.finance.mapper.OpcFinanceTaxReportMapper.class,
-                        com.ruoyi.opc.finance.mapper.OpcFinanceTokenUsageMapper.class,
-                        com.ruoyi.opc.finance.mapper.OpcFinanceVoucherMapper.class}))
+        // W11.3 (M4 Task 1 I3 修复): 改用 REGEX 排除整个 mapper 包，避免每次新增 mapper
+        // 都要在这里 hard-code 一行 FQN。@MapperScan("com.ruoyi.**.mapper")
+        // 会把 mapper 作为 bean 注册 → @WebMvcTest 没有 sqlSessionFactory → 启动失败。
+        excludeFilters = @ComponentScan.Filter(type = FilterType.REGEX,
+                pattern = "com\\.ruoyi\\.opc\\.finance\\.mapper\\..*"))
 @AutoConfigureMockMvc(addFilters = false)
 @Import(GlobalExceptionHandler.class)
 @TestPropertySource(properties = {
