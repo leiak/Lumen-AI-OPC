@@ -1,12 +1,19 @@
 package com.ruoyi.opc.finance.controller;
 
+import com.ruoyi.common.core.domain.R;
 import com.ruoyi.common.core.web.controller.BaseController;
 import com.ruoyi.common.core.web.domain.AjaxResult;
 import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.finance.domain.OpcFinanceBankFlow;
+import com.ruoyi.opc.finance.domain.OpcFinanceTaxReport;
 import com.ruoyi.opc.finance.domain.OpcFinanceVoucher;
 import com.ruoyi.opc.finance.service.IOpcFinanceBankFlowService;
+import com.ruoyi.opc.finance.service.IOpcFinanceTaxReportService;
+import com.ruoyi.opc.finance.service.IOpcFinanceTokenUsageService;
 import com.ruoyi.opc.finance.service.IOpcFinanceVoucherService;
+import com.ruoyi.opc.finance.vo.FlowAggVo;
+import com.ruoyi.opc.finance.vo.TokenUsageVo;
+import com.ruoyi.opc.finance.vo.VoucherAggVo;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +36,8 @@ public class OpcFinanceController extends BaseController {
 
     private final IOpcFinanceVoucherService voucherService;
     private final IOpcFinanceBankFlowService bankFlowService;
+    private final IOpcFinanceTaxReportService taxReportService;
+    private final IOpcFinanceTokenUsageService tokenUsageService;
 
     @Operation(summary = "凭证列表")
     @GetMapping("/vouchers")
@@ -108,6 +117,35 @@ public class OpcFinanceController extends BaseController {
     public AjaxResult dailyReport(@RequestParam Long companyId) {
         // 实际实现：投递异步任务，调 LLM 生成日报
         return success(Map.of("taskCode", "DAILY-" + System.currentTimeMillis(), "date", java.time.LocalDate.now().toString()));
+    }
+
+    // ==================== 聚合端点（M4 Task 1，供 opc-insight 经 Feign 拉取） ====================
+    // 返回 R<T> 而非 AjaxResult：Feign 侧声明的是 R<VoucherAggVo> 等强类型，便于直接反序列化。
+    // companyId 由调用方显式传入（不读 SecurityUtils）——INSIGHT 已在自己的 controller 层
+    // 用 SecurityUtils.getCompanyId() 做过越权校验，这里是服务间只读聚合。
+
+    @Operation(summary = "凭证月度聚合（INSIGHT KPI）")
+    @GetMapping("/agg/voucher")
+    public R<VoucherAggVo> voucherAgg(@RequestParam Long companyId, @RequestParam String period) {
+        return R.ok(voucherService.aggregateByPeriod(companyId, period));
+    }
+
+    @Operation(summary = "银行流水月度聚合（INSIGHT KPI）")
+    @GetMapping("/agg/flow")
+    public R<FlowAggVo> flowAgg(@RequestParam Long companyId, @RequestParam String period) {
+        return R.ok(bankFlowService.aggregateByPeriod(companyId, period));
+    }
+
+    @Operation(summary = "当期税务报表（INSIGHT KPI，无报表时 data=null）")
+    @GetMapping("/agg/tax-report")
+    public R<OpcFinanceTaxReport> taxReport(@RequestParam Long companyId, @RequestParam String period) {
+        return R.ok(taxReportService.getByCompanyAndPeriod(companyId, period));
+    }
+
+    @Operation(summary = "Token 消耗月度聚合（INSIGHT KPI）")
+    @GetMapping("/agg/token-usage")
+    public R<TokenUsageVo> tokenUsage(@RequestParam Long companyId, @RequestParam String period) {
+        return R.ok(tokenUsageService.aggregateByPeriod(companyId, period));
     }
 
 }

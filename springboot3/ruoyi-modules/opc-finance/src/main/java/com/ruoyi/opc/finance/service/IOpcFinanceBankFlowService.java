@@ -1,6 +1,7 @@
 package com.ruoyi.opc.finance.service;
 
 import com.ruoyi.opc.finance.domain.OpcFinanceBankFlow;
+import com.ruoyi.opc.finance.vo.FlowAggVo;
 
 import java.util.List;
 
@@ -41,5 +42,14 @@ public interface IOpcFinanceBankFlowService {
      * @return mapper.update 影响行数
      */
     int markExtracted(Long id, Long voucherId, String operator);
+
+    /**
+     * 按期间聚合银行流水（M4 Task 1，供 opc-insight 经 Feign 拉取）。
+     *
+     * @param companyId 公司 ID
+     * @param period    所属期 YYYY-MM
+     * @throws com.ruoyi.opc.common.exception.OpcException 当 companyId 为空 / period 格式非法
+     */
+    FlowAggVo aggregateByPeriod(Long companyId, String period);
 
 }

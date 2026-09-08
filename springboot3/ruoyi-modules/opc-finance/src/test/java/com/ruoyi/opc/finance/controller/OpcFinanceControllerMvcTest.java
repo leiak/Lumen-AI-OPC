@@ -4,7 +4,13 @@ import com.ruoyi.common.core.context.SecurityContextHolder;
 import com.ruoyi.common.security.handler.GlobalExceptionHandler;
 import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.finance.domain.OpcFinanceVoucher;
+import com.ruoyi.opc.finance.mapper.OpcFinanceBankFlowMapper;
+import com.ruoyi.opc.finance.mapper.OpcFinanceTaxReportMapper;
+import com.ruoyi.opc.finance.mapper.OpcFinanceTokenUsageMapper;
+import com.ruoyi.opc.finance.mapper.OpcFinanceVoucherMapper;
 import com.ruoyi.opc.finance.service.IOpcFinanceBankFlowService;
+import com.ruoyi.opc.finance.service.IOpcFinanceTaxReportService;
+import com.ruoyi.opc.finance.service.IOpcFinanceTokenUsageService;
 import com.ruoyi.opc.finance.service.IOpcFinanceVoucherService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,11 +20,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -52,7 +61,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * @author OAC
  */
-@WebMvcTest(controllers = OpcFinanceController.class)
+@WebMvcTest(controllers = OpcFinanceController.class,
+        // W11.1 (M4 Task 1): 新增 OpcFinanceTokenUsageMapper 后,@MapperScan("com.ruoyi.**.mapper")
+        // 会把它作为 bean 注册 → @WebMvcTest 没有 sqlSessionFactory → 启动失败。
+        // 这里排除所有 Mapper 接口（测试里全部用 @MockBean 模拟）。
+        excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE,
+                classes = {com.ruoyi.opc.finance.mapper.OpcFinanceBankFlowMapper.class,
+                        com.ruoyi.opc.finance.mapper.OpcFinanceTaxReportMapper.class,
+                        com.ruoyi.opc.finance.mapper.OpcFinanceTokenUsageMapper.class,
+                        com.ruoyi.opc.finance.mapper.OpcFinanceVoucherMapper.class}))
 @AutoConfigureMockMvc(addFilters = false)
 @Import(GlobalExceptionHandler.class)
 @TestPropertySource(properties = {
@@ -69,6 +86,29 @@ class OpcFinanceControllerMvcTest {
 
     @MockBean
     private IOpcFinanceBankFlowService bankFlowService;
+
+    // W11.1 (M4 Task 1) — controller 现在注入 4 个 service，
+    // @WebMvcTest 必须全部 @MockBean 否则 ApplicationContext 加载失败。
+    @MockBean
+    private IOpcFinanceTaxReportService taxReportService;
+
+    @MockBean
+    private IOpcFinanceTokenUsageService tokenUsageService;
+
+    // 同时把 4 个 mapper 接口全部 @MockBean 掉：@EnableCustomConfig → @MapperScan("com.ruoyi.**.mapper")
+    // 把它们作为 bean 注册，@WebMvcTest 不启 MyBatis → 没有 sqlSessionFactory → 启动失败。
+    // 这里的 mapper 不会被 controller 调到（service 内部使用），所以 @MockBean 即可。
+    @MockBean
+    private OpcFinanceBankFlowMapper bankFlowMapper;
+
+    @MockBean
+    private OpcFinanceTaxReportMapper taxReportMapper;
+
+    @MockBean
+    private OpcFinanceTokenUsageMapper tokenUsageMapper;
+
+    @MockBean
+    private OpcFinanceVoucherMapper voucherMapper;
 
     private static final String USERNAME = "alice";
     private static final Long VOUCHER_ID = 7L;

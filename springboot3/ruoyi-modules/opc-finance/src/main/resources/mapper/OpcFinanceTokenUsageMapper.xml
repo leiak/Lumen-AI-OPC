@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.finance.mapper.OpcFinanceTokenUsageMapper">
+
+    <!--
+        月度 Token 消耗聚合（M4 Task 1）
+        opc_agent_token_usage 由 opc-agent-hub 写入，本模块只读。
+        biz_date 列存 DATE，用 DATE_FORMAT 截取 YYYY-MM 与 #{period} 比较。
+    -->
+    <select id="aggregateByPeriod" resultType="java.util.Map">
+        SELECT
+            COALESCE(SUM(token_input), 0)  AS input_tokens,
+            COALESCE(SUM(token_output), 0) AS output_tokens,
+            COALESCE(SUM(token_total), 0)  AS total_tokens,
+            COALESCE(SUM(cost), 0)         AS total_cost,
+            COUNT(*)                        AS call_count
+        FROM opc_agent_token_usage
+        WHERE company_id = #{companyId}
+          AND DATE_FORMAT(biz_date, '%Y-%m') = #{period}
+    </select>
+
+</mapper>

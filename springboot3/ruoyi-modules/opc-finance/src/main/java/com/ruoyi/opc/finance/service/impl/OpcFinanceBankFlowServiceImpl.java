@@ -3,10 +3,12 @@ package com.ruoyi.opc.finance.service.impl;
 import com.ruoyi.opc.finance.domain.OpcFinanceBankFlow;
 import com.ruoyi.opc.finance.mapper.OpcFinanceBankFlowMapper;
 import com.ruoyi.opc.finance.service.IOpcFinanceBankFlowService;
+import com.ruoyi.opc.finance.vo.FlowAggVo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * {@link IOpcFinanceBankFlowService} 实现。
@@ -77,6 +79,21 @@ public class OpcFinanceBankFlowServiceImpl implements IOpcFinanceBankFlowService
         flow.setStatus(STATUS_EXTRACTED);
         flow.setUpdateBy(operator);
         return flowMapper.update(flow);
+    }
+
+    @Override
+    public FlowAggVo aggregateByPeriod(Long companyId, String period) {
+        AggSupport.validate(companyId, period);
+        Map<String, Object> agg = AggSupport.orEmpty(flowMapper.aggregateByPeriod(companyId, period));
+
+        return FlowAggVo.builder()
+                .companyId(companyId)
+                .period(period)
+                .inTotal(AggSupport.amount(agg.get("in_total")))
+                .outTotal(AggSupport.amount(agg.get("out_total")))
+                .flowCount(AggSupport.count(agg.get("flow_count")))
+                .extractedCount(AggSupport.count(agg.get("extracted_count")))
+                .build();
     }
 
 }

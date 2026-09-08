@@ -72,6 +72,21 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </foreach>
     </insert>
 
+    <!--
+        月度流水聚合（M4 Task 1）
+        trade_time 列存 DATETIME，用 DATE_FORMAT 截取 YYYY-MM 与 #{period} 比较。
+    -->
+    <select id="aggregateByPeriod" resultType="java.util.Map">
+        SELECT
+            COALESCE(SUM(CASE WHEN direction = 'IN'  THEN amount ELSE 0 END), 0) AS in_total,
+            COALESCE(SUM(CASE WHEN direction = 'OUT' THEN amount ELSE 0 END), 0) AS out_total,
+            COUNT(*)                                                             AS flow_count,
+            SUM(CASE WHEN extracted = 1 THEN 1 ELSE 0 END)                        AS extracted_count
+        FROM opc_finance_bank_flow
+        WHERE company_id = #{companyId}
+          AND DATE_FORMAT(trade_time, '%Y-%m') = #{period}
+    </select>
+
     <update id="update" parameterType="com.ruoyi.opc.finance.domain.OpcFinanceBankFlow">
         UPDATE opc_finance_bank_flow
         <set>

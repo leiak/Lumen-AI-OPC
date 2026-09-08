@@ -123,6 +123,12 @@ public class OpcFinanceTaxReportServiceImpl implements IOpcFinanceTaxReportServi
         return taxReportMapper.selectByCode(reportCode);
     }
 
+    @Override
+    public OpcFinanceTaxReport getByCompanyAndPeriod(Long companyId, String period) {
+        AggSupport.validate(companyId, period);
+        return taxReportMapper.selectByCompanyAndPeriod(companyId, period, DEFAULT_TAX_TYPE);
+    }
+
     // ============= 私有辅助 =============
 
     /** 校验期间格式：YYYY-MM 且月份在 1..12 */

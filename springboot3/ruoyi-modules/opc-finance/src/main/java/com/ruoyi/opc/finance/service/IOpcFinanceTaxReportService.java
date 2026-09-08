@@ -42,4 +42,14 @@ public interface IOpcFinanceTaxReportService {
     /** 按业务编号查询 */
     OpcFinanceTaxReport getByCode(String reportCode);
 
+    /**
+     * 按公司 + 期间取当期最新报表（M4 Task 1，供 opc-insight 经 Feign 拉取）。
+     *
+     * <p>税种固定为默认税种（增值税 VAT）——INSIGHT 的 KPI 只关心主税种应缴额。
+     *
+     * @return 当期无报表时返回 {@code null}（调用方按「降级为空」处理，不抛异常）
+     * @throws com.ruoyi.opc.common.exception.OpcException 当 companyId 为空 / period 格式非法
+     */
+    OpcFinanceTaxReport getByCompanyAndPeriod(Long companyId, String period);
+
 }

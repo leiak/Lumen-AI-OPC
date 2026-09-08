@@ -6,6 +6,8 @@ import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.finance.domain.OpcFinanceBankFlow;
 import com.ruoyi.opc.finance.domain.OpcFinanceVoucher;
 import com.ruoyi.opc.finance.service.IOpcFinanceBankFlowService;
+import com.ruoyi.opc.finance.service.IOpcFinanceTaxReportService;
+import com.ruoyi.opc.finance.service.IOpcFinanceTokenUsageService;
 import com.ruoyi.opc.finance.service.IOpcFinanceVoucherService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,6 +65,15 @@ class OpcFinanceControllerTest {
 
     @Mock
     private IOpcFinanceBankFlowService bankFlowService;
+
+    // W11.1 (M4 Task 1) — controller 现在注入 4 个 service，所有 4 个都必须 mock，
+    // 否则 Mockito @InjectMocks 选择最大构造器，但只能匹配到这 2 个 mock，
+    // 多出的 2 个参数为 null → 调用即 NPE。
+    @Mock
+    private IOpcFinanceTaxReportService taxReportService;
+
+    @Mock
+    private IOpcFinanceTokenUsageService tokenUsageService;
 
     @InjectMocks
     private OpcFinanceController controller;
@@ -122,7 +133,7 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"), "应返回 200 成功码");
         assertSame(mockList, result.get("data"));
         verify(voucherService).listByCompany(COMPANY_ID, "2026-09", "POSTED", 50);
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     @Test
@@ -135,7 +146,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         verify(voucherService).listByCompany(COMPANY_ID, null, null, 20);
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     // ==================== GET /voucher/{id} ====================
@@ -151,7 +162,7 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"));
         assertSame(v, result.get("data"));
         verify(voucherService).getById(VOUCHER_ID);
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     // ==================== POST /voucher ====================
@@ -170,7 +181,7 @@ class OpcFinanceControllerTest {
         assertEquals(USERNAME, v.getCreateBy(),
                 "W8 修复：controller 必须 override createBy = SecurityUtils.getUsername()");
         verify(voucherService).create(v);
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     @Test
@@ -183,7 +194,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertNull(result.get("voucherId"));
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     // ==================== PUT /voucher ====================
@@ -201,7 +212,7 @@ class OpcFinanceControllerTest {
                 "rows > 0 → data 应为 true");
         assertEquals(USERNAME, v.getUpdateBy(),
                 "W10.3 修复：controller 必须 override updateBy = SecurityUtils.getUsername()");
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     @Test
@@ -217,7 +228,7 @@ class OpcFinanceControllerTest {
                 "rows == 0 → data 应为 false（controller 不主动 error）");
         assertEquals(USERNAME, v.getUpdateBy(),
                 "即使 update 失败（rows==0），controller 仍必须 override updateBy（防止伪造身份）");
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     @Test
@@ -247,7 +258,7 @@ class OpcFinanceControllerTest {
         assertEquals(Boolean.TRUE, result.get("data"));
         verify(voucherService).reviewPass(VOUCHER_ID, USERNAME);
         securityMock.verify(() -> SecurityUtils.getUsername(), atLeastOnce());
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     @Test
@@ -259,7 +270,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.FALSE, result.get("data"));
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     // ==================== POST /voucher/{id}/review-reject ====================
@@ -275,7 +286,7 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.TRUE, result.get("data"));
         verify(voucherService).reviewReject(VOUCHER_ID, USERNAME, "凭证借贷不平衡");
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     @Test
@@ -287,7 +298,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         verify(voucherService).reviewReject(VOUCHER_ID, USERNAME, null);
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     @Test
@@ -299,7 +310,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.FALSE, result.get("data"));
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     // ==================== POST /voucher/{id}/post ====================
@@ -314,7 +325,7 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.TRUE, result.get("data"));
         verify(voucherService).post(VOUCHER_ID, USERNAME);
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     @Test
@@ -326,7 +337,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.FALSE, result.get("data"));
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     @Test
@@ -338,7 +349,7 @@ class OpcFinanceControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.post(VOUCHER_ID));
         assertTrue(ex.getMessage().contains("未通过审核"));
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     // ==================== POST /flows/upload ====================
@@ -355,7 +366,7 @@ class OpcFinanceControllerTest {
         assertEquals(3, result.get("data"));
         verify(bankFlowService).uploadBatch(flows, USERNAME);
         securityMock.verify(() -> SecurityUtils.getUsername(), atLeastOnce());
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     @Test
@@ -367,7 +378,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(0, result.get("data"));
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     // ==================== GET /flows/pending ====================
@@ -383,7 +394,7 @@ class OpcFinanceControllerTest {
         assertEquals(200, result.get("code"));
         assertSame(mockList, result.get("data"));
         verify(bankFlowService).listPending(COMPANY_ID, 30);
-        verifyNoMoreInteractions(voucherService, bankFlowService);
+        verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     // ==================== POST /flows/extract ====================
@@ -402,7 +413,7 @@ class OpcFinanceControllerTest {
                 "taskCode 应以 EXTRACT- 开头，实际: " + data.get("taskCode"));
         assertEquals(LocalDate.now().toString(), data.get("date"));
         // 验证不调任何 service
-        verifyNoInteractions(voucherService, bankFlowService);
+        verifyNoInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
     // ==================== POST /daily-report ====================
@@ -419,6 +430,6 @@ class OpcFinanceControllerTest {
         assertTrue(data.get("taskCode").toString().startsWith("DAILY-"),
                 "taskCode 应以 DAILY- 开头");
         assertEquals(LocalDate.now().toString(), data.get("date"));
-        verifyNoInteractions(voucherService, bankFlowService);
+        verifyNoInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 }

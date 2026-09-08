@@ -5,11 +5,13 @@ import com.ruoyi.opc.common.utils.OpcCodeGenerator;
 import com.ruoyi.opc.finance.domain.OpcFinanceVoucher;
 import com.ruoyi.opc.finance.mapper.OpcFinanceVoucherMapper;
 import com.ruoyi.opc.finance.service.IOpcFinanceVoucherService;
+import com.ruoyi.opc.finance.vo.VoucherAggVo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -85,6 +87,25 @@ public class OpcFinanceVoucherServiceImpl implements IOpcFinanceVoucherService {
         v.setPostedTime(new Date());
         v.setUpdateBy(operator);
         return mapper.update(v);
+    }
+
+    @Override
+    public VoucherAggVo aggregateByPeriod(Long companyId, String period) {
+        AggSupport.validate(companyId, period);
+        // 复用 W1.4.2 为月度税报写的 aggregateByPeriod（同一条 SQL，避免重复聚合口径）
+        Map<String, Object> agg = AggSupport.orEmpty(mapper.aggregateByPeriod(companyId, period));
+
+        return VoucherAggVo.builder()
+                .companyId(companyId)
+                .period(period)
+                // taxable_amount = SUM(total_credit) 贷方；input_tax = SUM(total_debit) 借方
+                .creditTotal(AggSupport.amount(agg.get("taxable_amount")))
+                .debitTotal(AggSupport.amount(agg.get("input_tax")))
+                .voucherCount(AggSupport.count(agg.get("voucher_count")))
+                .pendingCount(AggSupport.count(agg.get("pending_count")))
+                .postedCount(AggSupport.count(agg.get("posted_count")))
+                .rejectedCount(AggSupport.count(agg.get("rejected_count")))
+                .build();
     }
 
 }
