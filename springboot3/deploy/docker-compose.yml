@@ -1,5 +1,6 @@
 # ============================================================
-# OAC 公测级 Docker Compose（开发与公测同栈）
+# AIOPC Docker Compose（开发与公测同栈）
+# Stack 名称: aiopc · 所有容器/镜像/网络统一 aiopc-* 前缀
 # ============================================================
 
 version: '3.8'
@@ -8,7 +9,7 @@ services:
   # ============ Nacos 注册/配置中心（3 节点）============
   nacos1:
     image: nacos/nacos-server:v2.4.0
-    container_name: opc-nacos-1
+    container_name: aiopc-nacos-1
     ports: ["8848:8848", "9848:9848"]
     environment:
       - MODE=cluster
@@ -18,30 +19,30 @@ services:
       - NACOS_PREFER_HOST_MODE=hostname
     volumes:
       - ./nacos/conf:/home/nacos/conf
-    networks: [opc-net]
+    networks: [aiopc-net]
 
   nacos2:
     image: nacos/nacos-server:v2.4.0
-    container_name: opc-nacos-2
+    container_name: aiopc-nacos-2
     environment:
       - MODE=cluster
       - NACOS_SERVERS=nacos1:8848 nacos2:8848 nacos3:8848
       - NACOS_PREFER_HOST_MODE=hostname
-    networks: [opc-net]
+    networks: [aiopc-net]
 
   nacos3:
     image: nacos/nacos-server:v2.4.0
-    container_name: opc-nacos-3
+    container_name: aiopc-nacos-3
     environment:
       - MODE=cluster
       - NACOS_SERVERS=nacos1:8848 nacos2:8848 nacos3:8848
       - NACOS_PREFER_HOST_MODE=hostname
-    networks: [opc-net]
+    networks: [aiopc-net]
 
   # ============ MySQL 8.0 ============
   mysql:
     image: mysql:8.0
-    container_name: opc-mysql
+    container_name: aiopc-mysql
     ports: ["3306:3306"]
     environment:
       MYSQL_ROOT_PASSWORD: Opc@2026!
@@ -50,38 +51,38 @@ services:
       - ./mysql/data:/var/lib/mysql
       - ../sql:/docker-entrypoint-initdb.d
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    networks: [opc-net]
+    networks: [aiopc-net]
 
   # ============ Redis 7 ============
   redis:
     image: redis:7.2-alpine
-    container_name: opc-redis
+    container_name: aiopc-redis
     ports: ["6379:6379"]
     command: redis-server --appendonly yes --requirepass Opc@2026!
     volumes:
       - ./redis/data:/data
-    networks: [opc-net]
+    networks: [aiopc-net]
 
   # ============ RabbitMQ（Agent 任务队列）============
   rabbitmq:
     image: rabbitmq:3.13-management
-    container_name: opc-rabbitmq
+    container_name: aiopc-rabbitmq
     ports: ["5672:5672", "15672:15672"]
-    networks: [opc-net]
+    networks: [aiopc-net]
 
   # ============ Qdrant 向量库 ============
   qdrant:
     image: qdrant/qdrant:v1.13.0
-    container_name: opc-qdrant
+    container_name: aiopc-qdrant
     ports: ["6333:6333", "6334:6334"]
     volumes:
       - ./qdrant/data:/qdrant/storage
-    networks: [opc-net]
+    networks: [aiopc-net]
 
   # ============ MinIO 对象存储 ============
   minio:
     image: minio/minio:RELEASE.2024-08-29T01-40-52Z
-    container_name: opc-minio
+    container_name: aiopc-minio
     ports: ["9000:9000", "9001:9001"]
     environment:
       MINIO_ROOT_USER: opcadmin
@@ -89,12 +90,12 @@ services:
     command: server /data --console-address ":9001"
     volumes:
       - ./minio/data:/data
-    networks: [opc-net]
+    networks: [aiopc-net]
 
   # ============ Elasticsearch（日志检索）============
   elasticsearch:
     image: elasticsearch:8.15.0
-    container_name: opc-elasticsearch
+    container_name: aiopc-elasticsearch
     ports: ["9200:9200"]
     environment:
       - discovery.type=single-node
@@ -102,50 +103,50 @@ services:
       - ES_JAVA_OPTS=-Xms2g -Xmx2g
     volumes:
       - ./es/data:/usr/share/elasticsearch/data
-    networks: [opc-net]
+    networks: [aiopc-net]
 
   # ============ Prometheus + Grafana ============
   prometheus:
     image: prom/prometheus:v2.54.0
-    container_name: opc-prometheus
+    container_name: aiopc-prometheus
     ports: ["9090:9090"]
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-    networks: [opc-net]
+    networks: [aiopc-net]
 
   grafana:
     image: grafana/grafana:11.2.0
-    container_name: opc-grafana
+    container_name: aiopc-grafana
     ports: ["3000:3000"]
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=Opc@2026!
     volumes:
       - ./grafana/dashboards:/var/lib/grafana/dashboards
-    networks: [opc-net]
+    networks: [aiopc-net]
 
   # ============ SkyWalking 链路追踪 ============
   skywalking-oap:
     image: apache/skywalking-oap-server:9.7.0
-    container_name: opc-skywalking-oap
+    container_name: aiopc-skywalking-oap
     ports: ["11800:11800", "12800:12800"]
-    networks: [opc-net]
+    networks: [aiopc-net]
 
   skywalking-ui:
     image: apache/skywalking-ui:9.7.0
-    container_name: opc-skywalking-ui
+    container_name: aiopc-skywalking-ui
     ports: ["8081:8080"]
     environment:
       - SW_OAP_ADDRESS=skywalking-oap:12800
     depends_on: [skywalking-oap]
-    networks: [opc-net]
+    networks: [aiopc-net]
 
-  # ============ OPC Insight（AI 数据洞察 MVP）============
-  opc-insight:
+  # ============ AIOPC Insight（AI 数据洞察 MVP）============
+  aiopc-insight:
     build:
       context: ..
       dockerfile: ruoyi-modules/opc-insight/Dockerfile
-    image: opc-insight:latest
-    container_name: opc-insight
+    image: aiopc-insight:latest
+    container_name: aiopc-insight
     ports:
       - "9306:9306"
     environment:
@@ -169,9 +170,9 @@ services:
       - redis
       - qdrant
     networks:
-      - opc-net
+      - aiopc-net
     restart: unless-stopped
 
 networks:
-  opc-net:
+  aiopc-net:
     driver: bridge
