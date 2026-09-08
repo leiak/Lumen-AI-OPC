@@ -1,5 +1,38 @@
 # OPC 数据洞察 Agent 默认配置
 spring:
+  main:
+    allow-bean-definition-overriding: true
+  # 禁用 Spring AI 自动装配 —— opc-ai-core 通过 opc-common 间接引入 spring-ai-starter，
+  # 但 opc-ai-core 的 OpenAiProvider/ZhiPuAiProvider 是手写的 HTTP 客户端实现，
+  # 不依赖 Spring AI ChatModel/EmbeddingModel。Spring AI 的 OpenAI/ZhiPuAI 自动装配
+  # 会拉起需要真实 API key 的 Bean（OpenAiChatModel、ZhiPuAiChatModel），导致启动失败。
+  # 因此本服务完全排除 Spring AI 自动装配。
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+      - org.springframework.ai.openai.autoconfigure.OpenAiAutoConfiguration
+      - org.springframework.ai.model.zhipuai.autoconfigure.ZhiPuAiChatAutoConfiguration
+      - org.springframework.ai.model.zhipuai.autoconfigure.ZhiPuAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.zhipuai.autoconfigure.ZhiPuAiImageAutoConfiguration
+      - org.springframework.ai.autoconfigure.zhipuai.ZhiPuAiAutoConfiguration
+      - org.springframework.ai.autoconfigure.openai.OpenAiAutoConfiguration
+      - org.springframework.ai.autoconfigure.chat.model.ChatModelAutoConfiguration
+      - org.springframework.ai.autoconfigure.embedding.EmbeddingModelAutoConfiguration
+      - org.springframework.ai.autoconfigure.image.ImageModelAutoConfiguration
+      - org.springframework.ai.autoconfigure.tool.ToolAutoConfiguration
+      - org.springframework.ai.autoconfigure.chat.client.ChatClientAutoConfiguration
+      - org.springframework.ai.autoconfigure.chat.memory.ChatMemoryAutoConfiguration
+      - org.springframework.ai.autoconfigure.retry.RetryAutoConfiguration
+      - org.springframework.ai.autoconfigure.vector.store.CommonVectorStoreAutoConfiguration
+      - org.springframework.ai.autoconfigure.observation.ObservationAutoConfiguration
+      - org.springframework.ai.autoconfigure.model.tool.ToolCallingAutoConfiguration
+      - org.springframework.ai.autoconfigure.mcp.client.McpClientAutoConfiguration
+      - org.springframework.ai.autoconfigure.mcp.server.McpServerAutoConfiguration
   datasource:
     dynamic:
       primary: master

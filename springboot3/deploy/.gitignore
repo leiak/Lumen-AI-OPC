@@ -1,8 +1,16 @@
-# Ignore volume-mount target directories (used by docker-compose.yml).
-# Each empty directory contains a .gitkeep to preserve the directory itself.
-mysql/data/
-redis/data/
-nacos/conf/
-qdrant/data/
-minio/data/
-es/data/
+# Ignore volume-mount target directory CONTENTS (databases, indexes, configs
+# generated at runtime by containers). Each empty directory has a .gitkeep
+# so the directory itself is preserved.
+mysql/data/*
+redis/data/*
+qdrant/data/*
+minio/data/*
+es/data/*
+
+# nacos/conf is special — we commit application.properties but should not
+# commit user-added cluster configs (handled by nacos ops scripts).
+nacos/conf/cluster.conf
+nacos/conf/*.log
+nacos/conf/*.bak
+!nacos/conf/application.properties
+!nacos/conf/.gitkeep

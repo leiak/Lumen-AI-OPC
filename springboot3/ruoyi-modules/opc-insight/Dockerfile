@@ -9,8 +9,8 @@ VOLUME /home/aiopc
 RUN mkdir -p /home/aiopc
 # 指定路径
 WORKDIR /home/aiopc
-# 复制 jar 文件到路径
-COPY ./target/opc-insight.jar /home/aiopc/opc-insight.jar
+# 复制 jar 文件到路径（build context 为仓库根 springboot3/）
+COPY ./ruoyi-modules/opc-insight/target/opc-insight.jar /home/aiopc/opc-insight.jar
 # 暴露端口
 EXPOSE 9306
 # 启动服务
