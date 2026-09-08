@@ -53,9 +53,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         FROM opc_insight_advice
         WHERE company_id = #{companyId}
         ORDER BY create_time DESC
-        <if test="limit != null and limit > 0">
-            LIMIT #{limit}
-        </if>
+        LIMIT #{limit}
     </select>
 
     <!--

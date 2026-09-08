@@ -286,6 +286,91 @@ class AdviceServiceImplTest {
     }
 
     // ============================================================
+    // 9. 读侧：getById 命中（happy-path 补全 — Issue MINOR #6）
+    // ============================================================
+
+    @Test
+    void getById_found_returnsAdvice() {
+        OpcInsightAdvice found = OpcInsightAdvice.builder()
+                .id(123L).companyId(COMPANY_ID).topic(TOPIC)
+                .adviceMd("hello advice").llmUsed("deepseek-chat")
+                .confidence(new BigDecimal("0.88"))
+                .createTime(LocalDateTime.now())
+                .build();
+        when(mapper.selectById(123L)).thenReturn(found);
+
+        AdviceVo result = service.getById(123L);
+
+        assertEquals(123L, result.getId());
+        assertEquals(COMPANY_ID, result.getCompanyId());
+        assertEquals(TOPIC, result.getTopic());
+        assertEquals("hello advice", result.getAdviceMd());
+        assertEquals(0, new BigDecimal("0.88").compareTo(result.getConfidence()),
+                "confidence 应为 0.88，实际：" + result.getConfidence());
+    }
+
+    // ============================================================
+    // 10. listByCompany limit=null 归一化为默认 20（Issue MINOR #6）
+    // ============================================================
+
+    @Test
+    void listByCompany_nullLimit_usesDefault20() {
+        when(mapper.selectByCompany(eq(COMPANY_ID), eq(20))).thenReturn(List.of());
+
+        List<AdviceVo> result = service.listByCompany(COMPANY_ID, null);
+
+        verify(mapper, times(1)).selectByCompany(COMPANY_ID, 20);
+        assertEquals(0, result.size(), "空列表应原样返回");
+    }
+
+    // ============================================================
+    // 11. listByCompany limit 超过 MAX_LIST_LIMIT=100 → 夹断到 100
+    // ============================================================
+
+    @Test
+    void listByCompany_limitOver100_clampsTo100() {
+        when(mapper.selectByCompany(eq(COMPANY_ID), eq(100))).thenReturn(List.of());
+
+        List<AdviceVo> result = service.listByCompany(COMPANY_ID, 9999);
+
+        verify(mapper, times(1)).selectByCompany(COMPANY_ID, 100);
+        assertEquals(0, result.size());
+    }
+
+    // ============================================================
+    // 12. LLM 返回 {"advice": null} → 走 fallback 模板（Issue IMPORTANT #2）
+    // ============================================================
+
+    @Test
+    void generate_llmReturnsJsonWithNullAdvice_usesFallbackTemplate() {
+        when(mapper.selectRecent(any(Long.class), anyString(), anyInt())).thenReturn(null);
+        // LLM 合法 JSON 但 advice=null、confidence=0.75（符合 model spec 但内容为空）
+        ChatResponse resp = ChatResponse.builder()
+                .success(true)
+                .model("deepseek-chat")
+                .content("{\"advice\":null,\"confidence\":0.75}")
+                .build();
+        when(llmGateway.chat(anyList(), any(ChatModelProvider.ChatOptions.class),
+                any(LlmGateway.ChatContext.class)))
+                .thenReturn(resp);
+
+        AdviceVo result = service.generate(COMPANY_ID, TOPIC);
+
+        ArgumentCaptor<OpcInsightAdvice> captor = ArgumentCaptor.forClass(OpcInsightAdvice.class);
+        verify(mapper, times(1)).insert(captor.capture());
+        OpcInsightAdvice saved = captor.getValue();
+        assertTrue(saved.getAdviceMd().startsWith("[降级建议·未走 LLM]"),
+                "advice=null 时应走 fallback 模板，实际：" + saved.getAdviceMd());
+        assertTrue(saved.getAdviceMd().contains("LLM 未返回有效建议正文"),
+                "fallback 正文应提示 'LLM 未返回有效建议正文'，实际：" + saved.getAdviceMd());
+        // confidence 仍可从 JSON 正常解析（0.75）
+        assertEquals(0, new BigDecimal("0.75").compareTo(saved.getConfidence()),
+                "confidence 应被正常解析为 0.75");
+        // llmUsed 仍记为模型名，便于运维区分「LLM 调用成功但内容空」vs「LLM 调用失败」
+        assertEquals("deepseek-chat", saved.getLlmUsed());
+    }
+
+    // ============================================================
     // 辅助方法
     // ============================================================
 

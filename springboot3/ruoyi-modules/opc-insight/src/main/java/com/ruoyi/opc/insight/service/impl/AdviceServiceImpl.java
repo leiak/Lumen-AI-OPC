@@ -21,6 +21,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * INSIGHT 决策建议服务实现（M4 Task 9）。
@@ -101,6 +103,21 @@ public class AdviceServiceImpl implements IAdviceService {
     private final OpcInsightAdviceMapper mapper;
     private final LlmGateway llmGateway;
 
+    /**
+     * Per-(companyId, topic) 锁：保证同一公司同一主题的并发 generate() 串行化，
+     * 避免两个并发请求都通过 7 天缓存检查、各自调一次 LLM、然后都 insert。
+     *
+     * <p><b>为什么不用分布式锁</b>：opc-insight 是单实例的 Spring Boot 服务
+     * （部署文档见 deploy/helm/opc/templates/service-insight.yaml），多副本
+     * 场景下锁粒度仍可能产生竞态，但 LLM 调用本身的幂等成本（双倍 token）
+     * 在 MVP 阶段是可接受的；后续如需严格防重，可引入 Redis SETNX。
+     *
+     * <p><b>为什么不清理锁 entry</b>：每个 ReentrantLock 对象仅约 40 字节，
+     * 即便全公司×全 topic 也只占几 KB，长期持有可接受。清理（如 remove on
+     * unlock）需额外同步，反而引入新竞态。
+     */
+    private static final ConcurrentHashMap<String, ReentrantLock> LOCKS = new ConcurrentHashMap<>();
+
     // ============================================================
     // 1. 生成（带 7 天缓存）
     // ============================================================
@@ -122,30 +139,37 @@ public class AdviceServiceImpl implements IAdviceService {
                     "topic 不支持: " + topic + ", 仅支持 " + SUPPORTED_TOPICS);
         }
 
-        // 2) 查 7 天缓存
-        OpcInsightAdvice cached = mapper.selectRecent(companyId, topic, CACHE_WINDOW_DAYS);
-        if (cached != null) {
-            log.info("{} cache hit companyId={} topic={} id={}",
-                    LOG_PREFIX, companyId, topic, cached.getId());
-            return toVo(cached);
+        // 2) 串行化：同一 (companyId, topic) 同时只能有一个线程进入 LLM 调用
+        String lockKey = companyId + ":" + topic;
+        ReentrantLock lock = LOCKS.computeIfAbsent(lockKey, k -> new ReentrantLock());
+        lock.lock();
+        try {
+            // 3) double-check：持锁后再查一次缓存，避免前一个并发线程已写入但我们没看到
+            OpcInsightAdvice cached = mapper.selectRecent(companyId, topic, CACHE_WINDOW_DAYS);
+            if (cached != null) {
+                log.info("{}cache hit companyId={} topic={} id={}", LOG_PREFIX, companyId, topic, cached.getId());
+                return toVo(cached);
+            }
+
+            // 4) 缓存未命中 → 调 LLM 生成（任意异常 → fallback 模板）
+            LlmOutcome outcome = callLlmOrFallback(topic, companyId);
+
+            // 5) 落库
+            OpcInsightAdvice advice = OpcInsightAdvice.builder()
+                    .companyId(companyId)
+                    .topic(topic)
+                    .adviceMd(outcome.advice)
+                    .llmUsed(outcome.llmUsed)
+                    .confidence(outcome.confidence)
+                    .createTime(LocalDateTime.now())
+                    .build();
+            mapper.insert(advice);
+            log.info("{} advice generated: companyId={} topic={} id={} llmUsed={}",
+                    LOG_PREFIX, companyId, topic, advice.getId(), outcome.llmUsed);
+            return toVo(advice);
+        } finally {
+            lock.unlock();
         }
-
-        // 3) 缓存未命中 → 调 LLM 生成（任意异常 → fallback 模板）
-        LlmOutcome outcome = callLlmOrFallback(topic, companyId);
-
-        // 4) 落库
-        OpcInsightAdvice advice = OpcInsightAdvice.builder()
-                .companyId(companyId)
-                .topic(topic)
-                .adviceMd(outcome.advice)
-                .llmUsed(outcome.llmUsed)
-                .confidence(outcome.confidence)
-                .createTime(LocalDateTime.now())
-                .build();
-        mapper.insert(advice);
-        log.info("{} advice generated: companyId={} topic={} id={} llmUsed={}",
-                LOG_PREFIX, companyId, topic, advice.getId(), outcome.llmUsed);
-        return toVo(advice);
     }
 
     // ============================================================
@@ -175,6 +199,11 @@ public class AdviceServiceImpl implements IAdviceService {
         OpcInsightAdvice existing = mapper.selectById(id);
         if (existing == null) {
             throw new OpcException("advice 不存在: id=" + id);
+        }
+        // 防御性 topic 白名单校验：DB 中可能存在历史脏数据（旧版本写入了已废弃 topic），
+        // regenerate 时若传给 LLM 会导致 prompt 不可控，违反 spec。
+        if (!SUPPORTED_TOPICS.contains(existing.getTopic())) {
+            throw new OpcException("advice.topic 不支持: " + existing.getTopic());
         }
 
         // 直接调 LLM，不走 7 天缓存
@@ -259,21 +288,32 @@ public class AdviceServiceImpl implements IAdviceService {
     /**
      * 解析 LLM 响应为 {advice, confidence}。解析失败 → advice 取原 content，
      * confidence 给默认 0.50（不阻断落库）。
+     *
+     * <p><b>advice 为空/null 的处理</b>：LLM 返回 {@code {"advice": null, "confidence": 0.75}}
+     * 或 {@code {"advice": ""}} 时，落库前会替换为 FALLBACK 模板正文，
+     * 避免下游消费方拿到空白 markdown。前端展示「AI 服务暂不可用」比空白更友好。
      */
     private ParsedLlm parseLlmContent(String content) {
         if (content == null || content.isBlank()) {
-            return new ParsedLlm(content == null ? null : content.trim(), DEFAULT_CONFIDENCE);
+            return new ParsedLlm(buildFallbackAdvice(), DEFAULT_CONFIDENCE);
         }
         String trimmed = stripCodeFence(content);
         try {
             Map<String, Object> map = MAPPER.readValue(trimmed, new TypeReference<>() {});
-            String advice = map.get("advice") == null ? null : map.get("advice").toString().trim();
+            String rawAdvice = map.get("advice") == null ? null : map.get("advice").toString().trim();
+            String advice = (rawAdvice == null || rawAdvice.isBlank())
+                    ? buildFallbackAdvice()
+                    : rawAdvice;
             BigDecimal confidence = parseConfidence(map.get("confidence"));
             return new ParsedLlm(advice, confidence);
         } catch (Exception e) {
             log.warn("{} LLM 返回非 JSON，原样作为 advice：{}", LOG_PREFIX, e.getMessage());
             return new ParsedLlm(content.trim(), DEFAULT_CONFIDENCE);
         }
+    }
+
+    private static String buildFallbackAdvice() {
+        return FALLBACK_PREFIX + "LLM 未返回有效建议正文，请稍后重试。";
     }
 
     /**
