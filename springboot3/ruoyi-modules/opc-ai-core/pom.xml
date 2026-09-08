@@ -133,11 +133,17 @@
     <build>
         <finalName>${project.artifactId}</finalName>
         <plugins>
+            <!-- opc-ai-core 作为共享库提供 LlmGateway/AgentRuntime 等 SPI，禁止 spring-boot-maven-plugin
+                 repackage 为 fat JAR（classes 会跑到 BOOT-INF/classes 下，下游 opc-finance/opc-agent-hub 找不到）。
+                 通过 executions.id=default-repackage 与 phase=none 覆盖 Spring Boot 3.5.x 的默认执行（id=repackage）。
+            -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <executions>
                     <execution>
+                        <id>default</id>
+                        <phase>none</phase>
                         <goals>
                             <goal>repackage</goal>
                         </goals>
