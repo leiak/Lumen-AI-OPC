@@ -19,6 +19,7 @@
         <module>opc-agent-hub</module>
         <module>opc-billing</module>
         <module>opc-finance</module>
+        <module>opc-insight</module>
     </modules>
 
     <artifactId>ruoyi-modules</artifactId>

@@ -1,0 +1,22 @@
+# OPC 数据洞察 Agent 默认配置
+spring:
+  datasource:
+    dynamic:
+      primary: master
+      datasource:
+        master:
+          url: jdbc:mysql://127.0.0.1:3306/ry-vue-opc?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=Asia/Shanghai
+          username: root
+          password: root
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    password:
+
+jasypt:
+  encryptor:
+    password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.opc.insight.domain
