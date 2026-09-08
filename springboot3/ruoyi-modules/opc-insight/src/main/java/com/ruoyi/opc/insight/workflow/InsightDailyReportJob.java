@@ -13,12 +13,17 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * INSIGHT 日报定时任务。
+ * INSIGHT daily report cron delegate.
  *
- * <p>每个公司独立执行：日报唯一键冲突只记录低级 ACK 异常，其他错误记录为
- * OPEN 中级异常；任何单个公司的失败都不会阻止后续公司执行。</p>
+ * <p><b>NOT Quartz-runnable directly.</b> This bean lives outside the
+ * {@code com.ruoyi.job.task} whitelist enforced by
+ * {@code Constants.JOB_WHITELIST_STR} + {@code ScheduleUtils.whiteList()}.
+ * To invoke via Quartz, wrap it in a {@code WorkflowCronJob → RemoteInsightService (Feign) → this class}
+ * chain (see ruoyi-job WorkflowCronJob for reference).
+ *
+ * <p>Direct invocation is supported from the Spring container (tests, manual triggers).
  */
-@Component("insightDailyReportJob")
+@Component("dailyReportJobDelegate")
 @Slf4j
 public class InsightDailyReportJob {
 

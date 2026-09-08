@@ -3,15 +3,12 @@ package com.ruoyi.opc.insight.workflow;
 import com.ruoyi.opc.insight.domain.OpcInsightAnomaly;
 import com.ruoyi.opc.insight.mapper.OpcInsightAnomalyMapper;
 import com.ruoyi.opc.insight.service.IDailyReportService;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.LocalDate;
@@ -32,7 +29,6 @@ import static org.mockito.Mockito.when;
  * {@link InsightDailyReportJob} 单元测试。
  */
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class InsightDailyReportJobTest {
 
     @Mock
@@ -46,12 +42,6 @@ class InsightDailyReportJobTest {
 
     @InjectMocks
     private InsightDailyReportJob job;
-
-    @BeforeEach
-    void setUp() {
-        // 日报异常插入不需要在本测试中模拟主键回填。
-        when(anomalyMapper.insert(any(OpcInsightAnomaly.class))).thenReturn(1);
-    }
 
     @Test
     void trigger_singleCompanySuccess() {
@@ -69,6 +59,7 @@ class InsightDailyReportJobTest {
         when(companyQuery.activeCompanyIds()).thenReturn(List.of(1L, 2L));
         doThrow(new RuntimeException("LLM down")).when(dailyReportService).generate(eq(1L), any());
         doNothing().when(dailyReportService).generate(eq(2L), any());
+        when(anomalyMapper.insert(any(OpcInsightAnomaly.class))).thenReturn(1);
 
         job.trigger();
 
@@ -81,6 +72,7 @@ class InsightDailyReportJobTest {
     void trigger_allCompaniesFail_logsErrorButDoesNotThrow() {
         when(companyQuery.activeCompanyIds()).thenReturn(List.of(1L, 2L));
         doThrow(new RuntimeException("LLM down")).when(dailyReportService).generate(any(), any());
+        when(anomalyMapper.insert(any(OpcInsightAnomaly.class))).thenReturn(1);
 
         assertDoesNotThrow(() -> job.trigger());
 
@@ -93,6 +85,7 @@ class InsightDailyReportJobTest {
         when(companyQuery.activeCompanyIds()).thenReturn(List.of(1L));
         doThrow(new DataIntegrityViolationException("UNIQUE KEY uk_company_period"))
                 .when(dailyReportService).generate(eq(1L), any());
+        when(anomalyMapper.insert(any(OpcInsightAnomaly.class))).thenReturn(1);
 
         job.trigger();
 
