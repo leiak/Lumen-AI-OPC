@@ -76,7 +76,6 @@ class OpcBillingAggControllerTest {
         assertEquals(200, result.getCode(), "R.ok() 默认 code=200");
         assertSame(expected, result.getData(),
                 "R.data 应是 service 返回的 VO 引用（不强 copy）");
-        assertEquals(200, result.getCode());
         verify(walletService).aggregateWalletByCompany(COMPANY_ID);
         verifyNoInteractions(orderService);
     }

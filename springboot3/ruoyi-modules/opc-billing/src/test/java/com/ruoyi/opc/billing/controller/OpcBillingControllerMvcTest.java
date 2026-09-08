@@ -4,6 +4,7 @@ import com.ruoyi.common.core.context.SecurityContextHolder;
 import com.ruoyi.common.security.handler.GlobalExceptionHandler;
 import com.ruoyi.opc.billing.domain.OpcWallet;
 import com.ruoyi.opc.billing.mapper.OpcBillingOrderMapper;
+import com.ruoyi.opc.billing.service.IOpcBillingOrderService;
 import com.ruoyi.opc.billing.service.IOpcWalletService;
 import com.ruoyi.opc.common.exception.OpcException;
 import org.junit.jupiter.api.AfterEach;
@@ -61,6 +62,9 @@ class OpcBillingControllerMvcTest {
 
     @MockBean
     private OpcBillingOrderMapper orderMapper;
+
+    @MockBean
+    private IOpcBillingOrderService orderService;
 
     private static final Long USER_ID = 2002L;
     private static final Long COMPANY_ID = 1001L;
