@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.insight.mapper.OpcInsightAnomalyMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.insight.domain.OpcInsightAnomaly">
+        <id property="id" column="id" />
+        <result property="companyId" column="company_id" />
+        <result property="period" column="period" />
+        <result property="level" column="level" />
+        <result property="ruleCode" column="rule_code" />
+        <result property="description" column="description" />
+        <result property="createBy" column="create_by" />
+        <result property="status" column="status" />
+        <result property="llmConfidence" column="llm_confidence" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Columns">
+        id, company_id, period, level, rule_code, description,
+        create_by, status, llm_confidence, create_time, update_by, update_time
+    </sql>
+
+    <insert id="insert"
+            parameterType="com.ruoyi.opc.insight.domain.OpcInsightAnomaly"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_insight_anomaly (
+            company_id, period, level, rule_code, description,
+            create_by, status, llm_confidence, create_time, update_by, update_time
+        ) VALUES (
+            #{companyId}, #{period}, #{level}, #{ruleCode}, #{description},
+            #{createBy}, #{status}, #{llmConfidence},
+            COALESCE(#{createTime}, CURRENT_TIMESTAMP),
+            #{updateBy}, CURRENT_TIMESTAMP
+        )
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_insight_anomaly
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectOpenByCompany" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_insight_anomaly
+        WHERE company_id = #{companyId}
+          AND status = 'OPEN'
+        ORDER BY create_time DESC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <update id="updateStatus">
+        UPDATE opc_insight_anomaly
+        SET status = #{status},
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+</mapper>
