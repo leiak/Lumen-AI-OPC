@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.insight.mapper.OpcInsightAdviceMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.insight.domain.OpcInsightAdvice">
+        <id property="id" column="id" />
+        <result property="companyId" column="company_id" />
+        <result property="topic" column="topic" />
+        <result property="adviceMd" column="advice_md" />
+        <result property="llmUsed" column="llm_used" />
+        <result property="confidence" column="confidence" />
+        <result property="createTime" column="create_time" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Columns">
+        id, company_id, topic, advice_md, llm_used, confidence, create_time, update_time
+    </sql>
+
+    <insert id="insert"
+            parameterType="com.ruoyi.opc.insight.domain.OpcInsightAdvice"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_insight_advice (
+            company_id, topic, advice_md, llm_used, confidence,
+            create_time, update_time
+        ) VALUES (
+            #{companyId}, #{topic}, #{adviceMd}, #{llmUsed}, #{confidence},
+            COALESCE(#{createTime}, CURRENT_TIMESTAMP),
+            CURRENT_TIMESTAMP
+        )
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_insight_advice
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectRecent" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_insight_advice
+        WHERE company_id = #{companyId}
+          AND topic = #{topic}
+          AND create_time &gt;= DATE_SUB(NOW(), INTERVAL #{sinceDays} DAY)
+        ORDER BY create_time DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectByCompany" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_insight_advice
+        WHERE company_id = #{companyId}
+        ORDER BY create_time DESC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!--
+        regenerate() 使用：仅覆盖 advice_md / llm_used / confidence。
+        update_time 由 MySQL ON UPDATE CURRENT_TIMESTAMP 自动维护，
+        避免代码层手动设置产生时区漂移 / 客户端时钟偏差。
+    -->
+    <update id="updateById">
+        UPDATE opc_insight_advice
+        SET advice_md = #{advice.adviceMd},
+            llm_used = #{advice.llmUsed},
+            confidence = #{advice.confidence}
+        WHERE id = #{advice.id}
+    </update>
+
+</mapper>
