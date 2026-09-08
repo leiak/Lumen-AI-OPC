@@ -244,12 +244,12 @@ User → POST /opc/insight/advice { topic: 'cost_optimization' }
 | 文件 | @Test | 覆盖 |
 |---|---|---|
 | `KpiServiceImplTest` | 12 | 7 Feign 端点 mock 正常/超时/降级 + 空快照 |
-| `AnomalyServiceImplTest` | 18 | 8 硬规则各 2 测（命中/不命中） + LLM soft scan mock 5 测 + 0 异常时 LLM 跳过 1 测 |
+| `AnomalyServiceImplTest` | 18 | 8 硬规则各 2 测（命中/不命中 = 16）+ LLM soft scan 1 测（参数化 5 case）+ 0 异常时 LLM 跳过 1 测 |
 | `DailyReportServiceImplTest` | 10 | 正常生成 + LLM 失败降级 + 重复日期 UNIQUE 处理 + 3 家公司 cron 批量 |
 | `AdviceServiceImplTest` | 8 | 缓存命中 + 缓存 miss + LLM 失败降级 + 越权拦截 |
-| `InsightDailyReportJobTest` | 4 | 1 家公司成功 + 1 家公司失败不影响其他 + 全失败 log error |
+| `InsightDailyReportJobTest` | 4 | 1 家公司成功 + 1 家公司失败不影响其他 + 全失败 log error + UNIQUE 重复日期 |
 | `OpcInsightControllerMvcTest` | 12 | 4 端点 × 3 路径（正常/401/参数） |
-| **小计** | **64** | |
+| **小计** | **64** | 12+18+10+8+4+12 = 64 |
 
 ### 5.2 前端契约测试（vitest + axios-mock-adapter，与 W19-W25 一致）
 
@@ -288,13 +288,21 @@ User → POST /opc/insight/advice { topic: 'cost_optimization' }
 | Day | 后端 A (聚合+领域) | 后端 B (INSIGHT 主) | 前端 (4 页) | AI Eng (eval) |
 |---|---|---|---|---|
 | 1 | opc-finance 加 4 聚合端点 + 单测 | opc-insight 脚手架 + bootstrap.yml + Application | — | — |
-| 2 | opc-billing 加 3 聚合端点 + 单测 | Feign clients (3) + KpiService 草稿 | — | — |
-| 3 | — | KpiService 完整 + AnomalyRule 8 个 + 8 硬规则单测 | dashboard 骨架 + 路由 | — |
-| 4 | — | AnomalyService + LLM soft scan + 18 测 | alerts 页 | insight-eval baseline v0.1 |
-| 5 | — | DailyReportService + WorkflowCronJob + 14 测 | daily 页 | — |
-| 6 | — | AdviceService + 7 天缓存 + 8 测 + InsightDailyReportJob 4 测 | advice 页 | insight v0.2 (80 cases → 85%+) |
+| 2 | opc-billing 加 3 聚合端点 + 单测 | Feign clients (3) + KpiService 实现 + 12 测 | — | — |
+| 3 | — | AnomalyService 完整 (8 硬规则 + LLM soft scan + 跳过逻辑) + 18 测 | dashboard 骨架 + 路由 | — |
+| 4 | — | AnomalyService LLM 集成 + 与 KpiService 联调 | alerts 页 | insight-eval baseline v0.1 |
+| 5 | — | DailyReportService + InsightDailyReportJob + 14 测 (10+4) | daily 页 | — |
+| 6 | — | AdviceService + 7 天缓存 + 8 测 | advice 页 | insight v0.2 (80 cases → 85%+) |
 | 7 | — | 4 端 controller + @WebMvcTest 12 测 + 集成 | 联调 4 页 | — |
 | 8 | — | PromptGuard v0.1 + redteam 10 cases + 验证报告 | UAT | 收尾报告 |
+
+**测试分配核对**：
+- Day 2: 12 测 (KpiService)
+- Day 3: 18 测 (AnomalyService 完整)
+- Day 5: 14 测 (DailyReport 10 + Job 4)
+- Day 6: 8 测 (Advice)
+- Day 7: 12 测 (Controller @WebMvcTest)
+- **累计 12+18+14+8+12 = 64 测**（与 §5.1 一致）
 
 **Day 8 验收 checkpoint**：
 - [ ] `mvn clean install` 所有模块通过
