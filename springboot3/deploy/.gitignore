@@ -1,0 +1,8 @@
+# Ignore volume-mount target directories (used by docker-compose.yml).
+# Each empty directory contains a .gitkeep to preserve the directory itself.
+mysql/data/
+redis/data/
+nacos/conf/
+qdrant/data/
+minio/data/
+es/data/
