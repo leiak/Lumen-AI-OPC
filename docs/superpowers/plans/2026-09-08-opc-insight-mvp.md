@@ -422,7 +422,10 @@ public interface RemoteFinanceService {
     R<FlowAggVo> flowAgg(@RequestParam Long companyId, @RequestParam String period);
 
     @GetMapping("/opc/finance/agg/tax-report")
-    R<TaxReportVo> taxReport(@RequestParam Long companyId, @RequestParam String period);
+    R<OpcFinanceTaxReport> taxReport(@RequestParam Long companyId, @RequestParam String period);
+    // NOTE: Task 1 deliverable returns the opc-finance domain object (no TaxReportVo wrapper).
+    // Cross-module dep acceptable for INSIGHT (already depends on opc-finance Feign contracts).
+    // If this becomes a maintenance issue, introduce opc_finance/vo/TaxReportVo.java wrapper.
 
     @GetMapping("/opc/finance/agg/token-usage")
     R<TokenUsageVo> tokenUsage(@RequestParam Long companyId, @RequestParam String period);
@@ -524,8 +527,9 @@ public class KpiServiceImpl implements IKpiService {
             R<VoucherAggVo> r = financeClient.voucherAgg(companyId, period);
             if (r != null && r.getCode() == 200 && r.getData() != null) {
                 VoucherAggVo v = r.getData();
-                b.totalRevenue(v.getDebitTotal()).totalExpense(v.getCreditTotal())
-                 .voucherCount(v.getCount()).pendingVoucherCount(v.getPendingCount());
+                // Accounting semantics: 贷方(credit)=收入(revenue) / 借方(debit)=支出(expense)
+                b.totalRevenue(v.getCreditTotal()).totalExpense(v.getDebitTotal())
+                 .voucherCount(v.getVoucherCount()).pendingVoucherCount(v.getPendingCount());
             } else { b.partial(true); }
         } catch (Exception e) { log.warn("voucherAgg fail: {}", e.getMessage()); b.partial(true); }
 
