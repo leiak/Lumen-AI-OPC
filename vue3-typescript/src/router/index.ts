@@ -178,6 +178,39 @@ export const constantRoutes = [
         meta: { title: 'AI 对话', icon: 'chat' }
       }
     ]
+  },
+  // ================ 数据洞察（Task 14） ================
+  {
+    path: '/opc/insight',
+    component: Layout,
+    redirect: '/opc/insight/dashboard',
+    meta: { title: '数据洞察', icon: 'chart' },
+    children: [
+      {
+        path: 'dashboard',
+        component: () => import('@/views/opc/insight/dashboard.vue'),
+        name: 'InsightDashboard',
+        meta: { title: '驾驶舱', icon: 'dashboard' }
+      },
+      {
+        path: 'alerts',
+        component: () => import('@/views/opc/insight/alerts.vue'),
+        name: 'InsightAlerts',
+        meta: { title: '异常预警', icon: 'bell' }
+      },
+      {
+        path: 'daily',
+        component: () => import('@/views/opc/insight/daily.vue'),
+        name: 'InsightDaily',
+        meta: { title: '财务日报', icon: 'date' }
+      },
+      {
+        path: 'advice',
+        component: () => import('@/views/opc/insight/advice.vue'),
+        name: 'InsightAdvice',
+        meta: { title: '决策建议', icon: 'message' }
+      }
+    ]
   }
 ]
 
