@@ -28,5 +28,11 @@
     "uri": "lb://opc-finance",
     "predicates": [{"name": "Path", "args": {"_genkey_0": "/opc/finance/**"}}],
     "filters": [{"name": "StripPrefix", "args": {"_genkey_0": "1"}}]
+  },
+  {
+    "id": "opc-insight",
+    "uri": "lb://opc-insight",
+    "predicates": [{"name": "Path", "args": {"_genkey_0": "/opc/insight/**"}}],
+    "filters": [{"name": "StripPrefix", "args": {"_genkey_0": "1"}}]
   }
 ]
