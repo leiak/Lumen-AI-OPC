@@ -115,6 +115,9 @@ public class DailyReportServiceImpl implements IDailyReportService {
 
         // 2) 取 KPI 快照
         KpiSnapshot kpi = kpiService.snapshot(companyId, period.toString());
+        if (kpi == null) {
+            throw new OpcException("KPI 快照不可用: companyId=" + companyId + " date=" + date);
+        }
 
         // 3) 调 LLM 生成（失败 → 模板回退）
         LlmOutcome outcome = callLlmOrFallback(kpi, companyId, date);
@@ -133,6 +136,9 @@ public class DailyReportServiceImpl implements IDailyReportService {
                 .kpiJson(toJson(kpi))
                 .adviceMd(outcome.advice)
                 .llmUsed(outcome.llmUsed)
+                // TODO(Task 10): When DailyReportController is added, refactor createBy to use
+                //   SecurityUtils.getUsername() != null ? SecurityUtils.getUsername() : SYSTEM_USER
+                //   to capture manual-trigger audit trail. For now (cron-only), SYSTEM_USER is correct.
                 .createBy(SYSTEM_USER)
                 .createTime(LocalDateTime.now())
                 .updateBy(SYSTEM_USER)
@@ -235,15 +241,21 @@ public class DailyReportServiceImpl implements IDailyReportService {
      * 解析失败或字段缺失 → summary 退回原 content，advice 为空。
      */
     private ParsedLlm parseLlmContent(String content) {
+        if (content == null || content.isBlank()) {
+            return new ParsedLlm(content == null ? null : content.trim(), null);
+        }
         String trimmed = stripCodeFence(content);
         try {
             Map<String, String> map = MAPPER.readValue(trimmed, new TypeReference<>() {});
-            String summary = map.getOrDefault("summary", content).trim();
-            String advice = map.getOrDefault("advice", "").trim();
-            return new ParsedLlm(summary, advice);
+            String summary = map.get("summary");
+            String advice = map.get("advice");
+            return new ParsedLlm(
+                summary == null ? trimmed : summary.trim(),
+                advice == null ? null : advice.trim()
+            );
         } catch (Exception e) {
             log.warn("{} LLM 返回非 JSON，原样作为 summary: {}", LOG_PREFIX, e.getMessage());
-            return new ParsedLlm(content.trim(), "");
+            return new ParsedLlm(content.trim(), null);
         }
     }
 

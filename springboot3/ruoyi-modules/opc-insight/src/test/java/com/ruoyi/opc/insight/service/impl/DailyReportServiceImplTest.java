@@ -41,17 +41,20 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * {@link DailyReportServiceImpl} 单元测试（M4 Task 8，10 个用例）。
+ * {@link DailyReportServiceImpl} 单元测试（M4 Task 8，13 个用例）。
  *
  * <p>覆盖矩阵：
  * <ol>
- *   <li>正常流程：1</li>
- *   <li>LLM 失败回退：1</li>
- *   <li>唯一键冲突（重复日期）：1</li>
- *   <li>参数校验（null companyId / 未来日期）：2</li>
- *   <li>部分降级快照：1</li>
- *   <li>companyId 来源（kpi 优先于参数）：1</li>
- *   <li>读侧方法（listByDateRange / getById × 2）：3</li>
+ *   <li>正常流程（generate_normalFlow_insertsReport）</li>
+ *   <li>LLM 异常回退（generate_llmFails_usesFallbackTemplate）</li>
+ *   <li>LLM 返回空 content 回退（generate_llmReturnsEmptyContent_fallsBack）</li>
+ *   <li>LLM 返回 success=false 回退（generate_llmReturnsSuccessFalse_fallsBack）</li>
+ *   <li>LLM 返回 null 回退（generate_llmReturnsNull_fallsBack）</li>
+ *   <li>唯一键冲突（generate_duplicateDate_throwsDataIntegrityViolation）</li>
+ *   <li>参数校验（generate_companyIdNull_throwsOpcException / generate_periodFuture_throwsOpcException / generate_dateBlank_throwsOpcException / generate_dateInvalidFormat_throwsOpcException）</li>
+ *   <li>部分降级快照（generate_kpiSnapshotEmpty_stillInsertsReport）</li>
+ *   <li>companyId 来源（generate_usesCompanyIdFromKpiNotParameter）</li>
+ *   <li>读侧方法（listByDateRange_passesLimitToMapper / getById_returnsReport / getById_notFound_throwsOpcException）</li>
  * </ol>
  *
  * <p><b>LlmGateway mock 说明</b>：opc-ai-core 的 {@link LlmGateway} 只有
@@ -162,6 +165,46 @@ class DailyReportServiceImplTest {
         verify(mapper, times(1)).insert(captor.capture());
         assertEquals("FALLBACK", captor.getValue().getLlmUsed());
         assertTrue(captor.getValue().getSummaryMd().startsWith("[自动聚合·未走 LLM]"));
+    }
+
+    @Test
+    void generate_llmReturnsSuccessFalse_fallsBack() {
+        // 模拟 LLM 调用了但 success=false —— 也应走 fallback
+        when(kpiService.snapshot(any(), anyString())).thenReturn(baseKpi());
+        when(llmGateway.chat(anyList(), any(ChatModelProvider.ChatOptions.class), any(LlmGateway.ChatContext.class)))
+                .thenReturn(ChatResponse.builder().success(false).content("LLM rejected").model("deepseek-chat").build());
+
+        service.generate(COMPANY_ID, DATE);
+
+        ArgumentCaptor<OpcInsightDailyReport> captor = ArgumentCaptor.forClass(OpcInsightDailyReport.class);
+        verify(mapper, times(1)).insert(captor.capture());
+        OpcInsightDailyReport saved = captor.getValue();
+        assertEquals("FALLBACK", saved.getLlmUsed());
+        assertTrue(saved.getSummaryMd().startsWith("[自动聚合·未走 LLM]"),
+                "fallback summary 前缀应为 [自动聚合·未走 LLM], 实际：" + saved.getSummaryMd());
+        // 关键断言：即使 LLM 失败，insert 仍发生（落库不被阻断）
+        assertNotNull(saved.getKpiJson());
+        assertEquals(COMPANY_ID, saved.getCompanyId());
+    }
+
+    @Test
+    void generate_llmReturnsNull_fallsBack() {
+        // 模拟 LLM gateway 返回 null（异常网络中断） —— 也应走 fallback
+        when(kpiService.snapshot(any(), anyString())).thenReturn(baseKpi());
+        when(llmGateway.chat(anyList(), any(ChatModelProvider.ChatOptions.class), any(LlmGateway.ChatContext.class)))
+                .thenReturn(null);
+
+        service.generate(COMPANY_ID, DATE);
+
+        ArgumentCaptor<OpcInsightDailyReport> captor = ArgumentCaptor.forClass(OpcInsightDailyReport.class);
+        verify(mapper, times(1)).insert(captor.capture());
+        OpcInsightDailyReport saved = captor.getValue();
+        assertEquals("FALLBACK", saved.getLlmUsed());
+        assertTrue(saved.getSummaryMd().startsWith("[自动聚合·未走 LLM]"),
+                "fallback summary 前缀应为 [自动聚合·未走 LLM], 实际：" + saved.getSummaryMd());
+        // 关键断言：即使 LLM 返回 null，insert 仍发生
+        assertNotNull(saved.getKpiJson());
+        assertEquals(COMPANY_ID, saved.getCompanyId());
     }
 
     // ============================================================
