@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.insight.mapper.OpcInsightDailyReportMapper">
+
+    <resultMap id="VoResultMap" type="com.ruoyi.opc.insight.vo.DailyReportVo">
+        <id property="id" column="id" />
+        <result property="companyId" column="company_id" />
+        <result property="period" column="period" />
+        <result property="summaryMd" column="summary_md" />
+        <result property="kpiJson" column="kpi_json" />
+        <result property="adviceMd" column="advice_md" />
+        <result property="llmUsed" column="llm_used" />
+        <result property="createTime" column="create_time" />
+    </resultMap>
+
+    <insert id="insert"
+            parameterType="com.ruoyi.opc.insight.domain.OpcInsightDailyReport"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_insight_daily_report (
+            company_id, period, summary_md, kpi_json, advice_md, llm_used,
+            create_by, create_time, update_by, update_time
+        ) VALUES (
+            #{companyId}, #{period}, #{summaryMd}, #{kpiJson}, #{adviceMd}, #{llmUsed},
+            #{createBy},
+            COALESCE(#{createTime}, CURRENT_TIMESTAMP),
+            #{updateBy}, CURRENT_TIMESTAMP
+        )
+    </insert>
+
+    <select id="selectById" resultMap="VoResultMap">
+        SELECT id, company_id,
+               DATE_FORMAT(period, '%Y-%m-%d') AS period,
+               summary_md, kpi_json, advice_md, llm_used, create_time
+        FROM opc_insight_daily_report
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectByCompanyAndDateRange" resultMap="VoResultMap">
+        SELECT id, company_id,
+               DATE_FORMAT(period, '%Y-%m-%d') AS period,
+               summary_md, kpi_json, advice_md, llm_used, create_time
+        FROM opc_insight_daily_report
+        WHERE company_id = #{companyId}
+          AND period &gt;= #{from}
+          AND period &lt;= #{to}
+        ORDER BY period DESC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <select id="selectByCompanyAndDate" resultMap="VoResultMap">
+        SELECT id, company_id,
+               DATE_FORMAT(period, '%Y-%m-%d') AS period,
+               summary_md, kpi_json, advice_md, llm_used, create_time
+        FROM opc_insight_daily_report
+        WHERE company_id = #{companyId}
+          AND period = #{period}
+    </select>
+
+</mapper>
