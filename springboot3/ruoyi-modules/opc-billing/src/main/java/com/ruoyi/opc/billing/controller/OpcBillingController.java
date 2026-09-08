@@ -135,7 +135,7 @@ public class OpcBillingController extends BaseController {
      */
     @ExceptionHandler(OpcException.class)
     public R<Void> handleOpcException(OpcException e) {
-        return R.fail(e.getCode(), e.getMessage());
+        return R.fail(e.getCode().intValue(), e.getMessage());
     }
 
     @lombok.Data

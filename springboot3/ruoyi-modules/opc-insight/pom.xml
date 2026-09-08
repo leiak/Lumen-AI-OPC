@@ -70,6 +70,23 @@
             <artifactId>opc-ai-core</artifactId>
         </dependency>
 
+        <!-- M4 INSIGHT：Feign 客户端需要引用对端的 VO/domain 类（编译期）。运行时由 Feign 拉 JSON
+             反序列化为这些类的实例，所以类必须在 runtime classpath 可达 —— compile scope。
+             之所以不能 pure Feign：opc-finance 返回 R<OpcFinanceTaxReport>（domain 类），
+             opc-user-center 返回 R<OpcCompanyProfile>（domain 类）—— Feign 反序列化需要类在 classpath。 -->
+        <dependency>
+            <groupId>com.ruoyi</groupId>
+            <artifactId>opc-finance</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ruoyi</groupId>
+            <artifactId>opc-billing</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ruoyi</groupId>
+            <artifactId>opc-user-center</artifactId>
+        </dependency>
+
         <!-- ================ 测试依赖 ================ -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

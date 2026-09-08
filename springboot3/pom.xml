@@ -265,6 +265,27 @@
                 <version>${ruoyi.version}</version>
             </dependency>
 
+            <!-- OPC 财务服务（M4 INSIGHT Feign 客户端目标） -->
+            <dependency>
+                <groupId>com.ruoyi</groupId>
+                <artifactId>opc-finance</artifactId>
+                <version>${ruoyi.version}</version>
+            </dependency>
+
+            <!-- OPC 计费服务（M4 INSIGHT Feign 客户端目标） -->
+            <dependency>
+                <groupId>com.ruoyi</groupId>
+                <artifactId>opc-billing</artifactId>
+                <version>${ruoyi.version}</version>
+            </dependency>
+
+            <!-- OPC 用户中心服务（M4 INSIGHT Feign 客户端目标） -->
+            <dependency>
+                <groupId>com.ruoyi</groupId>
+                <artifactId>opc-user-center</artifactId>
+                <version>${ruoyi.version}</version>
+            </dependency>
+
         </dependencies>
     </dependencyManagement>
 
