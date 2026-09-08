@@ -22,9 +22,7 @@ public class AlertController {
     }
     @GetMapping("/{id}")
     public R<AnomalyVo> detail(@PathVariable Long id) {
-        return R.ok(anomalyService.listOpen(resolveCompanyId(), null).stream()
-                .filter(a -> id.equals(a.getId())).findFirst()
-                .orElseThrow(() -> new OpcException("异常不存在: " + id)));
+        return R.ok(anomalyService.getById(id));
     }
     @PostMapping("/{id}/ack")
     public R<Void> ack(@PathVariable Long id) { anomalyService.acknowledge(id); return R.ok(); }

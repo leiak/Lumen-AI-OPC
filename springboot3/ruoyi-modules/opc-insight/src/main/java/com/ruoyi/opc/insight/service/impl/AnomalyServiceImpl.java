@@ -1,5 +1,6 @@
 package com.ruoyi.opc.insight.service.impl;
 
+import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.insight.domain.OpcInsightAnomaly;
 import com.ruoyi.opc.insight.enums.AnomalyLevel;
 import com.ruoyi.opc.insight.enums.AnomalyRule;
@@ -137,6 +138,18 @@ public class AnomalyServiceImpl implements IAnomalyService {
         return mapper.selectOpenByCompany(companyId, limit).stream()
                 .map(this::toVo)
                 .toList();
+    }
+
+    @Override
+    public AnomalyVo getById(Long id) {
+        if (id == null) {
+            throw new OpcException("id 不能为空");
+        }
+        OpcInsightAnomaly domain = mapper.selectById(id);
+        if (domain == null) {
+            throw new OpcException("异常不存在: id=" + id);
+        }
+        return toVo(domain);
     }
 
     @Override

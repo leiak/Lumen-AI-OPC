@@ -1,5 +1,6 @@
 package com.ruoyi.opc.insight.service.impl;
 
+import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.insight.domain.OpcInsightAnomaly;
 import com.ruoyi.opc.insight.enums.AnomalyLevel;
 import com.ruoyi.opc.insight.enums.AnomalyRule;
@@ -20,6 +21,8 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -27,6 +30,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
@@ -330,6 +334,59 @@ class AnomalyServiceImplTest {
         assertEquals("VOUCHER_OVER_100K", result.get(0).getRuleCode());
         // 关键断言：partial=true 时 LLM 软扫完全不被调用
         verifyNoInteractions(softDetector);
+    }
+
+    // ============================================================
+    // 5. getById —— 状态无关的主键查询（M4 Task 10 review 修复）
+    // ============================================================
+
+    /**
+     * 命中：mapper 返回 domain，service 通过 toVo(...) 转换为 VO。
+     * 验证 id / level(String→enum) / description 等关键字段映射正确。
+     */
+    @Test
+    void getById_found_returnsAnomaly() {
+        OpcInsightAnomaly stub = OpcInsightAnomaly.builder()
+                .id(1L)
+                .companyId(COMPANY_ID)
+                .period(LocalDate.of(2026, 9, 1))
+                .level("MEDIUM")
+                .ruleCode("WALLET_BALANCE_LOW")
+                .description("test")
+                .status("ACK")
+                .createTime(LocalDateTime.of(2026, 9, 1, 12, 0))
+                .build();
+        when(mapper.selectById(1L)).thenReturn(stub);
+
+        AnomalyVo result = service.getById(1L);
+
+        assertNotNull(result);
+        assertEquals(1L, result.getId());
+        assertEquals(COMPANY_ID, result.getCompanyId());
+        assertEquals(AnomalyLevel.MEDIUM, result.getLevel(), "level String→AnomalyLevel enum 应通过 toVo 转换");
+        assertEquals("ACK", result.getStatus(), "ACK 状态异常应原样返回（修复 listOpen 过滤掉的 bug）");
+        assertEquals("test", result.getDescription());
+        assertEquals("WALLET_BALANCE_LOW", result.getRuleCode());
+    }
+
+    /**
+     * 未命中：mapper 返回 null → service 抛 OpcException（不返回 null，避免 NPE）。
+     */
+    @Test
+    void getById_notFound_throwsOpcException() {
+        when(mapper.selectById(999L)).thenReturn(null);
+
+        OpcException ex = assertThrows(OpcException.class, () -> service.getById(999L));
+        assertTrue(ex.getMessage().contains("999"), "异常消息应包含 id: " + ex.getMessage());
+    }
+
+    /**
+     * null id：service 短路抛 OpcException，根本不查 mapper。
+     */
+    @Test
+    void getById_nullId_throwsOpcException() {
+        assertThrows(OpcException.class, () -> service.getById(null));
+        verifyNoInteractions(mapper);
     }
 
     // ============================================================

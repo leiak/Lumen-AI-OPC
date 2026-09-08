@@ -3,7 +3,9 @@ package com.ruoyi.opc.insight.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ruoyi.common.core.context.SecurityContextHolder;
 import com.ruoyi.common.security.handler.GlobalExceptionHandler;
+import com.ruoyi.opc.insight.enums.AnomalyLevel;
 import com.ruoyi.opc.insight.service.*;
+import com.ruoyi.opc.insight.vo.AnomalyVo;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,13 +57,22 @@ class OpcInsightControllerMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
     }
-    @Test void dashboard_noAuth_returns500() throws Exception {
+    /**
+     * 未登录访问受保护接口 → SecurityContextHolder 为空 → {@code resolveCompanyId()}
+     * 抛 {@code OpcException("请先登录")} → {@code GlobalExceptionHandler} 捕获 →
+     * 业务响应码 500（HTTP 状态仍是 200，因为 R 包装器始终返回 200）。
+     */
+    @Test void dashboard_unauthenticated_returnsServiceException() throws Exception {
         SecurityContextHolder.remove();
         mvc.perform(get("/opc/insight/dashboard"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(500));
     }
-    @Test void dashboard_serviceError_returns500() throws Exception {
+    /**
+     * service 层抛 RuntimeException → {@code GlobalExceptionHandler} 捕获 →
+     * 业务响应码 500（HTTP 状态仍是 200，因为 R 包装器始终返回 200）。
+     */
+    @Test void dashboard_serviceExceptionPropagates_returns500() throws Exception {
         when(kpiService.snapshot(anyLong(), isNull())).thenThrow(new RuntimeException("failure"));
         mvc.perform(get("/opc/insight/dashboard"))
                 .andExpect(status().isOk())
@@ -74,11 +85,18 @@ class OpcInsightControllerMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
     }
+    /**
+     * detail 已修复：之前用 listOpen().stream().filter() 只能找到 OPEN 状态的异常，
+     * ACK 状态永远 500。现在走 {@code anomalyService.getById(id)}，状态无关。
+     */
     @Test void alerts_detail() throws Exception {
-        when(anomalyService.listOpen(1001L, null)).thenReturn(List.of());
+        AnomalyVo stub = AnomalyVo.builder().id(1L).companyId(1001L)
+                .description("test").level(AnomalyLevel.MEDIUM).status("OPEN").build();
+        when(anomalyService.getById(1L)).thenReturn(stub);
         mvc.perform(get("/opc/insight/alerts/1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(500));
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value(1));
     }
     @Test void alerts_ack() throws Exception {
         mvc.perform(post("/opc/insight/alerts/1/ack")).andExpect(status().isOk());
