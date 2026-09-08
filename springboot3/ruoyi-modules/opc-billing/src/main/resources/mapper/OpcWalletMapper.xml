@@ -67,4 +67,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         WHERE id = #{id}
     </update>
 
+    <!-- M4 INSIGHT Day 2 / Task 2：公司级钱包余额合计。
+         idx_company_id 已存在（建表 SQL 第 547 行），无需新增索引。 -->
+    <select id="selectBalanceSumByCompany" resultType="java.util.Map">
+        SELECT COALESCE(SUM(balance), 0) AS balance
+        FROM opc_wallet
+        WHERE company_id = #{companyId}
+    </select>
+
 </mapper>

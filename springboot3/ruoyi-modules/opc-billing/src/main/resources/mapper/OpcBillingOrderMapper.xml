@@ -88,4 +88,37 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         WHERE order_no = #{orderNo} AND pay_status = 'PENDING'
     </update>
 
+    <!-- M4 INSIGHT Day 2 / Task 2：订单月度聚合（全部订单类型）。
+         使用半开区间范围查询 [start, end) 而不是 DATE_FORMAT(col, '%Y-%m') = ?
+         —— 后者会让索引失效（见 W11 评审 I1）。idx_company_id 仍可命中。 -->
+    <select id="aggregateByPeriod" resultType="java.util.Map">
+        SELECT
+            COUNT(*)                                                AS order_count,
+            COALESCE(SUM(amount), 0)                                AS total_amount,
+            COALESCE(SUM(CASE WHEN pay_status = 'PAID' THEN paid_amount ELSE 0 END), 0) AS paid_amount,
+            COALESCE(SUM(refund_amount), 0)                         AS refunded_amount
+        FROM opc_billing_order
+        WHERE company_id = #{companyId}
+          AND create_time >= STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d')
+          AND create_time <  DATE_ADD(STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d'), INTERVAL 1 MONTH)
+    </select>
+
+    <!-- M4 INSIGHT Day 2 / Task 2：充值渠道分桶。
+         order_type='RECHARGE' AND pay_status='PAID' 的订单按 pay_method 分组，
+         同样使用半开区间。idx_company_id + idx_pay_status 仍可命中。
+         每行含 channel / amount / cnt，service 端 SUM 得 count + totalAmount。 -->
+    <select id="aggregateRechargeChannelsByPeriod" resultType="java.util.Map">
+        SELECT
+            pay_method                                        AS channel,
+            COALESCE(SUM(paid_amount), 0)                     AS amount,
+            COUNT(*)                                          AS cnt
+        FROM opc_billing_order
+        WHERE company_id = #{companyId}
+          AND order_type = 'RECHARGE'
+          AND pay_status = 'PAID'
+          AND create_time >= STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d')
+          AND create_time <  DATE_ADD(STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d'), INTERVAL 1 MONTH)
+        GROUP BY pay_method
+    </select>
+
 </mapper>

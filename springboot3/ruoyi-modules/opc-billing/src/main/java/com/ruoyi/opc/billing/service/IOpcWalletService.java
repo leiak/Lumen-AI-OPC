@@ -2,6 +2,7 @@ package com.ruoyi.opc.billing.service;
 
 import com.ruoyi.opc.billing.domain.OpcTransaction;
 import com.ruoyi.opc.billing.domain.OpcWallet;
+import com.ruoyi.opc.billing.vo.WalletAggVo;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -13,6 +14,17 @@ public interface IOpcWalletService {
     OpcWallet getOrCreate(Long companyId, Long userId);
 
     OpcWallet getById(Long walletId);
+
+    /**
+     * 公司级钱包余额合计（M4 INSIGHT KPI）。
+     *
+     * <p>当前架构：opc_wallet 是 1 个 user 1 个钱包，公司级余额 = 公司下所有用户钱包余额之和。
+     *
+     * @param companyId 公司 ID
+     * @return WalletAggVo（companyId, balance, currency）
+     * @throws com.ruoyi.opc.common.exception.OpcException companyId 为空
+     */
+    WalletAggVo aggregateWalletByCompany(Long companyId);
 
     /**
      * 充值（外部支付成功回调时调用）。

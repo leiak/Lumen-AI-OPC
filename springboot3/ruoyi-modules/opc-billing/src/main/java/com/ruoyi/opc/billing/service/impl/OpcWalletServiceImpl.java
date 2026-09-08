@@ -5,6 +5,7 @@ import com.ruoyi.opc.billing.domain.OpcWallet;
 import com.ruoyi.opc.billing.mapper.OpcTransactionMapper;
 import com.ruoyi.opc.billing.mapper.OpcWalletMapper;
 import com.ruoyi.opc.billing.service.IOpcWalletService;
+import com.ruoyi.opc.billing.vo.WalletAggVo;
 import com.ruoyi.opc.common.exception.OpcException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 钱包服务：余额 + 流水双写，原子一致。
@@ -71,6 +73,20 @@ public class OpcWalletServiceImpl implements IOpcWalletService {
     @Override
     public OpcWallet getById(Long walletId) {
         return walletMapper.selectById(walletId);
+    }
+
+    @Override
+    public WalletAggVo aggregateWalletByCompany(Long companyId) {
+        // wallet agg 无 period 入参，仅校验 companyId（保持与 AggSupport 一致的入参契约）
+        if (companyId == null) {
+            throw new OpcException("companyId 不能为空");
+        }
+        Map<String, Object> agg = AggSupport.orEmpty(walletMapper.selectBalanceSumByCompany(companyId));
+        return WalletAggVo.builder()
+                .companyId(companyId)
+                .balance(AggSupport.amount(agg.get("balance")))
+                .currency("CNY")
+                .build();
     }
 
     // ===================== 余额变动 =====================
