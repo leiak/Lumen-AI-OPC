@@ -239,6 +239,35 @@ services:
         key: password
     hpa: { enabled: false }
 
+  # ----- AI 洞察（INSIGHT MVP）-----
+  insight:
+    enabled: true
+    name: opc-insight
+    port: 9306
+    replicaCount: 2
+    image:
+      repository: opc/opc-insight
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits:   { cpu: 2000m, memory: 2Gi }
+    jvmOpts: "-Xms1g -Xmx2g -XX:+UseG1GC"
+    podAnnotations:
+      prometheus.io/scrape: "true"
+    probes:
+      liveness:
+        path: /actuator/health/liveness
+        initialDelaySeconds: 60
+        periodSeconds: 10
+      readiness:
+        path: /actuator/health/readiness
+        initialDelaySeconds: 30
+        periodSeconds: 5
+    secrets:
+      - name: JASYPT_PASSWORD
+        secret: opc-jasypt-secrets
+        key: password
+    hpa: { enabled: false }
+
   # ----- 系统服务 -----
   system:
     enabled: true
