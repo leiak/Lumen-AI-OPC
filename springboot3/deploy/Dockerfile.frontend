@@ -1,24 +1,32 @@
 # aiopc-frontend
-# Single-stage: build context provides pre-built dist/ (run npm run build:prod locally first)
-FROM node:20-alpine
+# Stage 1: build Vue SPA (npm install + vite build)
+# Stage 2: serve static dist/ + reverse-proxy /prod-api/* via nginx
+FROM node:20-alpine AS builder
 
 LABEL maintainer="aiopc"
 
-# serve@14 supports SPA fallback + reverse proxy via serve.json
-# Image size: ~50MB (node:20-alpine) + ~5MB (serve) + ~20MB (dist) ≈ 75MB
-RUN npm install -g serve@14.2.4 --registry=https://registry.npmmirror.com
+WORKDIR /build
 
-WORKDIR /app
+# Copy package files first for layer caching
+COPY ./package.json ./
+COPY ./package-lock.json* ./
+COPY ./.npmrc* ./
 
-# Copy built SPA bundle (assumes build context root contains dist/)
-COPY ./dist/ ./
+RUN npm install --prefer-offline --no-audit --no-fund --registry=https://registry.npmmirror.com
 
-# Copy serve config (SPA fallback + reverse proxy)
-COPY ./serve.json ./
+# Copy source + build
+COPY ./ ./
+RUN npm run build:prod
+
+# Stage 2: nginx serves static + reverse-proxies API
+FROM nginx:1.27-alpine
+
+# Replace default nginx config with our reverse-proxy config
+COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy built SPA from builder stage
+COPY --from=builder /build/dist/ /usr/share/nginx/html/
 
 EXPOSE 8079
 
-# -s: single-page mode (history fallback)
-# -l: listen port
-# --config: load serve.json
-CMD ["serve", "-s", ".", "-l", "8079", "--config", "serve.json"]
+CMD ["nginx", "-g", "daemon off;"]
