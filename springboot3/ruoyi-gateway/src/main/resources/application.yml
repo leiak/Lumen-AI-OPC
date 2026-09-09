@@ -16,15 +16,54 @@ server:
 spring:
   profiles:
     active: dev
+  cloud:
+    gateway:
+      server:
+        webflux:
+          discovery:
+            locator:
+              # 自动从 Nacos 注册表为每个 serviceId 创建一条路由
+              # 例: ruoyi-system → lb://ruoyi-system
+              enabled: true
+              lower-case-service-id: true
+          routes:
+            # === 认证 (login/captcha/logout) — 顶层路径，nginx 不剥前缀 ===
+            # 用容器名 aiocrpc-name 直接路由（绕过 lb:// 因为 Nacos 解析有问题）
+            - id: ruoyi-auth-login
+              uri: http://aiopc-auth:9200
+              predicates:
+                - Path=/login,/logout,/refresh,/register,/unlockscreen
+
+            # === 认证 (auth/* 兼容路径) ===
+            - id: ruoyi-auth
+              uri: http://aiopc-auth:9200
+              predicates:
+                - Path=/auth/**
+
+            # === 系统 (用户/角色/菜单/字典) ===
+            - id: ruoyi-system
+              uri: http://aiopc-system:9201
+              predicates:
+                - Path=/system/**,/resource/**,/menu/**,/role/**,/user/**,/dept/**,/dict/**
+
+            # === OPC 业务服务 ===
+            - id: opc-user-center
+              uri: http://aiopc-user-center:9302
+              predicates:
+                - Path=/opc/user/**,/opc/company/**,/opc/invitation/**
+
+            - id: opc-insight
+              uri: http://aiopc-insight:9306
+              predicates:
+                - Path=/opc/insight/**
 
 security:
   ignore:
     whites:
       # OPC 邀请落地页公开查接口(GET /opc/user/invitations/{code})
-      # 与 Nacos application-{env}.yml 保持一致
       - /opc/user/invitations/*
 
-      # RuoYi 默认白名单(精简版,完整列表见 Nacos)
+      # RuoYi 默认白名单
       - /auth/logout
       - /auth/register
       - /auth/login
@@ -33,6 +72,12 @@ security:
       - /captcha/image
       - /register
       - /social/*
+      # OPC 顶层路径白名单（nginx 转发到 gateway 的路径，未带 /auth 前缀）
+      - /login
+      - /logout
+      - /refresh
+      - /register
+      - /unlockscreen
 
 # 文档参考
 logging:

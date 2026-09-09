@@ -1,9 +1,9 @@
 # Tomcat
-server: 
+server:
   port: 9200
 
 # Spring
-spring: 
+spring:
   application:
     # 应用名称
     name: ruoyi-auth
@@ -13,11 +13,13 @@ spring:
   cloud:
     nacos:
       discovery:
-        # 服务注册地址
-        server-addr: 127.0.0.1:8848
+        # 服务注册地址（容器内指向 nacos1:8848）
+        server-addr: ${NACOS_SERVER:nacos1}:8848
+        namespace: ${NACOS_NAMESPACE:opc-dev}
       config:
         # 配置中心地址
-        server-addr: 127.0.0.1:8848
+        server-addr: ${NACOS_SERVER:nacos1}:8848
+        namespace: ${NACOS_NAMESPACE:opc-dev}
   config:
     # 配置文件格式
     file-extension: yml

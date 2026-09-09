@@ -234,10 +234,45 @@ services:
       SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos1:8848
       SPRING_CLOUD_NACOS_CONFIG_NAMESPACE: opc-dev
       JASYPT_PASSWORD: OpcEncrypt!2026
+      SECURITY_CAPTCHA_ENABLED: "true"
+      SECURITY_CAPTCHA_TYPE: math
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: Opc@2026!
       SERVER_PORT: "8080"
     depends_on:
       - nacos1
       - mysql
+      - redis
+    networks:
+      - aiopc-net
+    restart: unless-stopped
+
+  # ============ RuoYi Auth (login/captcha — /login, /code) ============
+  aiopc-auth:
+    build:
+      context: ..
+      dockerfile: ruoyi-auth/Dockerfile
+    image: aiopc-auth:latest
+    container_name: aiopc-auth
+    ports:
+      - "19200:9200"  # host 19200 → container 9200 (host 9200 taken by elasticsearch)
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
+      SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE: opc-dev
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos1:8848
+      SPRING_CLOUD_NACOS_CONFIG_NAMESPACE: opc-dev
+      NACOS_SERVER: nacos1:8848
+      NACOS_NAMESPACE: opc-dev
+      JASYPT_PASSWORD: OpcEncrypt!2026
+      SERVER_PORT: "9200"
+      # Redis (required by SysLoginService for captcha + token)
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: Opc@2026!
+    depends_on:
+      - nacos1
       - redis
     networks:
       - aiopc-net

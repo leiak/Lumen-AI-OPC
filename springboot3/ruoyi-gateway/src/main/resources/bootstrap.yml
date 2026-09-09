@@ -3,7 +3,7 @@ server:
   port: 8080
 
 # Spring
-spring: 
+spring:
   application:
     # 应用名称
     name: ruoyi-gateway
@@ -14,10 +14,12 @@ spring:
     nacos:
       discovery:
         # 服务注册地址
-        server-addr: 127.0.0.1:8848
+        server-addr: ${NACOS_SERVER:nacos1}:8848
+        namespace: ${NACOS_NAMESPACE:public}
       config:
         # 配置中心地址
-        server-addr: 127.0.0.1:8848
+        server-addr: ${NACOS_SERVER:nacos1}:8848
+        namespace: ${NACOS_NAMESPACE:public}
     sentinel:
       # 取消控制台懒加载
       eager: true
@@ -37,5 +39,5 @@ spring:
     # 配置文件格式
     file-extension: yml
     import:
-      - nacos:application-${spring.profiles.active}.${spring.config.file-extension}
-      - nacos:${spring.application.name}-${spring.profiles.active}.${spring.config.file-extension}
+      - optional:nacos:application-${spring.profiles.active}.${spring.config.file-extension}
+      - optional:nacos:${spring.application.name}-${spring.profiles.active}.${spring.config.file-extension}
