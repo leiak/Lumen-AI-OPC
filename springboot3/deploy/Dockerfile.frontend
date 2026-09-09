@@ -1,0 +1,24 @@
+# aiopc-frontend
+# Single-stage: build context provides pre-built dist/ (run npm run build:prod locally first)
+FROM node:20-alpine
+
+LABEL maintainer="aiopc"
+
+# serve@14 supports SPA fallback + reverse proxy via serve.json
+# Image size: ~50MB (node:20-alpine) + ~5MB (serve) + ~20MB (dist) ≈ 75MB
+RUN npm install -g serve@14.2.4 --registry=https://registry.npmmirror.com
+
+WORKDIR /app
+
+# Copy built SPA bundle (assumes build context root contains dist/)
+COPY ./dist/ ./
+
+# Copy serve config (SPA fallback + reverse proxy)
+COPY ./serve.json ./
+
+EXPOSE 8079
+
+# -s: single-page mode (history fallback)
+# -l: listen port
+# --config: load serve.json
+CMD ["serve", "-s", ".", "-l", "8079", "--config", "serve.json"]
