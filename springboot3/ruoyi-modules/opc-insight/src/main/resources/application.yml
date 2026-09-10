@@ -50,6 +50,6 @@ jasypt:
   encryptor:
     password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
 
-mybatis-plus:
+mybatis:
   mapper-locations: classpath*:mapper/**/*.xml
   type-aliases-package: com.ruoyi.opc.insight.domain

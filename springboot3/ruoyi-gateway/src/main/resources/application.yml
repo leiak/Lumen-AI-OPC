@@ -64,6 +64,26 @@ spring:
               predicates:
                 - Path=/opc/insight/**
 
+            - id: opc-agent-hub
+              uri: http://aiopc-agent-hub:9303
+              predicates:
+                - Path=/opc/agent/**
+
+            - id: opc-ai-core
+              uri: http://aiopc-ai-core:9301
+              predicates:
+                - Path=/opc/llm/**
+
+            - id: opc-billing
+              uri: http://aiopc-billing:9304
+              predicates:
+                - Path=/opc/billing/**
+
+            - id: opc-finance
+              uri: http://aiopc-finance:9305
+              predicates:
+                - Path=/opc/finance/**
+
 security:
   ignore:
     whites:

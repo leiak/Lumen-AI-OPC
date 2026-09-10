@@ -1,21 +1,17 @@
 # 基础镜像
 FROM eclipse-temurin:17-jre-jammy
-# author
 LABEL maintainer="aiopc"
 
-# 挂载目录
-VOLUME /home/aiopc
-# 创建目录
-RUN mkdir -p /home/aiopc
-# 指定路径
+# 注意:不能用 VOLUME /home/aiopc — 那会让 docker 在 container 启动时创建匿名 volume,
+# 把 image COPY 进来的 jar/yml 全部 shadow 掉,容器跑的是上一次构建残留的旧文件。
+RUN mkdir -p /home/aiopc/lib
 WORKDIR /home/aiopc
-# 复制 jar 文件到路径（build context 为仓库根 springboot3/）
 COPY ./ruoyi-modules/opc-insight/target/opc-insight.jar /home/aiopc/opc-insight.jar
-# 暴露端口
+COPY ./ruoyi-modules/opc-insight/target/dependency/ /home/aiopc/lib/
 EXPOSE 9306
-# 启动服务
 ENTRYPOINT ["java", \
     "-Xms256m", "-Xmx512m", \
     "-XX:+UseG1GC", \
     "-Djava.security.egd=file:/dev/./urandom", \
-    "-jar", "opc-insight.jar"]
+    "-cp", "opc-insight.jar:lib/*", \
+    "com.ruoyi.opc.insight.OpcInsightApplication"]

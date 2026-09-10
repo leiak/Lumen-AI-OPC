@@ -86,7 +86,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         FROM opc_finance_bank_flow
         WHERE company_id = #{companyId}
           AND trade_time >= STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d')
-          AND trade_time <  DATE_ADD(STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d'), INTERVAL 1 MONTH)
+          AND trade_time &lt;  DATE_ADD(STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d'), INTERVAL 1 MONTH)
     </select>
 
     <update id="update" parameterType="com.ruoyi.opc.finance.domain.OpcFinanceBankFlow">

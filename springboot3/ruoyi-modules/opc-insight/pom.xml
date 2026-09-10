@@ -103,6 +103,11 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <executions>
                     <execution>
+                        <!-- 禁用 repackage — 否则会把所有依赖打进 BOOT-INF/lib 形成 fat jar,
+                             里面嵌套的 opc-finance-3.6.8.jar 等会带旧版 mapper XML(裸 < 字符),
+                             MyBatis 启动时 SAXParseException。改为独立 jar + target/dependency/*.jar
+                             由 Dockerfile 用 -cp 组装 classpath,Dockerfile 已切换为这种 thin-jar 模式。 -->
+                        <phase>none</phase>
                         <goals>
                             <goal>repackage</goal>
                         </goals>

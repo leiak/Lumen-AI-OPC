@@ -84,7 +84,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         FROM opc_finance_voucher
         WHERE company_id = #{companyId}
           AND voucher_date >= STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d')
-          AND voucher_date <  DATE_ADD(STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d'), INTERVAL 1 MONTH)
+          AND voucher_date &lt;  DATE_ADD(STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d'), INTERVAL 1 MONTH)
     </select>
 
     <insert id="insert" parameterType="com.ruoyi.opc.finance.domain.OpcFinanceVoucher" useGeneratedKeys="true" keyProperty="id">

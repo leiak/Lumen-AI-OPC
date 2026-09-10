@@ -1,5 +1,20 @@
 # OPC AI 中台默认配置（Nacos 中可覆盖）
 spring:
+  main:
+    allow-bean-definition-overriding: true
+  cloud:
+    # Spring Cloud OpenFeign 的 FeignClient 注册跑在 bootstrap 阶段,优先于
+    # spring.main.allow-bean-definition-overriding 加载,所以这里必须独立声明。
+    allow-bean-definition-overriding: true
+  # ai-core 自身用 Spring AI 调 LLM provider,但 OpenAI Audio Speech / Transcription
+  #  / Image / Moderation 在 OPC 业务中用不到,而且需要 OpenAI key;启动时强制校验
+  # 会导致没配 key 直接启动失败。把这些用不到的 Spring AI 配置类排除。
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   datasource:
     dynamic:
       primary: master
@@ -14,14 +29,29 @@ spring:
     password:
 
 # Spring AI 配置
+# 注: OpenAI API key 必须有非空值(占位即可),否则 OpenAiChatAutoConfiguration 启动时
+# 校验失败把整个 context 都拉爆。即使 ai-core 实际用 opc-common 自定义 HTTP 客户端
+# 调 DeepSeek/Zhipu,不依赖 Spring AI 的 OpenAiChatModel,这个 Bean 也会被 Spring 加载。
+# 所以这里给个 dummy placeholder 让 Bean 装配过。真实 key 通过 OPENAI_API_KEY env 注入。
 ai:
   openai:
-    api-key: ${OPENAI_API_KEY:sk-placeholder}
+    api-key: ${OPENAI_API_KEY:sk-placeholder-deepseek}
     base-url: https://api.deepseek.com/v1
     chat:
       options:
         model: deepseek-chat
         temperature: 0.3
+    embedding:
+      api-key: ${OPENAI_API_KEY:sk-placeholder-deepseek}
+    image:
+      api-key: ${OPENAI_API_KEY:sk-placeholder-deepseek}
+    audio:
+      speech:
+        api-key: ${OPENAI_API_KEY:sk-placeholder-deepseek}
+      transcription:
+        api-key: ${OPENAI_API_KEY:sk-placeholder-deepseek}
+    moderation:
+      api-key: ${OPENAI_API_KEY:sk-placeholder-deepseek}
   zhipuai:
     api-key: ${ZHIPUAI_API_KEY:placeholder}
 
@@ -65,6 +95,6 @@ jasypt:
     algorithm: PBEWithMD5AndDES
 
 # MyBatis
-mybatis-plus:
+mybatis:
   mapper-locations: classpath*:mapper/**/*.xml
   type-aliases-package: com.ruoyi.opc.ai.domain

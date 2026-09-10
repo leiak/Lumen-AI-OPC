@@ -4,6 +4,7 @@ import com.ruoyi.common.security.annotation.EnableCustomConfig;
 import com.ruoyi.common.security.annotation.EnableRyFeignClients;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.ComponentScan;
 
 /**
  * OPC 计费启动类
@@ -11,8 +12,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * @author OAC
  */
 @EnableCustomConfig
-@EnableRyFeignClients
+@EnableRyFeignClients(basePackages = { "com.ruoyi.system.api", "com.ruoyi.opc" })
 @SpringBootApplication
+@ComponentScan({ "com.ruoyi.opc", "com.ruoyi.billing" })
 public class OpcBillingApplication {
 
     public static void main(String[] args) {

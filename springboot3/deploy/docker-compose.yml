@@ -319,6 +319,159 @@ services:
       - aiopc-net
     restart: unless-stopped
 
+  # ============ OPC Agent Hub（Agent 市场/实例/触发）============
+  aiopc-agent-hub:
+    build:
+      context: ..
+      dockerfile: ruoyi-modules/opc-agent-hub/Dockerfile
+    image: aiopc-agent-hub:latest
+    container_name: aiopc-agent-hub
+    ports:
+      - "9303:9303"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
+      SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE: opc-dev
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos1:8848
+      NACOS_NAMESPACE: opc-dev
+      JASYPT_PASSWORD: OpcEncrypt!2026
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DB: ry-vue-opc
+      MYSQL_USER: root
+      MYSQL_PASSWORD: Opc@2026!
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: Opc@2026!
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: Opc@2026!
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      SERVER_PORT: "9303"
+    depends_on:
+      - nacos1
+      - mysql
+      - redis
+      - rabbitmq
+    networks:
+      - aiopc-net
+    restart: unless-stopped
+
+  # ============ OPC AI Core（LLM 对话/模型列表）============
+  aiopc-ai-core:
+    build:
+      context: ..
+      dockerfile: ruoyi-modules/opc-ai-core/Dockerfile
+    image: aiopc-ai-core:latest
+    container_name: aiopc-ai-core
+    ports:
+      - "9301:9301"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
+      SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE: opc-dev
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos1:8848
+      NACOS_NAMESPACE: opc-dev
+      JASYPT_PASSWORD: OpcEncrypt!2026
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DB: ry-vue-opc
+      MYSQL_USER: root
+      MYSQL_PASSWORD: Opc@2026!
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: Opc@2026!
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: Opc@2026!
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6333"
+      SERVER_PORT: "9301"
+      # Spring AI OpenAI bean 启动时强制校验 spring.ai.openai.api-key 非空;
+      # 这里用 placeholder 让装配通过。实际 LLM 调用走 opc-common 自定义 HTTP 客户端。
+      SPRING_AI_OPENAI_API_KEY: sk-placeholder-deepseek
+      SPRING_AI_ZHIPUAI_API_KEY: placeholder
+    depends_on:
+      - nacos1
+      - mysql
+      - redis
+    networks:
+      - aiopc-net
+    restart: unless-stopped
+
+  # ============ OPC Billing（钱包/充值/账单）============
+  aiopc-billing:
+    build:
+      context: ..
+      dockerfile: ruoyi-modules/opc-billing/Dockerfile
+    image: aiopc-billing:latest
+    container_name: aiopc-billing
+    ports:
+      - "9304:9304"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
+      SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE: opc-dev
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos1:8848
+      NACOS_NAMESPACE: opc-dev
+      JASYPT_PASSWORD: OpcEncrypt!2026
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DB: ry-vue-opc
+      MYSQL_USER: root
+      MYSQL_PASSWORD: Opc@2026!
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: Opc@2026!
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: Opc@2026!
+      SERVER_PORT: "9304"
+    depends_on:
+      - nacos1
+      - mysql
+      - redis
+    networks:
+      - aiopc-net
+    restart: unless-stopped
+
+  # ============ OPC Finance（凭证/银行流水/税务报表）============
+  aiopc-finance:
+    build:
+      context: ..
+      dockerfile: ruoyi-modules/opc-finance/Dockerfile
+    image: aiopc-finance:latest
+    container_name: aiopc-finance
+    ports:
+      - "9305:9305"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
+      SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE: opc-dev
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos1:8848
+      NACOS_NAMESPACE: opc-dev
+      JASYPT_PASSWORD: OpcEncrypt!2026
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DB: ry-vue-opc
+      MYSQL_USER: root
+      MYSQL_PASSWORD: Opc@2026!
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: Opc@2026!
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: Opc@2026!
+      SERVER_PORT: "9305"
+    depends_on:
+      - nacos1
+      - mysql
+      - redis
+    networks:
+      - aiopc-net
+    restart: unless-stopped
+
 networks:
   aiopc-net:
     driver: bridge
