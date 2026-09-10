@@ -3,7 +3,7 @@
 -- Audit columns (create_by / update_by / update_time) added for parity with other OPC tables.
 
 CREATE TABLE IF NOT EXISTS opc_notification_email_log (
-    id BIGINT PRIMARY KEY COMMENT 'Snowflake ID',
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT 'Snowflake-like ID (DB auto)',
     recipient VARCHAR(255) NOT NULL COMMENT 'to email',
     subject VARCHAR(500) NOT NULL COMMENT 'email subject',
     body MEDIUMTEXT NOT NULL COMMENT 'email body (HTML allowed)',
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS opc_notification_email_log (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='邮件发送日志';
 
 CREATE TABLE IF NOT EXISTS opc_notification_sms_log (
-    id BIGINT PRIMARY KEY,
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     phone VARCHAR(20) NOT NULL,
     template_code VARCHAR(100) NOT NULL COMMENT 'provider template code',
     vars_json VARCHAR(2000) DEFAULT NULL COMMENT 'template variables JSON',
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS opc_notification_sms_log (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='短信发送日志';
 
 CREATE TABLE IF NOT EXISTS opc_notification_inbox (
-    id BIGINT PRIMARY KEY,
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL COMMENT 'recipient user_id',
     type VARCHAR(50) NOT NULL COMMENT 'system/marketing/interaction',
     title VARCHAR(255) NOT NULL,
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS opc_notification_inbox (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站内信';
 
 CREATE TABLE IF NOT EXISTS opc_notification_template (
-    id BIGINT PRIMARY KEY,
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     code VARCHAR(100) NOT NULL COMMENT 'unique code e.g. order_paid',
     channel VARCHAR(20) NOT NULL COMMENT 'email/sms/inbox/all',
     subject VARCHAR(500) DEFAULT NULL,
