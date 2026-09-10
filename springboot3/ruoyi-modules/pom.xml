@@ -20,6 +20,7 @@
         <module>opc-billing</module>
         <module>opc-finance</module>
         <module>opc-insight</module>
+        <module>opc-notification</module>
     </modules>
 
     <artifactId>ruoyi-modules</artifactId>
