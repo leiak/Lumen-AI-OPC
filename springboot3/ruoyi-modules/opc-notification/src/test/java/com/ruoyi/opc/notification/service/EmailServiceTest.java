@@ -23,7 +23,7 @@ class EmailServiceTest {
     void setUp() {
         provider = mock(EmailProvider.class);
         mapper = mock(NotificationEmailLogMapper.class);
-        service = new EmailServiceImpl(provider, mapper, 3);
+        service = new EmailServiceImpl(provider, mapper, 3, 0L);
     }
 
     @Test

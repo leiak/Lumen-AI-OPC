@@ -1,5 +1,6 @@
 package com.ruoyi.opc.notification.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ruoyi.opc.notification.domain.NotificationSmsLog;
 import com.ruoyi.opc.notification.mapper.NotificationSmsLogMapper;
 import com.ruoyi.opc.notification.provider.SmsProvider;
@@ -25,7 +26,7 @@ class SmsServiceTest {
     void setUp() {
         provider = mock(SmsProvider.class);
         mapper = mock(NotificationSmsLogMapper.class);
-        service = new SmsServiceImpl(provider, mapper, 3);
+        service = new SmsServiceImpl(provider, mapper, new ObjectMapper(), 3, 0L);
     }
 
     @Test

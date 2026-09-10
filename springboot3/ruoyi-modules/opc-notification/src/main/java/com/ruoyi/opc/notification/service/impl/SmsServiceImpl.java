@@ -1,5 +1,7 @@
 package com.ruoyi.opc.notification.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ruoyi.opc.notification.domain.NotificationSmsLog;
 import com.ruoyi.opc.notification.mapper.NotificationSmsLogMapper;
 import com.ruoyi.opc.notification.provider.SmsProvider;
@@ -21,14 +23,20 @@ public class SmsServiceImpl implements SmsService {
 
     private final SmsProvider smsProvider;
     private final NotificationSmsLogMapper logMapper;
+    private final ObjectMapper objectMapper;
     private final int maxRetries;
+    private final long retryBackoffMs;
 
     public SmsServiceImpl(SmsProvider smsProvider,
                           NotificationSmsLogMapper logMapper,
-                          @Value("${opc.notification.sms.max-retries:3}") int maxRetries) {
+                          ObjectMapper objectMapper,
+                          @Value("${opc.notification.sms.max-retries:3}") int maxRetries,
+                          @Value("${opc.notification.sms.retry-backoff-ms:100}") long retryBackoffMs) {
         this.smsProvider = smsProvider;
         this.logMapper = logMapper;
+        this.objectMapper = objectMapper;
         this.maxRetries = maxRetries;
+        this.retryBackoffMs = retryBackoffMs;
     }
 
     @Override
@@ -36,7 +44,11 @@ public class SmsServiceImpl implements SmsService {
         NotificationSmsLog logEntry = new NotificationSmsLog();
         logEntry.setPhone(phone);
         logEntry.setTemplateCode(templateCode);
-        logEntry.setVarsJson(vars != null ? vars.toString() : "{}");
+        try {
+            logEntry.setVarsJson(objectMapper.writeValueAsString(vars != null ? vars : Map.of()));
+        } catch (JsonProcessingException e) {
+            logEntry.setVarsJson("{}");
+        }
         logEntry.setContent(templateCode + " " + (vars != null ? vars : Map.of()));
         logEntry.setStatus(0);
         logEntry.setRetryCount(0);
@@ -59,9 +71,22 @@ public class SmsServiceImpl implements SmsService {
                 logEntry.setErrorMsg(e.getMessage());
                 log.warn("[sms] attempt {}/{} failed for phone={}: {}",
                     attempt, maxRetries, phone, e.getMessage());
+                if (attempt < maxRetries) {
+                    try {
+                        Thread.sleep(retryBackoffMs * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new SmsSendException("Retry interrupted", ie);
+                    }
+                }
             }
         }
         logEntry.setStatus(2);
+        if (lastError == null) {
+            logEntry.setErrorMsg("max-retries=0, no attempts made");
+            logMapper.insert(logEntry);
+            throw new SmsSendException("max-retries=0, no attempts made");
+        }
         logMapper.insert(logEntry);
         throw lastError;
     }

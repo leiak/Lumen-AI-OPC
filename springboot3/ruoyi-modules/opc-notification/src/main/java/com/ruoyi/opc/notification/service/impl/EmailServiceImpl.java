@@ -21,13 +21,16 @@ public class EmailServiceImpl implements EmailService {
     private final EmailProvider emailProvider;
     private final NotificationEmailLogMapper logMapper;
     private final int maxRetries;
+    private final long retryBackoffMs;
 
     public EmailServiceImpl(EmailProvider emailProvider,
                             NotificationEmailLogMapper logMapper,
-                            @Value("${opc.notification.email.max-retries:3}") int maxRetries) {
+                            @Value("${opc.notification.email.max-retries:3}") int maxRetries,
+                            @Value("${opc.notification.email.retry-backoff-ms:100}") long retryBackoffMs) {
         this.emailProvider = emailProvider;
         this.logMapper = logMapper;
         this.maxRetries = maxRetries;
+        this.retryBackoffMs = retryBackoffMs;
     }
 
     @Override
@@ -57,9 +60,22 @@ public class EmailServiceImpl implements EmailService {
                 logEntry.setErrorMsg(e.getMessage());
                 log.warn("[email] attempt {}/{} failed for to={}: {}",
                     attempt, maxRetries, to, e.getMessage());
+                if (attempt < maxRetries) {
+                    try {
+                        Thread.sleep(retryBackoffMs * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new EmailSendException("Retry interrupted", ie);
+                    }
+                }
             }
         }
         logEntry.setStatus(2);
+        if (lastError == null) {
+            logEntry.setErrorMsg("max-retries=0, no attempts made");
+            logMapper.insert(logEntry);
+            throw new EmailSendException("max-retries=0, no attempts made");
+        }
         logMapper.insert(logEntry);
         throw lastError;
     }
