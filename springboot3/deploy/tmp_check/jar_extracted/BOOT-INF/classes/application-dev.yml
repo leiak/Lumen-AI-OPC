@@ -1,0 +1,41 @@
+# ruoyi-system dev 配置（覆盖 Nacos 默认值，确保本地 Docker 栈可直接启动）
+# 当 Nacos 中无 ruoyi-system-dev.yml / application-dev.yml 时，本文件兜底
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+      - org.springframework.ai.openai.autoconfigure.OpenAiAutoConfiguration
+      - org.springframework.ai.autoconfigure.chat.model.ChatModelAutoConfiguration
+      - org.springframework.ai.autoconfigure.embedding.EmbeddingModelAutoConfiguration
+      - org.springframework.ai.autoconfigure.image.ImageModelAutoConfiguration
+      - org.springframework.ai.autoconfigure.tool.ToolAutoConfiguration
+      - org.springframework.ai.autoconfigure.chat.client.ChatClientAutoConfiguration
+      - org.springframework.ai.autoconfigure.chat.memory.ChatMemoryAutoConfiguration
+      - org.springframework.ai.autoconfigure.vector.store.CommonVectorStoreAutoConfiguration
+  datasource:
+    dynamic:
+      primary: master
+      datasource:
+        master:
+          url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/${MYSQL_DB:ry-vue-opc}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+          username: ${MYSQL_USER:root}
+          password: ${MYSQL_PASSWORD:Opc@2026!}
+  redis:
+    host: ${REDIS_HOST:redis}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:Opc@2026!}
+
+jasypt:
+  encryptor:
+    password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.system.domain
+
+# 关闭 Spring AI 自动装配（防止间接依赖触发需要 API key 的 Bean）

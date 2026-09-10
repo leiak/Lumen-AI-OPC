@@ -4,7 +4,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.ruoyi.system.mapper.SysUserMapper">
 
-    <resultMap type="SysUser" id="SysUserResult">
+    <resultMap type="com.ruoyi.system.api.domain.SysUser" id="SysUserResult">
         <id     property="userId"        column="user_id"         />
         <result property="deptId"        column="dept_id"         />
         <result property="userName"      column="user_name"       />
@@ -24,11 +24,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="updateBy"      column="update_by"       />
         <result property="updateTime"    column="update_time"     />
         <result property="remark"        column="remark"          />
-        <association property="dept"     javaType="SysDept"         resultMap="deptResult" />
+        <association property="dept"     javaType="com.ruoyi.system.api.domain.SysDept"         resultMap="deptResult" />
         <collection  property="roles"    javaType="java.util.List"  resultMap="RoleResult" />
     </resultMap>
 	
-    <resultMap id="deptResult" type="SysDept">
+    <resultMap id="deptResult" type="com.ruoyi.system.api.domain.SysDept">
         <id     property="deptId"    column="dept_id"     />
         <result property="parentId"  column="parent_id"   />
         <result property="deptName"  column="dept_name"   />
@@ -38,7 +38,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="status"    column="dept_status" />
     </resultMap>
 	
-    <resultMap id="RoleResult" type="SysRole">
+    <resultMap id="RoleResult" type="com.ruoyi.system.api.domain.SysRole">
         <id     property="roleId"       column="role_id"        />
         <result property="roleName"     column="role_name"      />
         <result property="roleKey"      column="role_key"       />
@@ -57,7 +57,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 		    left join sys_role r on r.role_id = ur.role_id
     </sql>
     
-    <select id="selectUserList" parameterType="SysUser" resultMap="SysUserResult">
+    <select id="selectUserList" parameterType="com.ruoyi.system.api.domain.SysUser" resultMap="SysUserResult">
 		select u.user_id, u.dept_id, u.nick_name, u.user_name, u.email, u.avatar, u.phonenumber, u.sex, u.status, u.del_flag, u.login_ip, u.login_date, u.create_by, u.create_time, u.remark, d.dept_name, d.leader from sys_user u
 		left join sys_dept d on u.dept_id = d.dept_id
 		where u.del_flag = '0'
@@ -86,7 +86,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 		${params.dataScope}
 	</select>
 	
-	<select id="selectAllocatedList" parameterType="SysUser" resultMap="SysUserResult">
+	<select id="selectAllocatedList" parameterType="com.ruoyi.system.api.domain.SysUser" resultMap="SysUserResult">
 	    select distinct u.user_id, u.dept_id, u.user_name, u.nick_name, u.email, u.phonenumber, u.status, u.create_time
 	    from sys_user u
 			 left join sys_dept d on u.dept_id = d.dept_id
@@ -103,7 +103,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 		${params.dataScope}
 	</select>
 	
-	<select id="selectUnallocatedList" parameterType="SysUser" resultMap="SysUserResult">
+	<select id="selectUnallocatedList" parameterType="com.ruoyi.system.api.domain.SysUser" resultMap="SysUserResult">
 	    select distinct u.user_id, u.dept_id, u.user_name, u.nick_name, u.email, u.phonenumber, u.status, u.create_time
 	    from sys_user u
 			 left join sys_dept d on u.dept_id = d.dept_id
@@ -143,7 +143,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 		select user_id, email from sys_user where email = #{email} and del_flag = '0' limit 1
 	</select>
 	
-	<insert id="insertUser" parameterType="SysUser" useGeneratedKeys="true" keyProperty="userId">
+	<insert id="insertUser" parameterType="com.ruoyi.system.api.domain.SysUser" useGeneratedKeys="true" keyProperty="userId">
  		insert into sys_user(
  			<if test="userId != null and userId != 0">user_id,</if>
  			<if test="deptId != null and deptId != 0">dept_id,</if>
@@ -177,7 +177,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
  		)
 	</insert>
 	
-	<update id="updateUser" parameterType="SysUser">
+	<update id="updateUser" parameterType="com.ruoyi.system.api.domain.SysUser">
  		update sys_user
  		<set>
  			<if test="deptId != 0">dept_id = #{deptId},</if>
@@ -197,19 +197,19 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
  		where user_id = #{userId}
 	</update>
 	
-	<update id="updateUserStatus" parameterType="SysUser">
+	<update id="updateUserStatus" parameterType="com.ruoyi.system.api.domain.SysUser">
  		update sys_user set status = #{status}, update_time = sysdate() where user_id = #{userId}
 	</update>
 	
-	<update id="updateUserAvatar" parameterType="SysUser">
+	<update id="updateUserAvatar" parameterType="com.ruoyi.system.api.domain.SysUser">
  		update sys_user set avatar = #{avatar}, update_time = sysdate() where user_id = #{userId}
 	</update>
 	
-  	<update id="updateLoginInfo" parameterType="SysUser">
+  	<update id="updateLoginInfo" parameterType="com.ruoyi.system.api.domain.SysUser">
  		update sys_user set login_ip = #{loginIp}, login_date = #{loginDate} where user_id = #{userId}
 	</update>
 	
-	<update id="resetUserPwd" parameterType="SysUser">
+	<update id="resetUserPwd" parameterType="com.ruoyi.system.api.domain.SysUser">
  		update sys_user set pwd_update_date = sysdate(), password = #{password}, update_time = sysdate() where user_id = #{userId}
 	</update>
 	

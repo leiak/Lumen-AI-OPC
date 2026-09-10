@@ -42,11 +42,18 @@ export default defineConfig(({ mode, command }) => {
     },
     // vite 相关配置
     server: {
-      port: 80,
+      port: 8081,
       host: true,
-      open: true,
+      open: false,
       proxy: {
         // https://cn.vitejs.dev/config/#server-proxy
+        // INSIGHT (M4): 直连 opc-insight 容器 9306（无 gateway 时 fallback）
+        '/dev-api/opc/insight': {
+          target: 'http://localhost:9306',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/dev-api/, '')
+        },
+        // 其他后端路径仍走 gateway（若存在）
         '/dev-api': {
           target: baseUrl,
           changeOrigin: true,

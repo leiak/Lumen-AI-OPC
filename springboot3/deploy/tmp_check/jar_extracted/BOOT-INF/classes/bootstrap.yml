@@ -13,6 +13,3 @@ spring:
       discovery:
         server-addr: nacos1:8848
         namespace: opc-dev
-      config:
-        # 必须在 bootstrap 阶段就禁用，否则 nacos-config 仍会按 <app-name>-<profile>.yml 自动加载并清空本地 application.yml
-        enabled: false

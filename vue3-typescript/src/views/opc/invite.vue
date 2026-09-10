@@ -79,7 +79,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getUserInfo } from '@/api/login'
+import { getInfo } from '@/api/login'
 import { getInvitationPublic, acceptInvitation } from '@/api/opc/user'
 
 const route = useRoute()
@@ -114,8 +114,8 @@ async function loadInvitation() {
 
 async function checkLogin() {
   try {
-    const u = await getUserInfo()
-    isLoggedIn.value = !!u?.userId
+    const u: any = await getInfo()
+    isLoggedIn.value = !!u?.user?.userId
   } catch {
     isLoggedIn.value = false
   }
