@@ -40,6 +40,7 @@ opc:
     model-routing:
       strategy: cost-first  # cost-first | latency-first | quality-first
       fallback-chain:
+        - MiniMax-Text-01
         - deepseek-v3
         - gpt-4o-mini
         - zhipu-glm-4
@@ -48,7 +49,7 @@ opc:
       embedding-model: text-embedding-3-small
       embedding-dim: 1536
 
-# Spring AI
+# Spring AI（启动校验用占位；真实流量走 opc.llm.* HTTP 客户端）
 ai:
   openai:
     chat:
@@ -61,6 +62,25 @@ ai:
       options:
         model: glm-4-plus
         temperature: 0.3
+
+# W48.6: OPC LLM 多 provider 配置
+opc:
+  llm:
+    deepseek:
+      enabled: false  # W48.6: 用户要求本轮测试只走 MiniMax，临时关
+      api-key: ENC(${DEEPSEEK_API_KEY_NACOS_ENC:})  # Jasypt 加密从 Nacos 注入；空=fallback 到 application.yml 默认
+      base-url: https://api.deepseek.com/v1
+      model: deepseek-chat
+    minimax:
+      enabled: true
+      api-key: ENC(${MINIMAX_API_KEY_NACOS_ENC:})
+      base-url: https://api.minimaxi.com/v1
+      model: MiniMax-Text-01
+    openai:
+      enabled: false
+      api-key: ENC(${OPENAI_API_KEY_NACOS_ENC:})
+      base-url: https://api.openai.com/v1
+      model: gpt-4o-mini
 
 # 业务日志
 logging:

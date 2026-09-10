@@ -36,6 +36,17 @@ spec:
                 secretKeyRef:
                   name: opc-ai-secrets
                   key: zhipuai-api-key
+            # W48.6: DeepSeek + MiniMax API key
+            - name: DEEPSEEK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: opc-ai-secrets
+                  key: deepseek-api-key
+            - name: MINIMAX_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: opc-ai-secrets
+                  key: minimax-api-key
             - name: JASYPT_PASSWORD
               valueFrom:
                 secretKeyRef:

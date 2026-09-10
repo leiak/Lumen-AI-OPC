@@ -45,6 +45,7 @@ hs_err_pid*.log
 # ===== Secrets / local config =====
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 credentials*

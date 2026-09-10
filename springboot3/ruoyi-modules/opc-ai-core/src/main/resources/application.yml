@@ -20,13 +20,14 @@ spring:
       primary: master
       datasource:
         master:
-          url: jdbc:mysql://127.0.0.1:3306/ry-vue-opc?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=Asia/Shanghai
-          username: root
-          password: root
+          # W48.6: dev profile 在 Docker 容器里 127.0.0.1 是容器本身,必须用 Docker DNS 名 'mysql' / 'redis' / 'qdrant'
+          url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/ry-vue-opc?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=Asia/Shanghai
+          username: ${MYSQL_USER:root}
+          password: ${MYSQL_PASSWORD:root}
   redis:
-    host: 127.0.0.1
-    port: 6379
-    password:
+    host: ${REDIS_HOST:127.0.0.1}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PWD:}
 
 # Spring AI 配置
 # 注: OpenAI API key 必须有非空值(占位即可),否则 OpenAiChatAutoConfiguration 启动时
@@ -69,15 +70,31 @@ qdrant:
   port: 6334
   api-key: ${QDRANT_API_KEY:}
 
-# OPC LLM Gateway 配置
+# OPC LLM Gateway 配置（W48.6: 多 provider 块）
 opc:
   llm:
-    primary: deepseek-v3
-    fallback: gpt-4o-mini
+    primary: MiniMax-Text-01  # MiniMax 优先 (priority=5)
+    fallback: deepseek-v3
     enable-cache: true
     cache-ttl: 3600
     max-retries: 3
     timeout-seconds: 60
+    # 各 provider 配置（被各 Provider @Component 读取）
+    deepseek:
+      enabled: false  # W48.6: 用户要求本轮测试只走 MiniMax，临时关
+      api-key: ${DEEPSEEK_API_KEY:}
+      base-url: https://api.deepseek.com/v1
+      model: deepseek-chat
+    minimax:
+      enabled: true
+      api-key: ${MINIMAX_API_KEY:}
+      base-url: https://api.minimaxi.com/v1
+      model: MiniMax-Text-01
+    openai:
+      enabled: false
+      api-key: ${OPENAI_API_KEY:}
+      base-url: https://api.openai.com/v1
+      model: gpt-4o-mini
   memory:
     short-term-ttl: 86400
     long-term-collection: opc_memory

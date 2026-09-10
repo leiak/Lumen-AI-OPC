@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -24,6 +25,11 @@ import java.util.Map;
 public class OpcLlmController {
 
     private final LlmGateway llmGateway;
+    /**
+     * W48.6: 注入所有 ChatModelProvider，{@code /models} 端点直接列 enabled=true 的 provider。
+     * 之前是硬编码 [deepseek-v3, gpt-4o-mini, wenxin-4.0]，新增 MiniMax 时容易漏改。
+     */
+    private final List<ChatModelProvider> providers;
 
     @Operation(summary = "统一聊天（带 fallback + 缓存 + 计量）")
     @PostMapping("/chat")
@@ -44,14 +50,20 @@ public class OpcLlmController {
         return R.ok(resp);
     }
 
-    @Operation(summary = "列出可用模型")
+    @Operation(summary = "列出可用模型（数据驱动：所有 enabled=true 的 provider）")
     @GetMapping("/models")
     public R<List<Map<String, Object>>> models() {
-        return R.ok(List.of(
-                Map.of("id", "deepseek-v3", "name", "DeepSeek-V3", "priority", 10, "enabled", true),
-                Map.of("id", "gpt-4o-mini", "name", "GPT-4o-mini", "priority", 20, "enabled", true),
-                Map.of("id", "wenxin-4.0", "name", "文心一言 4.0", "priority", 30, "enabled", false)
-        ));
+        // W48.6: 按 priority() 升序，让用户先看到最优先的 provider
+        return R.ok(providers.stream()
+                .filter(ChatModelProvider::enabled)
+                .sorted(Comparator.comparingInt(ChatModelProvider::priority))
+                .map(p -> Map.<String, Object>of(
+                        "provider", p.name(),
+                        "id", p.model(),
+                        "name", p.name() + " / " + p.model(),
+                        "priority", p.priority(),
+                        "enabled", true))
+                .toList());
     }
 
     @lombok.Data

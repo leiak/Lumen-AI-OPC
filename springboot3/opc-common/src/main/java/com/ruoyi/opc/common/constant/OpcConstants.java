@@ -40,6 +40,10 @@ public final class OpcConstants {
     public static final String MODEL_GPT_4O = "gpt-4o";
     public static final String MODEL_WENXIN = "wenxin-4.0";
     public static final String MODEL_QWEN = "qwen-max";
+    // W48.6: MiniMaxAI(MiniMax) MiniMax-Text-01 是 OpenAI 兼容协议上的旗舰文本模型
+    public static final String MODEL_MINIMAX = "MiniMax-Text-01";
+    public static final String PROVIDER_MINIMAX = "minimax";
+    public static final String PROVIDER_DEEPSEEK = "deepseek";
 
     /** Token 单价（元 / 1k tokens） */
     public static final double PRICE_DEEPSEEK_INPUT = 0.001;
@@ -48,6 +52,9 @@ public final class OpcConstants {
     public static final double PRICE_GPT_4O_MINI_OUTPUT = 0.060;
     public static final double PRICE_GPT_4O_INPUT = 0.250;
     public static final double PRICE_GPT_4O_OUTPUT = 0.750;
+    // W48.6: MiniMax-Text-01 公开定价 input ¥0.001/1k, output ¥0.008/1k (人民币)
+    public static final double PRICE_MINIMAX_INPUT = 0.001;
+    public static final double PRICE_MINIMAX_OUTPUT = 0.008;
 
     /** Redis Key 前缀 */
     public static final String REDIS_KEY_PREFIX = "opc:";

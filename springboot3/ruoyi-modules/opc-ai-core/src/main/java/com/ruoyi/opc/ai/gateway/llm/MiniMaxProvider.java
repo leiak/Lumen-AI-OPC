@@ -8,33 +8,37 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * DeepSeek-V3 适配器（OAC-W48.6：真实 HTTP 调用）
+ * MiniMax(MiniMaxAI) 适配器（OAC-W48.6）
  *
- * <p>DeepSeek API 兼容 OpenAI {@code /v1/chat/completions} 协议，
- * base-url 默认 {@code https://api.deepseek.com/v1}。
+ * <p>API 协议：OpenAI 兼容 {@code /v1/chat/completions}。
+ * base-url 默认 {@code https://api.minimaxi.com/v1}，
+ * 鉴权走 {@code Authorization: Bearer <MINIMAX_API_KEY>}。
+ *
+ * <p>priority=5，比 DeepSeek 优先（10），让用户在 Nacos 配 {@code opc.llm.primary=MiniMax-Text-01}
+ * 时默认走 MiniMax。
  *
  * @author OAC
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class DeepSeekProvider implements ChatModelProvider {
+public class MiniMaxProvider implements ChatModelProvider {
 
     private final HttpLlmClient http;
 
-    @Value("${opc.llm.deepseek.api-key:}")
+    @Value("${opc.llm.minimax.api-key:}")
     private String apiKey;
-    @Value("${opc.llm.deepseek.base-url:https://api.deepseek.com/v1}")
+    @Value("${opc.llm.minimax.base-url:https://api.minimaxi.com/v1}")
     private String baseUrl;
-    @Value("${opc.llm.deepseek.model:deepseek-chat}")
+    @Value("${opc.llm.minimax.model:MiniMax-Text-01}")
     private String modelName;
-    @Value("${opc.llm.deepseek.enabled:true}")
+    @Value("${opc.llm.minimax.enabled:true}")
     private boolean enabled;
 
-    @Override public String name() { return "deepseek"; }
+    @Override public String name() { return "minimax"; }
     @Override public String model() { return modelName; }
     @Override public boolean enabled() { return enabled && apiKey != null && !apiKey.isEmpty(); }
-    @Override public int priority() { return 10; }
+    @Override public int priority() { return 5; }
 
     @Override
     public ChatResponse chat(List<ChatMessage> messages, ChatOptions options) {
@@ -43,7 +47,7 @@ public class DeepSeekProvider implements ChatModelProvider {
             String raw = http.callChatCompletions(baseUrl, apiKey, modelName, messages, options);
             HttpLlmClient.ParsedChatResponse p = http.parseChatResponse(raw);
             return ChatResponse.builder()
-                    .requestId(p.requestId() != null ? p.requestId() : ("ds-" + System.currentTimeMillis()))
+                    .requestId(p.requestId() != null ? p.requestId() : ("minimax-" + System.currentTimeMillis()))
                     .model(p.model() != null ? p.model() : modelName)
                     .content(p.content())
                     .tokenInput(p.inputTokens())
@@ -55,11 +59,11 @@ public class DeepSeekProvider implements ChatModelProvider {
                     .rawJson(raw)
                     .build();
         } catch (Exception e) {
-            log.error("[DeepSeek] 调用失败", e);
+            log.error("[MiniMax] 调用失败", e);
             return ChatResponse.builder()
                     .model(modelName)
                     .success(false)
-                    .errorMessage("DeepSeek 调用失败: " + e.getMessage())
+                    .errorMessage("MiniMax 调用失败: " + e.getMessage())
                     .latencyMs(System.currentTimeMillis() - start)
                     .build();
         }

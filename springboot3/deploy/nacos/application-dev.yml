@@ -25,12 +25,23 @@ jasypt:
 # OPC 通用
 opc:
   llm:
-    primary: deepseek-v3
-    fallback: gpt-4o-mini
+    primary: MiniMax-Text-01
+    fallback: deepseek-v3
     enable-cache: true
     cache-ttl: 3600
     max-retries: 3
     timeout-seconds: 60
+    # W48.6: dev 本地多 provider（无 key 时 enabled 自动 false）
+    deepseek:
+      enabled: false  # W48.6: 用户要求本轮测试只走 MiniMax，临时关
+      api-key: ${DEEPSEEK_API_KEY:}
+      base-url: https://api.deepseek.com/v1
+      model: deepseek-chat
+    minimax:
+      enabled: true
+      api-key: ${MINIMAX_API_KEY:}
+      base-url: https://api.minimaxi.com/v1
+      model: MiniMax-Text-01
   memory:
     short-term-ttl: 86400
     long-term-collection: opc_memory

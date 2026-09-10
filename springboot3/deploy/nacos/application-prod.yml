@@ -74,10 +74,29 @@ opc:
 # AI 模型 Key（必须从 Nacos 注入，绝不入仓）
 ai:
   openai:
-    api-key: ENC(3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f)  # DeepSeek API key
+    api-key: ENC(3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f)  # DeepSeek API key (实际 LLM 流量用 opc.llm.deepseek.api-key)
     base-url: https://api.deepseek.com/v1
   zhipuai:
     api-key: ENC(4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a)  # 智谱 API key
+
+# W48.6: OPC LLM 多 provider — DeepSeek + MiniMax 双主力
+opc:
+  llm:
+    deepseek:
+      enabled: true
+      api-key: ENC(${DEEPSEEK_API_KEY})
+      base-url: https://api.deepseek.com/v1
+      model: deepseek-chat
+    minimax:
+      enabled: true
+      api-key: ENC(${MINIMAX_API_KEY})
+      base-url: https://api.minimaxi.com/v1
+      model: MiniMax-Text-01
+    openai:
+      enabled: false
+      api-key: ENC(3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f)
+      base-url: https://api.openai.com/v1
+      model: gpt-4o-mini
 
 # LangChain4j
 langchain4j:

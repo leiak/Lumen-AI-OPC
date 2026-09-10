@@ -392,6 +392,9 @@ services:
       # 这里用 placeholder 让装配通过。实际 LLM 调用走 opc-common 自定义 HTTP 客户端。
       SPRING_AI_OPENAI_API_KEY: sk-placeholder-deepseek
       SPRING_AI_ZHIPUAI_API_KEY: placeholder
+      # W48.6: 真实 LLM provider key (DeepSeek + MiniMax)
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-sk-placeholder}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-ey-placeholder}
     depends_on:
       - nacos1
       - mysql
