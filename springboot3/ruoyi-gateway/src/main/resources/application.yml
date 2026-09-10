@@ -39,6 +39,8 @@ spring:
               uri: http://aiopc-auth:9200
               predicates:
                 - Path=/auth/**
+              filters:
+                - StripPrefix=1
 
             # === 系统 (用户/角色/菜单/字典) ===
             - id: ruoyi-system
@@ -68,8 +70,10 @@ security:
       - /auth/register
       - /auth/login
       - /auth/smsCode
+      - /auth/captchaImage
       - /code
       - /captcha/image
+      - /captchaImage
       - /register
       - /social/*
       # OPC 顶层路径白名单（nginx 转发到 gateway 的路径，未带 /auth 前缀）

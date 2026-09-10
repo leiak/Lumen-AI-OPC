@@ -8,50 +8,14 @@ version: '3.8'
 services:
   # ============ Nacos 注册/配置中心（3 节点）============
   nacos1:
-    image: nacos/nacos-server:v2.4.0
+    image: nacos/nacos-server:v2.3.2
     container_name: aiopc-nacos-1
+    hostname: nacos1
     ports: ["8848:8848", "9848:9848"]
     environment:
-      - MODE=cluster
-      - NACOS_SERVERS=nacos1:8848 nacos2:8848 nacos3:8848
-      - SPRING_DATASOURCE_PLATFORM=mysql
-      - NACOS_DATASOURCE_NUM=1
-      - NACOS_PREFER_HOST_MODE=hostname
-      - MYSQL_SERVICE_HOST=mysql
-      - MYSQL_SERVICE_PORT=3306
-      - MYSQL_SERVICE_DB_NAME=ry-vue-opc
-      - MYSQL_SERVICE_USER=root
-      - MYSQL_SERVICE_PASSWORD=Opc@2026!
-      - MYSQL_SERVICE_DB_PARAM=characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useUnicode=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
-    volumes:
-      - ./nacos/conf:/home/nacos/conf
-    networks: [aiopc-net]
-
-  nacos2:
-    image: nacos/nacos-server:v2.4.0
-    container_name: aiopc-nacos-2
-    environment:
-      - MODE=cluster
-      - NACOS_SERVERS=nacos1:8848 nacos2:8848 nacos3:8848
-      - SPRING_DATASOURCE_PLATFORM=mysql
-      - NACOS_DATASOURCE_NUM=1
-      - NACOS_PREFER_HOST_MODE=hostname
-      - MYSQL_SERVICE_HOST=mysql
-      - MYSQL_SERVICE_PORT=3306
-      - MYSQL_SERVICE_DB_NAME=ry-vue-opc
-      - MYSQL_SERVICE_USER=root
-      - MYSQL_SERVICE_PASSWORD=Opc@2026!
-      - MYSQL_SERVICE_DB_PARAM=characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useUnicode=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
-    volumes:
-      - ./nacos/conf:/home/nacos/conf
-    networks: [aiopc-net]
-
-  nacos3:
-    image: nacos/nacos-server:v2.4.0
-    container_name: aiopc-nacos-3
-    environment:
-      - MODE=cluster
-      - NACOS_SERVERS=nacos1:8848 nacos2:8848 nacos3:8848
+      - MODE=standalone
+      - NACOS_SERVERS=nacos1:8848
+      - NACOS_ENABLE_RPC=true
       - SPRING_DATASOURCE_PLATFORM=mysql
       - NACOS_DATASOURCE_NUM=1
       - NACOS_PREFER_HOST_MODE=hostname
@@ -162,7 +126,7 @@ services:
     container_name: aiopc-skywalking-ui
     ports: ["8081:8080"]
     environment:
-      - SW_OAP_ADDRESS=skywalking-oap:12800
+      - SW_OAP_ADDRESS=http://aiopc-skywalking-oap:12800
     depends_on: [skywalking-oap]
     networks: [aiopc-net]
 
