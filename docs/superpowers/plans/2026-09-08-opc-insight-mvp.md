@@ -1625,7 +1625,7 @@ git commit -m "docs(ai): insight live LLM eval report v0.1 (≥85%)"
 ## Task 20: Verification report — Day 8
 
 **Files:**
-- Create: `OPC-M4-VERIFICATION-insight-mvp.md` (at project root)
+- Create: `docs/verification/milestones/m4-insight/OPC-M4-VERIFICATION-insight-mvp.md`
 
 - [ ] **Step 1: Write report** covering:
 - Spec coverage (all 4 capabilities, 218 tests, 7-day delivery)
@@ -1638,7 +1638,7 @@ git commit -m "docs(ai): insight live LLM eval report v0.1 (≥85%)"
 - [ ] **Step 2: Commit**
 
 ```bash
-git add OPC-M4-VERIFICATION-insight-mvp.md
+git add docs/verification/milestones/m4-insight/OPC-M4-VERIFICATION-insight-mvp.md
 git commit -m "docs(M4): verification report"
 ```
 
@@ -1650,5 +1650,5 @@ git commit -m "docs(M4): verification report"
 - [ ] `mvn clean install` all modules pass
 - [ ] `npm run build` frontend passes
 - [ ] `helm lint` + `helm template` for all 3 envs passes
-- [ ] `OPC-M4-VERIFICATION-insight-mvp.md` committed
+- [ ] `docs/verification/milestones/m4-insight/OPC-M4-VERIFICATION-insight-mvp.md` committed
 - [ ] Git tag `v0.4.0-insight-mvp` (optional)

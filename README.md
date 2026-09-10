@@ -125,14 +125,14 @@ RuoYi 内置模块：
 
 | Task | 主题 | 关键产出 | 验证报告 |
 |------|------|---------|---------|
-| #1 | AI 评测集扩展（10 → 119） | `finance-100.json` + 19 条扩展 | [task1-eval-set](./OPC-W1-VERIFICATION-task1-eval-set.md) |
-| #2 | 后端 prod profile 切 Nacos | 6 个 DataID + Jasypt + fail-fast | [nacos-prod](./OPC-W1-VERIFICATION-nacos-prod.md) |
-| #3 | WorkflowEngine 接入 Quartz cron | `WorkflowCronJob` + Feign + 16 文件 | [task3-workflow-cron](./OPC-W1-VERIFICATION-task3-workflow-cron.md) |
-| #4 | 财务税务报表 | Tax Report Service + Controller + 移动端页 | [tax-report-service](./OPC-W1-VERIFICATION-tax-report-service.md) / [controller](./OPC-W1-VERIFICATION-tax-report-controller.md) |
-| #5 | 移动端适配（9 页） | Sidebar 抽屉 + ResponsiveTable + 响应式 SCSS | [mobile-drawer](./OPC-W1-VERIFICATION-mobile-drawer.md) / [responsive-table](./OPC-W1-VERIFICATION-responsive-table.md) / [responsive-scss](./OPC-W1-VERIFICATION-responsive-scss.md) |
-| #6 | Helm Chart（7 服务 + HPA + PDB + CI） | Chart + 多环境 values + Jenkinsfile | [helm-chart](./OPC-W1-VERIFICATION-helm-chart.md) / [templates-v2](./OPC-W1-VERIFICATION-helm-templates-v2.md) / [values-split](./OPC-W1-VERIFICATION-values-split.md) / [helm-ci](./OPC-W1-VERIFICATION-helm-ci.md) |
-| #7 | 邀请落地页 + 分享海报 | API + Invite.vue + SharePoster 1080² | [invite-flow](./OPC-W1-VERIFICATION-invite-flow.md) / [invitation-api-7.1](./OPC-W1-VERIFICATION-invitation-api-7.1.md) / [invite-landing-7.2](./OPC-W1-VERIFICATION-invite-landing-7.2.md) / [invite-poster-7.3](./OPC-W1-VERIFICATION-invite-poster-7.3.md) |
-| #8 | AI 红队测试 + 加固 | 30 用例 + PromptGuard 7 类 + 8 条安全红线 | [task8-redteam](./OPC-W1-VERIFICATION-task8-redteam.md) / [SECURITY-REPORT](./OPC-SECURITY-REPORT-v0.1.md) |
+| #1 | AI 评测集扩展（10 → 119） | `finance-100.json` + 19 条扩展 | [task1-eval-set](./docs/verification/week-1/OPC-W1-VERIFICATION-task1-eval-set.md) |
+| #2 | 后端 prod profile 切 Nacos | 6 个 DataID + Jasypt + fail-fast | [nacos-prod](./docs/verification/week-1/OPC-W1-VERIFICATION-nacos-prod.md) |
+| #3 | WorkflowEngine 接入 Quartz cron | `WorkflowCronJob` + Feign + 16 文件 | [task3-workflow-cron](./docs/verification/week-1/OPC-W1-VERIFICATION-task3-workflow-cron.md) |
+| #4 | 财务税务报表 | Tax Report Service + Controller + 移动端页 | [tax-report-service](./docs/verification/week-1/OPC-W1-VERIFICATION-tax-report-service.md) / [controller](./docs/verification/week-1/OPC-W1-VERIFICATION-tax-report-controller.md) |
+| #5 | 移动端适配（9 页） | Sidebar 抽屉 + ResponsiveTable + 响应式 SCSS | [mobile-drawer](./docs/verification/week-1/OPC-W1-VERIFICATION-mobile-drawer.md) / [responsive-table](./docs/verification/week-1/OPC-W1-VERIFICATION-responsive-table.md) / [responsive-scss](./docs/verification/week-1/OPC-W1-VERIFICATION-responsive-scss.md) |
+| #6 | Helm Chart（7 服务 + HPA + PDB + CI） | Chart + 多环境 values + Jenkinsfile | [helm-chart](./docs/verification/week-1/OPC-W1-VERIFICATION-helm-chart.md) / [templates-v2](./docs/verification/week-1/OPC-W1-VERIFICATION-helm-templates-v2.md) / [values-split](./docs/verification/week-1/OPC-W1-VERIFICATION-values-split.md) / [helm-ci](./docs/verification/week-1/OPC-W1-VERIFICATION-helm-ci.md) |
+| #7 | 邀请落地页 + 分享海报 | API + Invite.vue + SharePoster 1080² | [invite-flow](./docs/verification/week-1/OPC-W1-VERIFICATION-invite-flow.md) / [invitation-api-7.1](./docs/verification/week-1/OPC-W1-VERIFICATION-invitation-api-7.1.md) / [invite-landing-7.2](./docs/verification/week-1/OPC-W1-VERIFICATION-invite-landing-7.2.md) / [invite-poster-7.3](./docs/verification/week-1/OPC-W1-VERIFICATION-invite-poster-7.3.md) |
+| #8 | AI 红队测试 + 加固 | 30 用例 + PromptGuard 7 类 + 8 条安全红线 | [task8-redteam](./docs/verification/week-1/OPC-W1-VERIFICATION-task8-redteam.md) / [SECURITY-REPORT](./OPC-SECURITY-REPORT-v0.1.md) |
 
 ### Task #8 安全成果
 

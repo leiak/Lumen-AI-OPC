@@ -312,7 +312,7 @@ User → POST /opc/insight/advice { topic: 'cost_optimization' }
 - [ ] `mvn test -pl opc-ai-core -Dtest=InsightRedteamTest` ASR ≤ 10%
 - [ ] 1 个 Quartz cron 集成测试通过（09:00 → 落日报）
 - [ ] 7 个聚合端点单测全过
-- [ ] `OPC-M4-VERIFICATION-insight-mvp.md` 验证报告提交
+- [ ] [`OPC-M4-VERIFICATION-insight-mvp.md`](../../verification/milestones/m4-insight/OPC-M4-VERIFICATION-insight-mvp.md) 验证报告提交
 
 ---
 
@@ -362,7 +362,7 @@ User → POST /opc/insight/advice { topic: 'cost_optimization' }
 - [ ] docker-compose.yml 加 `opc-insight` 服务
 
 ### 8.4 文档
-- [ ] `OPC-M4-VERIFICATION-insight-mvp.md` 验证报告（与 W* 一致格式）
+- [ ] [`OPC-M4-VERIFICATION-insight-mvp.md`](../../verification/milestones/m4-insight/OPC-M4-VERIFICATION-insight-mvp.md) 验证报告（与 W* 一致格式）
 - [ ] `init.md` 加 M4 章节
 - [ ] 前端 4 页 Storybook（如已建立）
 
