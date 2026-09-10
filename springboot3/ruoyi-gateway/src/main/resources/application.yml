@@ -43,10 +43,15 @@ spring:
                 - StripPrefix=1
 
             # === 系统 (用户/角色/菜单/字典) ===
+            # /system/** StripPrefix=1:gateway 去掉 /system 前缀转发给 ruoyi-system
+            # (RuoYi 单体时代遗留 /system 前缀,拆分架构下 system controller
+            #  直接暴露在 /user /role /menu 等)
             - id: ruoyi-system
               uri: http://aiopc-system:9201
               predicates:
-                - Path=/system/**,/resource/**,/menu/**,/role/**,/user/**,/dept/**,/dict/**
+                - Path=/system/**
+              filters:
+                - StripPrefix=1
 
             # === OPC 业务服务 ===
             - id: opc-user-center
