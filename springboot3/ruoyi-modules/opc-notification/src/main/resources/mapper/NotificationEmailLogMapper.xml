@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.notification.mapper.NotificationEmailLogMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.notification.domain.NotificationEmailLog">
+        <id property="id" column="id" />
+        <result property="recipient" column="recipient" />
+        <result property="subject" column="subject" />
+        <result property="body" column="body" />
+        <result property="status" column="status" />
+        <result property="retryCount" column="retry_count" />
+        <result property="errorMsg" column="error_msg" />
+        <result property="provider" column="provider" />
+        <result property="sentAt" column="sent_at" />
+        <result property="createdAt" column="created_at" />
+        <result property="createBy" column="create_by" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, recipient, subject, body, status, retry_count, error_msg, provider,
+        sent_at, created_at, create_by, update_by, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.notification.domain.NotificationEmailLog" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_notification_email_log (
+            recipient, subject, body, status, retry_count, error_msg, provider,
+            sent_at, created_at, create_by, update_by, update_time
+        ) VALUES (
+            #{recipient}, #{subject}, #{body}, #{status}, #{retryCount}, #{errorMsg}, #{provider},
+            #{sentAt}, #{createdAt}, #{createBy}, #{updateBy}, #{updateTime}
+        )
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM opc_notification_email_log
+        WHERE id = #{id}
+    </select>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.notification.domain.NotificationEmailLog">
+        UPDATE opc_notification_email_log
+        <set>
+            <if test="recipient != null">recipient = #{recipient},</if>
+            <if test="subject != null">subject = #{subject},</if>
+            <if test="body != null">body = #{body},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="retryCount != null">retry_count = #{retryCount},</if>
+            <if test="errorMsg != null">error_msg = #{errorMsg},</if>
+            <if test="provider != null">provider = #{provider},</if>
+            <if test="sentAt != null">sent_at = #{sentAt},</if>
+            <if test="createBy != null">create_by = #{createBy},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM opc_notification_email_log WHERE id = #{id}
+    </delete>
+
+    <select id="selectList" resultMap="BaseResultMap" parameterType="com.ruoyi.opc.notification.domain.NotificationEmailLog">
+        SELECT <include refid="Base_Column_List" />
+        FROM opc_notification_email_log
+        <where>
+            <if test="recipient != null and recipient != ''">AND recipient = #{recipient}</if>
+            <if test="status != null">AND status = #{status}</if>
+            <if test="provider != null and provider != ''">AND provider = #{provider}</if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+
+</mapper>

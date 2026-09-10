@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.notification.mapper.NotificationTemplateMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.notification.domain.NotificationTemplate">
+        <id property="id" column="id" />
+        <result property="code" column="code" />
+        <result property="channel" column="channel" />
+        <result property="subject" column="subject" />
+        <result property="body" column="body" />
+        <result property="varsSchema" column="vars_schema" />
+        <result property="version" column="version" />
+        <result property="enabled" column="enabled" />
+        <result property="createdAt" column="created_at" />
+        <result property="updatedAt" column="updated_at" />
+        <result property="createBy" column="create_by" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, code, channel, subject, body, vars_schema, version, enabled,
+        created_at, updated_at, create_by, update_by, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.notification.domain.NotificationTemplate" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_notification_template (
+            code, channel, subject, body, vars_schema, version, enabled,
+            created_at, updated_at, create_by, update_by, update_time
+        ) VALUES (
+            #{code}, #{channel}, #{subject}, #{body}, #{varsSchema}, #{version}, #{enabled},
+            #{createdAt}, #{updatedAt}, #{createBy}, #{updateBy}, #{updateTime}
+        )
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM opc_notification_template
+        WHERE id = #{id}
+    </select>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.notification.domain.NotificationTemplate">
+        UPDATE opc_notification_template
+        <set>
+            <if test="code != null and code != ''">code = #{code},</if>
+            <if test="channel != null and channel != ''">channel = #{channel},</if>
+            <if test="subject != null">subject = #{subject},</if>
+            <if test="body != null">body = #{body},</if>
+            <if test="varsSchema != null">vars_schema = #{varsSchema},</if>
+            <if test="version != null">version = #{version},</if>
+            <if test="enabled != null">enabled = #{enabled},</if>
+            <if test="updatedAt != null">updated_at = #{updatedAt},</if>
+            <if test="createBy != null">create_by = #{createBy},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM opc_notification_template WHERE id = #{id}
+    </delete>
+
+    <select id="selectList" resultMap="BaseResultMap" parameterType="com.ruoyi.opc.notification.domain.NotificationTemplate">
+        SELECT <include refid="Base_Column_List" />
+        FROM opc_notification_template
+        <where>
+            <if test="code != null and code != ''">AND code = #{code}</if>
+            <if test="channel != null and channel != ''">AND channel = #{channel}</if>
+            <if test="enabled != null">AND enabled = #{enabled}</if>
+        </where>
+        ORDER BY version DESC, created_at DESC
+    </select>
+
+    <select id="selectByCodeAndVersion" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM opc_notification_template
+        WHERE code = #{code} AND version = #{version}
+    </select>
+
+    <select id="selectLatestEnabled" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM opc_notification_template
+        WHERE code = #{code} AND enabled = 1
+        ORDER BY version DESC LIMIT 1
+    </select>
+
+</mapper>

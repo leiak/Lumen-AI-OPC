@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.notification.mapper.NotificationInboxMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.notification.domain.NotificationInbox">
+        <id property="id" column="id" />
+        <result property="userId" column="user_id" />
+        <result property="type" column="type" />
+        <result property="title" column="title" />
+        <result property="body" column="body" />
+        <result property="link" column="link" />
+        <result property="readAt" column="read_at" />
+        <result property="createdAt" column="created_at" />
+        <result property="createBy" column="create_by" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, type, title, body, link, read_at, created_at, create_by, update_by, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.notification.domain.NotificationInbox" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_notification_inbox (
+            user_id, type, title, body, link, read_at, created_at, create_by, update_by, update_time
+        ) VALUES (
+            #{userId}, #{type}, #{title}, #{body}, #{link}, #{readAt}, #{createdAt}, #{createBy}, #{updateBy}, #{updateTime}
+        )
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM opc_notification_inbox
+        WHERE id = #{id}
+    </select>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.notification.domain.NotificationInbox">
+        UPDATE opc_notification_inbox
+        <set>
+            <if test="userId != null">user_id = #{userId},</if>
+            <if test="type != null and type != ''">type = #{type},</if>
+            <if test="title != null">title = #{title},</if>
+            <if test="body != null">body = #{body},</if>
+            <if test="link != null">link = #{link},</if>
+            <if test="readAt != null">read_at = #{readAt},</if>
+            <if test="createBy != null">create_by = #{createBy},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM opc_notification_inbox WHERE id = #{id}
+    </delete>
+
+    <select id="selectList" resultMap="BaseResultMap" parameterType="com.ruoyi.opc.notification.domain.NotificationInbox">
+        SELECT <include refid="Base_Column_List" />
+        FROM opc_notification_inbox
+        <where>
+            <if test="userId != null">AND user_id = #{userId}</if>
+            <if test="type != null and type != ''">AND type = #{type}</if>
+            <if test="readAt != null">AND read_at IS NULL</if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectUnreadCount" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM opc_notification_inbox
+        WHERE user_id = #{userId} AND read_at IS NULL
+    </select>
+
+    <select id="selectInboxPage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM opc_notification_inbox
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+</mapper>
