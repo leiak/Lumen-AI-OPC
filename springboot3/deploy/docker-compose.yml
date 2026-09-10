@@ -39,7 +39,10 @@ services:
       MYSQL_DATABASE: ry-vue-opc
     volumes:
       - ./mysql/data:/var/lib/mysql
-      - ../sql:/docker-entrypoint-initdb.d
+      # W48.6 固化：只挂已固化的 initdb 目录(按 01-..93- 前缀顺序执行)
+      # 源 SQL 散落在 ../sql/{migrations,seed}/*.sql, 复制并加顺序前缀到
+      # ./mysql-initdb.d/ 让容器首次启动自动建库 + seed
+      - ./mysql-initdb.d:/docker-entrypoint-initdb.d
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     networks: [aiopc-net]
 

@@ -63,3 +63,13 @@ coverage/
 *.lcov
 test-output/
 surefire-reports/
+
+# ===== OPC deploy runtime data (W48.7 固化) =====
+# MySQL/Redis/Qdrant/MinIO/ES 用 host bind mount, 数据在 repo 外持久化
+springboot3/deploy/mysql/data/
+springboot3/deploy/redis/data/
+springboot3/deploy/qdrant/data/
+springboot3/deploy/minio/data/
+springboot3/deploy/es/data/
+# MySQL 备份文件, 二进制不进 repo (需要长期保留请 cp 到网盘/Git LFS)
+springboot3/deploy/backups/
