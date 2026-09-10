@@ -41,7 +41,8 @@ function goDetail() {
 }
 function hire(e: Event) {
   e.stopPropagation()
-  router.push(`/opc/agent/hire/${props.agent.id}`)
+  // 雇佣表单与详情同页 (src/views/opc/agent/detail.vue)
+  router.push(`/opc/agent/detail/${props.agent.id}`)
 }
 </script>
 
