@@ -82,11 +82,13 @@ public class OpcAgentController extends BaseController {
     @Operation(summary = "暂停/恢复/退订")
     @PostMapping("/instance/{id}/action")
     public AjaxResult instanceAction(@PathVariable Long id, @RequestParam String action) {
+        // W48.5: 前端历史调用统一大写 PAUSE/RESUME/REVOKE,这里 toUpperCase 容错
+        String act = action == null ? "" : action.toUpperCase();
         int n;
-        switch (action) {
-            case "pause" -> n = instanceService.pause(id);
-            case "resume" -> n = instanceService.resume(id);
-            case "revoke" -> n = instanceService.revoke(id);
+        switch (act) {
+            case "PAUSE" -> n = instanceService.pause(id);
+            case "RESUME" -> n = instanceService.resume(id);
+            case "REVOKE" -> n = instanceService.revoke(id);
             default -> throw new OpcException("未知动作：" + action);
         }
         return success(n > 0);

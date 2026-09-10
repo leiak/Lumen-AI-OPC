@@ -1,5 +1,6 @@
 package com.ruoyi.opc.ai.gateway.llm;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,7 +20,16 @@ import java.util.Map;
 @AllArgsConstructor
 public class ChatMessage {
 
-    public enum Role { SYSTEM, USER, ASSISTANT, TOOL }
+    // W48.5: 前端 chat.vue 用 'user' / 'assistant' / 'system' 小写,这里 @JsonCreator 大小写兼容
+    public enum Role {
+        SYSTEM, USER, ASSISTANT, TOOL;
+
+        @JsonCreator
+        public static Role fromString(String s) {
+            if (s == null) return null;
+            return Role.valueOf(s.toUpperCase());
+        }
+    }
 
     private Role role;
     private String content;

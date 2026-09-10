@@ -3,9 +3,8 @@ FROM eclipse-temurin:17-jre-jammy
 # author
 LABEL maintainer="aiopc"
 
-# 挂载目录
-VOLUME /home/aiopc
-# 创建目录
+# W48.5 修复:不能用 VOLUME /home/aiopc — 那会让 docker 在 container 启动时创建匿名 volume,
+# 把 image COPY 进来的 jar shadow 掉,容器跑的是上一次构建残留的旧 jar (应用的是旧 yml)
 RUN mkdir -p /home/aiopc
 # 指定路径
 WORKDIR /home/aiopc

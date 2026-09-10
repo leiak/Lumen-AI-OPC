@@ -128,25 +128,31 @@ public class DailyReportServiceImpl implements IDailyReportService {
             summaryMd = summaryMd + " " + PARTIAL_MARKER;
         }
 
-        // 5) 落库
+        // 5) 落库 (W48.5: idempotent — uk_company_period UNIQUE, 已存在则更新而非报错)
+        Long targetCompanyId = kpi.getCompanyId() == null ? companyId : kpi.getCompanyId();
+        DailyReportVo exist = mapper.selectByCompanyAndDate(targetCompanyId, period);
         OpcInsightDailyReport report = OpcInsightDailyReport.builder()
-                .companyId(kpi.getCompanyId() == null ? companyId : kpi.getCompanyId())
+                .companyId(targetCompanyId)
                 .period(period)
                 .summaryMd(summaryMd)
                 .kpiJson(toJson(kpi))
                 .adviceMd(outcome.advice)
                 .llmUsed(outcome.llmUsed)
-                // TODO(Task 10): When DailyReportController is added, refactor createBy to use
-                //   SecurityUtils.getUsername() != null ? SecurityUtils.getUsername() : SYSTEM_USER
-                //   to capture manual-trigger audit trail. For now (cron-only), SYSTEM_USER is correct.
                 .createBy(SYSTEM_USER)
                 .createTime(LocalDateTime.now())
                 .updateBy(SYSTEM_USER)
                 .updateTime(LocalDateTime.now())
                 .build();
-        mapper.insert(report);
-        log.info("{} daily report generated: companyId={} period={} llmUsed={}",
-                LOG_PREFIX, report.getCompanyId(), period, outcome.llmUsed);
+        if (exist == null) {
+            mapper.insert(report);
+        } else {
+            // uk_company_period UNIQUE 冲突 → 先删旧的, 再插新的 (DailyReport 数据是 snapshot, 不需要保留历史)
+            mapper.deleteByPrimaryKey(exist.getId());
+            report.setId(null);  // 让 insert 回填新 id
+            mapper.insert(report);
+        }
+        log.info("{} daily report generated: companyId={} period={} llmUsed={} (upsert={})",
+                LOG_PREFIX, report.getCompanyId(), period, outcome.llmUsed, exist != null);
     }
 
     // ============================================================

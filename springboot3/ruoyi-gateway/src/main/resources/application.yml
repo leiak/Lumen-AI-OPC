@@ -87,8 +87,16 @@ spring:
 security:
   ignore:
     whites:
-      # OPC 邀请落地页公开查接口(GET /opc/user/invitations/{code})
-      - /opc/user/invitations/*
+      # W48.5: 旧版 `/opc/user/invitations/*` 通配会把 /generate 也误放过公网,
+      # 导致 SecurityUtils.getUserId() 返回 null,生成邀请失败。
+      # 公开端点只剩 2 个:
+      #   1) GET  /opc/user/invitations/{code}  公开查邀请人 (落地页)
+      #   2) POST /opc/user/invitations/accept   匿名被邀请人接受 (登录后才生效)
+      # generate 必须登录 → 移除白名单
+      # AntPathMatcher 支持 {name:regex} 语法,8位 base32 = [A-HJ-KM-NP-Z2-9]{8}
+      # (排除 I/L/O/0/1,与 OpcCodeGenerator 一致)
+      - /opc/user/invitations/accept
+      - /opc/user/invitations/{code:[A-HJ-KM-NP-Z2-9]{8}}
 
       # RuoYi 默认白名单
       - /auth/logout

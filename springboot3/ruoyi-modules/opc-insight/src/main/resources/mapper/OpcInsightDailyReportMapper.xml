@@ -60,4 +60,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           AND period = #{period}
     </select>
 
+    <!-- W48.5: upsert helper — daily report 允许重新生成, 先删旧的再插新的 -->
+    <delete id="deleteByPrimaryKey">
+        DELETE FROM opc_insight_daily_report WHERE id = #{id}
+    </delete>
+
 </mapper>

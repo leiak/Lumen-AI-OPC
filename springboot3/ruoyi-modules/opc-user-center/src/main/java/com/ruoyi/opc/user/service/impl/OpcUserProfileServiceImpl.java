@@ -39,6 +39,10 @@ public class OpcUserProfileServiceImpl implements IOpcUserProfileService {
             if (profile.getInvitationCode() == null || profile.getInvitationCode().isEmpty()) {
                 profile.setInvitationCode(OpcCodeGenerator.inviteCode());
             }
+            // W48.5: user_type NOT NULL 列,前端 saveProfile 不传,这里默认 ENTREPRENEUR
+            if (profile.getUserType() == null || profile.getUserType().isEmpty()) {
+                profile.setUserType("ENTREPRENEUR");
+            }
             profile.setStatus("ACTIVE");
             profile.setVerified(0);
             profile.setCreateBy(String.valueOf(profile.getUserId()));

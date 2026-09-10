@@ -34,6 +34,18 @@ public class OpcFinanceVoucherServiceImpl implements IOpcFinanceVoucherService {
         if (voucher.getVoucherCode() == null) {
             voucher.setVoucherCode(OpcCodeGenerator.voucherCode());
         }
+        // W48.5: voucher_date / period NOT NULL, 前端不传,这里默认今天 / 当月
+        if (voucher.getVoucherDate() == null) {
+            voucher.setVoucherDate(new java.util.Date());
+        }
+        if (voucher.getPeriod() == null || voucher.getPeriod().isEmpty()) {
+            // voucherDate 是 Date,转 LocalDate 取 YYYY-MM
+            java.time.LocalDate ld = voucher.getVoucherDate().toInstant()
+                    .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+            voucher.setPeriod(ld.toString().substring(0, 7));
+        }
+        if (voucher.getTotalDebit() == null) voucher.setTotalDebit(java.math.BigDecimal.ZERO);
+        if (voucher.getTotalCredit() == null) voucher.setTotalCredit(java.math.BigDecimal.ZERO);
         voucher.setStatus("DRAFT");
         // W10.3 审计字段：初始 updateBy = createBy（同一人创建即最后更新）
         // updateTime 由 mapper XML 自动 NOW()

@@ -49,4 +49,9 @@ public interface OpcInsightDailyReportMapper {
      */
     DailyReportVo selectByCompanyAndDate(@Param("companyId") Long companyId,
                                           @Param("period") LocalDate period);
+
+    /**
+     * W48.5: 按主键删除，用于 generate 时的 UPSERT 流程（先删旧再插新）。
+     */
+    int deleteByPrimaryKey(@Param("id") Long id);
 }
