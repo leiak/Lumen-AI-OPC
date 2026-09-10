@@ -103,6 +103,10 @@ const usageColumns: Column[] = [
   { key: 'bizDate', label: '日期', type: 'date' },
 ]
 
+function statusType(s?: string) {
+  return ({ RUNNING: 'success', PAUSED: 'warning', EXPIRED: 'info', REVOKED: 'danger' } as Record<string, string>)[String(s)] || ''
+}
+
 async function load() {
   loading.value = true
   try {
