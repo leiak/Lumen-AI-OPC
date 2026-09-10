@@ -149,8 +149,14 @@ services:
       MYSQL_HOST: mysql
       MYSQL_PORT: "3306"
       MYSQL_DB: ry-vue-opc
+      MYSQL_USER: root
+      MYSQL_PASSWORD: Opc@2026!
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      REDIS_PASSWORD: Opc@2026!
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: Opc@2026!
       QDRANT_HOST: qdrant
       QDRANT_PORT: "6333"
       RABBITMQ_HOST: rabbitmq
@@ -289,14 +295,21 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
+      SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE: opc-dev
       SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos1:8848
       NACOS_NAMESPACE: opc-dev
       JASYPT_PASSWORD: OpcEncrypt!2026
       MYSQL_HOST: mysql
       MYSQL_PORT: "3306"
       MYSQL_DB: ry-vue-opc
+      MYSQL_USER: root
+      MYSQL_PASSWORD: Opc@2026!
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      REDIS_PASSWORD: Opc@2026!
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: Opc@2026!
       SERVER_PORT: "9302"
     depends_on:
       - nacos1
