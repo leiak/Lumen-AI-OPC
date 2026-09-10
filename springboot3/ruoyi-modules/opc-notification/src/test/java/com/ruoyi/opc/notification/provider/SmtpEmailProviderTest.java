@@ -7,6 +7,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mail.MailSendException;
 import org.springframework.mail.javamail.JavaMailSender;
 
 import java.util.Properties;
@@ -47,7 +48,7 @@ class SmtpEmailProviderTest {
     @Test
     void send_providerError_throwsEmailSendException() {
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
-        doThrow(new RuntimeException("SMTP connection refused")).when(mailSender).send(any(MimeMessage.class));
+        doThrow(new MailSendException("SMTP connection refused")).when(mailSender).send(any(MimeMessage.class));
 
         try {
             provider.send("to@test.com", "Subject", "<p>body</p>");

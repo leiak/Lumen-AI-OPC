@@ -1,8 +1,10 @@
 package com.ruoyi.opc.notification.provider;
 
+import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
@@ -28,7 +30,8 @@ public class SmtpEmailProvider implements EmailProvider {
             message.saveChanges();
             mailSender.send(message);
             log.info("[email] sent to={} subject={}", to, subject);
-        } catch (Exception e) {
+        } catch (MessagingException | MailException e) {
+            log.warn("[email] send failed to={} subject={} err={}", to, subject, e.getMessage());
             throw new EmailSendException("SMTP send failed: " + e.getMessage(), e);
         }
     }
