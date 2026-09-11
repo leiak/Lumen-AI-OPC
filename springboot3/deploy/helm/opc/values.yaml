@@ -275,6 +275,35 @@ services:
         key: password
     hpa: { enabled: false }
 
+  # ----- 通知中心（Notification MVP）-----
+  notification:
+    enabled: true
+    name: opc-notification
+    port: 9310
+    replicaCount: 2
+    image:
+      repository: opc/opc-notification
+    resources:
+      requests: { cpu: 300m, memory: 768Mi }
+      limits:   { cpu: 1500m, memory: 1.5Gi }
+    jvmOpts: "-Xms512m -Xmx1g -XX:+UseG1GC"
+    podAnnotations:
+      prometheus.io/scrape: "true"
+    probes:
+      liveness:
+        path: /actuator/health/liveness
+        initialDelaySeconds: 60
+        periodSeconds: 10
+      readiness:
+        path: /actuator/health/readiness
+        initialDelaySeconds: 30
+        periodSeconds: 5
+    secrets:
+      - name: JASYPT_PASSWORD
+        secret: opc-jasypt-secrets
+        key: password
+    hpa: { enabled: false }
+
   # ----- 系统服务 -----
   system:
     enabled: true
