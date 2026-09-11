@@ -218,8 +218,8 @@ check_notification() {
     nok "${c} 不存在"
   fi
 
-  # 6.2 Nacos 注册 (opc-dev namespace)
-  local nacos_url="http://${GATEWAY_HOST}:${NACOS_PORT}/nacos/v1/ns/instance/list?serviceName=aiopc-notification&namespaceId=opc-dev"
+  # 6.2 Nacos 注册 (opc-dev namespace) — Spring 应用名是 opc-notification (不带 aiopc- 前缀)
+  local nacos_url="http://${GATEWAY_HOST}:${NACOS_PORT}/nacos/v1/ns/instance/list?serviceName=opc-notification&namespaceId=opc-dev"
   local nacos_body
   nacos_body=$(curl -sf -m 10 "${nacos_url}" 2>/dev/null) || nacos_body=""
   local healthy_count
@@ -233,9 +233,9 @@ except Exception:
     print(0)
 " 2>/dev/null)
   if [[ "${healthy_count}" -ge 1 ]]; then
-    ok "Nacos aiopc-notification 注册 ${healthy_count} 实例 (opc-dev)"
+    ok "Nacos opc-notification 注册 ${healthy_count} 实例 (opc-dev)"
   else
-    nok "Nacos aiopc-notification 未注册: ${nacos_body:-<no response>}"
+    nok "Nacos opc-notification 未注册: ${nacos_body:-<no response>}"
   fi
 
   # 6.3 直接 /actuator/health (绕过网关直连 9310)
@@ -269,10 +269,11 @@ print(d.get('token','') or d.get('access_token',''))
   fi
 
   # 6.4 inbox 列表 (校验 body.code==200, 避免网关静态回退假阳性)
+  # 注意: gateway 路由 /opc/notification/** 不带 /prod-api 前缀 (无 StripPrefix 过滤器)
   local inbox_body
   inbox_body=$(curl -s -m 10 \
     -H "Authorization: Bearer ${token}" \
-    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/prod-api/opc/notification/inbox?page=1&pageSize=5" 2>/dev/null) || inbox_body=""
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/notification/inbox?page=1&pageSize=5" 2>/dev/null) || inbox_body=""
   local inbox_code
   inbox_code=$(echo "${inbox_body}" | python -c "
 import sys,json
@@ -282,18 +283,18 @@ except Exception:
     print('-1')
 " 2>/dev/null)
   if [[ "${inbox_code}" == "200" ]]; then
-    ok "/prod-api/opc/notification/inbox body.code=200"
+    ok "/opc/notification/inbox body.code=200"
   elif echo "${inbox_body}" | grep -q "No static resource"; then
-    nok "/prod-api/opc/notification/inbox 网关未路由 (静态回退): ${inbox_body:0:120}"
+    nok "/opc/notification/inbox 网关未路由 (静态回退): ${inbox_body:0:120}"
   else
-    nok "/prod-api/opc/notification/inbox body.code=${inbox_code}: ${inbox_body:0:120}"
+    nok "/opc/notification/inbox body.code=${inbox_code}: ${inbox_body:0:120}"
   fi
 
   # 6.5 unread-count (校验 body.code=200 且 data:<int>)
   local unread_body
   unread_body=$(curl -s -m 10 \
     -H "Authorization: Bearer ${token}" \
-    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/prod-api/opc/notification/inbox/unread-count" 2>/dev/null) || unread_body=""
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/notification/inbox/unread-count" 2>/dev/null) || unread_body=""
   if echo "${unread_body}" | python -c "
 import sys,json
 try:
@@ -302,22 +303,26 @@ try:
 except Exception:
     sys.exit(1)
 " 2>/dev/null; then
-    ok "/prod-api/opc/notification/inbox/unread-count body.code=200 data:<int> (${unread_body})"
+    ok "/opc/notification/inbox/unread-count body.code=200 data:<int> (${unread_body})"
   elif echo "${unread_body}" | grep -q "No static resource"; then
-    nok "/prod-api/opc/notification/inbox/unread-count 网关未路由 (静态回退): ${unread_body:0:120}"
+    nok "/opc/notification/inbox/unread-count 网关未路由 (静态回退): ${unread_body:0:120}"
   else
-    nok "/prod-api/opc/notification/inbox/unread-count: ${unread_body:-<no response>}"
+    nok "/opc/notification/inbox/unread-count: ${unread_body:-<no response>}"
   fi
 
-  # 6.6 Gateway 路由解析 — controller 真 404 不含 "No static resource", 静态回退含
+  # 6.6 Gateway 路由解析 — 区分 controller 层静态回退 vs gateway 层静态回退
+  #   - 路由解析成功 (controller 层 NoResourceFoundException): JSON, 含 "No static resource", 不含 "404 NOT_FOUND"
+  #   - 路由未解析 (gateway 层 NoHandlerFoundException):         JSON, 含 "No static resource", 且含 "404 NOT_FOUND"
   local route_body
   route_body=$(curl -s -m 10 \
     -H "Authorization: Bearer ${token}" \
-    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/prod-api/opc/notification/inbox/__no_such_path__" 2>/dev/null) || route_body=""
-  if [[ -n "${route_body}" ]] && echo "${route_body}" | grep -q '^{' && ! echo "${route_body}" | grep -q "No static resource"; then
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/notification/inbox/__no_such_path__" 2>/dev/null) || route_body=""
+  if [[ -n "${route_body}" ]] && echo "${route_body}" | grep -q '^{' \
+     && echo "${route_body}" | grep -q "No static resource" \
+     && ! echo "${route_body}" | grep -q "404 NOT_FOUND"; then
     ok "Gateway /opc/notification/** 路由到 aiopc-notification (controller JSON 404)"
-  elif echo "${route_body}" | grep -q "No static resource"; then
-    nok "Gateway /opc/notification/** 未路由 (静态回退): ${route_body:0:120}"
+  elif echo "${route_body}" | grep -q "404 NOT_FOUND"; then
+    nok "Gateway /opc/notification/** 未路由 (gateway 静态回退): ${route_body:0:120}"
   else
     nok "Gateway /opc/notification/** 异常响应: ${route_body:0:120}"
   fi
