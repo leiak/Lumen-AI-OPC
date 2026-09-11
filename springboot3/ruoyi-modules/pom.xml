@@ -21,6 +21,7 @@
         <module>opc-finance</module>
         <module>opc-insight</module>
         <module>opc-notification</module>
+        <module>opc-crm</module>
     </modules>
 
     <artifactId>ruoyi-modules</artifactId>
