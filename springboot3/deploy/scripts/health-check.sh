@@ -11,10 +11,15 @@
 #   4) 前端 nginx 可访问
 #   5) 13 个 /opc/** 接口返回 R-code 200 (登录后)
 #   6) opc-notification 6 项健康检查 (W49 Task 14)
+#   7) opc-crm 8 项健康检查 (W50 Task 17)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
 set -uo pipefail
+
+# Windows console 默认 GBK, 经 echo | python 管道时多字节 UTF-8 字符会被破坏。
+# 强制所有 python 子进程按 UTF-8 解码 stdin (避免 dashboard 等返回中文的接口假阴性)
+export PYTHONIOENCODING=utf-8
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -328,6 +333,182 @@ except Exception:
   fi
 }
 
+# ---------- 7. opc-crm 健康 ----------
+check_crm() {
+  hr
+  echo "[7] opc-crm 健康检查 (W50 Task 17)"
+  hr
+
+  # 7.1 容器 Up
+  local c="aiopc-crm"
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${c}$"; then
+    status=$(docker inspect --format '{{.State.Status}}' "${c}" 2>/dev/null)
+    if [[ "${status}" == "running" ]]; then
+      ok "${c} running"
+    else
+      nok "${c} 状态异常: ${status}"
+    fi
+  else
+    nok "${c} 不存在"
+  fi
+
+  # 7.2 Nacos 注册 (opc-dev namespace)
+  local nacos_url="http://${GATEWAY_HOST}:${NACOS_PORT}/nacos/v1/ns/instance/list?serviceName=opc-crm&namespaceId=opc-dev"
+  local nacos_body
+  nacos_body=$(curl -sf -m 10 "${nacos_url}" 2>/dev/null) || nacos_body=""
+  local healthy_count
+  healthy_count=$(echo "${nacos_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin)
+    hosts = d.get('hosts', [])
+    print(len(hosts) if hosts else 0)
+except Exception:
+    print(0)
+" 2>/dev/null)
+  if [[ "${healthy_count}" -ge 1 ]]; then
+    ok "Nacos opc-crm 注册 ${healthy_count} 实例 (opc-dev)"
+  else
+    nok "Nacos opc-crm 未注册: ${nacos_body:-<no response>}"
+  fi
+
+  # 7.3 直接 /actuator/health (绕过网关直连 9312)
+  local health_body
+  health_body=$(curl -sf -m 10 "http://127.0.0.1:9312/actuator/health" 2>/dev/null) || health_body=""
+  if [[ "${health_body}" == "UP" ]] || echo "${health_body}" | grep -q '"status":"UP"'; then
+    ok "opc-crm /actuator/health UP"
+  else
+    nok "opc-crm /actuator/health: ${health_body:-<no response>}"
+  fi
+
+  # 7.4 业务接口 (需登录)
+  local login_body
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/login" 2>/dev/null) || true
+  if [[ -z "${login_body}" ]]; then
+    warn "登录失败, 跳过 opc-crm 业务接口"
+    return
+  fi
+  local token
+  token=$(echo "${login_body}" | python -c "
+import sys,json
+d = json.load(sys.stdin).get('data', {})
+print(d.get('token','') or d.get('access_token',''))
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    warn "未拿到 token, 跳过 opc-crm 业务接口"
+    return
+  fi
+
+  # 7.4 网关路由 customer list
+  # gateway 路由 /opc/crm/** 不带 /prod-api 前缀 (无 StripPrefix 过滤器), 校验 body.code==200
+  local customer_body
+  customer_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/crm/customer?page=1&pageSize=5" 2>/dev/null) || customer_body=""
+  local customer_code
+  customer_code=$(echo "${customer_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${customer_code}" == "200" ]]; then
+    ok "/opc/crm/customer body.code=200"
+  elif echo "${customer_body}" | grep -q "No static resource"; then
+    nok "/opc/crm/customer 网关未路由 (静态回退): ${customer_body:0:120}"
+  else
+    nok "/opc/crm/customer body.code=${customer_code}: ${customer_body:0:120}"
+  fi
+
+  # 7.5 网关路由 opportunity list
+  local opp_body
+  opp_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/crm/opportunity?page=1&pageSize=5" 2>/dev/null) || opp_body=""
+  local opp_code
+  opp_code=$(echo "${opp_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${opp_code}" == "200" ]]; then
+    ok "/opc/crm/opportunity body.code=200"
+  elif echo "${opp_body}" | grep -q "No static resource"; then
+    nok "/opc/crm/opportunity 网关未路由 (静态回退): ${opp_body:0:120}"
+  else
+    nok "/opc/crm/opportunity body.code=${opp_code}: ${opp_body:0:120}"
+  fi
+
+  # 7.6 网关路由 dashboard (funnel)
+  local dash_body
+  dash_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/crm/dashboard" 2>/dev/null) || dash_body=""
+  local dash_code
+  dash_code=$(echo "${dash_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${dash_code}" == "200" ]]; then
+    ok "/opc/crm/dashboard body.code=200 (funnel)"
+  elif echo "${dash_body}" | grep -q "No static resource"; then
+    nok "/opc/crm/dashboard 网关未路由 (静态回退): ${dash_body:0:120}"
+  else
+    nok "/opc/crm/dashboard body.code=${dash_code}: ${dash_body:0:120}"
+  fi
+
+  # 7.7 contract list (admin customerId=1 should be valid)
+  local contract_body
+  contract_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/crm/contract?customerId=1&page=1&pageSize=5" 2>/dev/null) || contract_body=""
+  local contract_code
+  contract_code=$(echo "${contract_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${contract_code}" == "200" ]]; then
+    ok "/opc/crm/contract body.code=200"
+  elif echo "${contract_body}" | grep -q "No static resource"; then
+    nok "/opc/crm/contract 网关未路由 (静态回退): ${contract_body:0:120}"
+  else
+    nok "/opc/crm/contract body.code=${contract_code}: ${contract_body:0:120}"
+  fi
+
+  # 7.8 order list
+  local order_body
+  order_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/crm/order?customerId=1&page=1&pageSize=5" 2>/dev/null) || order_body=""
+  local order_code
+  order_code=$(echo "${order_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${order_code}" == "200" ]]; then
+    ok "/opc/crm/order body.code=200"
+  elif echo "${order_body}" | grep -q "No static resource"; then
+    nok "/opc/crm/order 网关未路由 (静态回退): ${order_body:0:120}"
+  else
+    nok "/opc/crm/order body.code=${order_code}: ${order_body:0:120}"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -339,6 +520,7 @@ main() {
   check_frontend
   login_and_check
   check_notification
+  check_crm
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"

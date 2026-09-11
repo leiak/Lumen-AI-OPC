@@ -271,4 +271,72 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 ---
 
-**Last updated:** 2026-09-11 (W49 — added opc-notification section)
+## 11. opc-crm 服务 (9312)
+
+**作用**：客户关系管理。客户档案 / 联系人 / 跟进记录 / 商机 / 合同 / 订单 / 看板。
+
+**端口**：9312
+
+**依赖服务**:
+- opc-notification (9310) — 阶段变更/新跟进站内信通知
+- opc-ai-core (9301) — 商机 LLM 评分 (`crm-opportunity-scorer`)
+- opc-user-center (9302) — 客户所有人信息
+
+**6 张核心表**:
+- `opc_crm_customer` (客户档案, 客户级别 A/B/C/D, 来源, 标签)
+- `opc_crm_contact` (客户联系人 1:N, 主联系人)
+- `opc_crm_follow_up` (跟进时间线, 下次跟进时间)
+- `opc_crm_opportunity` (商机漏斗, 阶段 LEAD/QUALIFIED/PROPOSAL/NEGOTIATION/WON/LOST, LLM 评分)
+- `opc_crm_contract` (合同 DRAFT/ACTIVE/EXPIRED/TERMINATED)
+- `opc_crm_order` (订单 PENDING/PAID/SHIPPED/COMPLETED/CANCELLED)
+
+**schema 初始化**：`mysql-initdb.d/12-opc-crm-schema.sql` + `mysql-initdb.d/13-crm-seed.sql`（首次 `mysql/data` 为空时自动跑）
+
+**Nacos 配置**:
+- DataID: `opc-crm-dev.yml` / `opc-crm-prod.yml`
+- 推送命令: `bash deploy/nacos/import-dev.sh`（W50 起 NAMES 已含 `opc-crm-dev.yml`）
+
+**启动**:
+```bash
+cd springboot3
+JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
+  mvn -pl ruoyi-modules/opc-crm -am clean package \
+    -Dmaven.test.skip=true -Dspring-boot.repackage.skip=true
+JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
+  mvn -pl ruoyi-modules/opc-crm dependency:copy-dependencies \
+    -DoutputDirectory=target/dependency
+cd deploy
+docker compose build aiopc-crm
+docker compose up -d aiopc-crm aiopc-gateway
+```
+
+**注意**:
+- 必须用 `-Dmaven.test.skip=true` 绕过 `opc-common` 测试编译错误（`OpcNacosStartupCheckerTest.java`）
+- gateway 路由 `opc-crm` → `http://aiopc-crm:9312` 必须在 `ruoyi-gateway/src/main/resources/application.yml` 存在；改完要重启 gateway
+- thin jar 模式下 docker 容器 `java -cp "xxx.jar:lib/*" Main-Class` 启动，需先 `mvn dependency:copy-dependencies`
+- 商机 LLM 评分依赖 opc-ai-core 真实 LLM key。dev 命名空间可设置 `opc.ai-core.enabled=true` 用 DeepSeek/MiniMax 真实评分；若 opc-ai-core 不可用,`/opc/crm/opportunity/{id}/score` 会返回 502。
+- 阶段变更通知 (LEAD→QUALIFIED 等) 通过 `opc-crm.opportunity.auto-notify-on-stage-change` 控制。dev 默认 `true`。
+
+**验证**:
+```bash
+bash deploy/scripts/health-check.sh | tail -20
+# 期望: 36/36 PASS (28 + 8 new)
+```
+
+**快速 smoke test**:
+```bash
+TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' \
+  http://127.0.0.1:8080/login \
+  | python -c "import sys,json;print(json.load(sys.stdin)['data']['access_token'])")
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:8080/opc/crm/customer?page=1&pageSize=5"
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:8080/opc/crm/opportunity?page=1&pageSize=5"
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:8080/opc/crm/dashboard"
+```
+
+---
+
+**Last updated:** 2026-09-11 (W50 — added opc-crm section)
