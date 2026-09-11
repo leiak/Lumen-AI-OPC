@@ -20,7 +20,7 @@ import java.util.Map;
 
 /**
  * HR 招聘需求 (JD) 管理 Controller
- * 8 endpoints: create / list / detail / update / delete / publish / close / generate-llm
+ * 9 endpoints: create / list / detail / update / delete / publish / close / pause / generate-llm
  */
 @RestController
 @RequestMapping("/opc/hr/job")
@@ -66,6 +66,12 @@ public class OpcHrJobController {
     @PostMapping("/{id}/close")
     public R<Void> close(@PathVariable Long id, @RequestParam Long companyId) {
         jobService.close(id, companyId);
+        return R.ok();
+    }
+
+    @PostMapping("/{id}/pause")
+    public R<Void> pause(@PathVariable Long id, @RequestParam Long companyId) {
+        jobService.pause(id, companyId);
         return R.ok();
     }
 

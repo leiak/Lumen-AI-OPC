@@ -48,6 +48,11 @@ public interface IOpcHrJobService {
     void close(Long id, Long companyId);
 
     /**
+     * 暂停 JD(OPEN → PAUSED)
+     */
+    void pause(Long id, Long companyId);
+
+    /**
      * LLM 生成 JD — Task 4 实现(占位返回 null)
      */
     String generateLlm(Long companyId, String title, String category, String description);

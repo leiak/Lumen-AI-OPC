@@ -32,7 +32,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("OpcHrJobService 单测 (15 cases)")
+@DisplayName("OpcHrJobService 单测 (18 cases)")
 class OpcHrJobServiceImplTest {
 
     private static final Long COMPANY_ID = 1L;
@@ -280,5 +280,47 @@ class OpcHrJobServiceImplTest {
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("OPEN");
         verify(jobMapper, never()).updateById(any(OpcHrJob.class));
+    }
+
+    /** Test 16 */
+    @Test
+    @DisplayName("pause - OPEN 状态改为 PAUSED")
+    void pause_openToPaused() {
+        OpcHrJob existing = OpcHrJob.builder()
+                .id(JOB_ID).companyId(COMPANY_ID).status("OPEN").build();
+        when(jobMapper.selectById(JOB_ID, COMPANY_ID)).thenReturn(existing);
+        when(jobMapper.updateById(any(OpcHrJob.class))).thenReturn(1);
+
+        jobService.pause(JOB_ID, COMPANY_ID);
+
+        ArgumentCaptor<OpcHrJob> captor = ArgumentCaptor.forClass(OpcHrJob.class);
+        verify(jobMapper).updateById(captor.capture());
+        OpcHrJob after = captor.getValue();
+        assertThat(after.getStatus()).isEqualTo("PAUSED");
+    }
+
+    /** Test 17 */
+    @Test
+    @DisplayName("pause - DRAFT 状态不允许暂停")
+    void pause_draftForbidden() {
+        OpcHrJob existing = OpcHrJob.builder()
+                .id(JOB_ID).companyId(COMPANY_ID).status("DRAFT").build();
+        when(jobMapper.selectById(JOB_ID, COMPANY_ID)).thenReturn(existing);
+
+        assertThatThrownBy(() -> jobService.pause(JOB_ID, COMPANY_ID))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("仅 OPEN 状态");
+        verify(jobMapper, never()).updateById(any(OpcHrJob.class));
+    }
+
+    /** Test 18 */
+    @Test
+    @DisplayName("create - title 为空白字符串抛 ServiceException")
+    void create_blankTitle() {
+        sampleDto.setTitle("   ");
+        assertThatThrownBy(() -> jobService.create(sampleDto))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("title");
+        verifyNoInteractions(jobMapper);
     }
 }

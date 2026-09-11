@@ -1,6 +1,7 @@
 package com.ruoyi.opc.hr.service.impl;
 
 import com.ruoyi.common.core.exception.ServiceException;
+import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.common.utils.SnowflakeIdGenerator;
 import com.ruoyi.opc.hr.domain.OpcHrJob;
 import com.ruoyi.opc.hr.dto.OpcHrJobDto;
@@ -38,9 +39,11 @@ public class OpcHrJobServiceImpl implements IOpcHrJobService {
             throw new ServiceException("description 不能为空");
         }
 
+        Long operatorId = getCurrentUserId();
         OpcHrJob job = OpcHrJob.builder()
                 .id(SnowflakeIdGenerator.nextId())
                 .companyId(dto.getCompanyId())
+                .createdBy(operatorId)
                 .title(dto.getTitle())
                 .category(dto.getCategory())
                 .description(dto.getDescription())
@@ -52,7 +55,7 @@ public class OpcHrJobServiceImpl implements IOpcHrJobService {
                 .status(HrJobStatus.DRAFT.getCode())
                 .build();
         jobMapper.insert(job);
-        log.info("Created JD id={} title={} companyId={}", job.getId(), job.getTitle(), job.getCompanyId());
+        log.info("创建 JD id={} title={} by user={}", job.getId(), job.getTitle(), operatorId);
         return job.getId();
     }
 
@@ -102,10 +105,11 @@ public class OpcHrJobServiceImpl implements IOpcHrJobService {
         if (!HrJobStatus.DRAFT.getCode().equals(cur) && !HrJobStatus.PAUSED.getCode().equals(cur)) {
             throw new ServiceException("仅 DRAFT/PAUSED 状态的 JD 可发布 (当前: " + cur + ")");
         }
+        String prev = job.getStatus();
         job.setStatus(HrJobStatus.OPEN.getCode());
         job.setPublishAt(LocalDateTime.now());
+        log.info("Published JD id={} from {} -> OPEN", id, prev);
         jobMapper.updateById(job);
-        log.info("Published JD id={} from {} -> OPEN", id, cur);
     }
 
     @Override
@@ -122,6 +126,19 @@ public class OpcHrJobServiceImpl implements IOpcHrJobService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void pause(Long id, Long companyId) {
+        OpcHrJob job = validateAndGet(id, companyId);
+        if (!HrJobStatus.OPEN.getCode().equals(job.getStatus())) {
+            throw new ServiceException("仅 OPEN 状态可暂停");
+        }
+        job.setStatus(HrJobStatus.PAUSED.getCode());
+        String prev = "OPEN";
+        log.info("Paused JD id={} from {} -> PAUSED", id, prev);
+        jobMapper.updateById(job);
+    }
+
+    @Override
     public String generateLlm(Long companyId, String title, String category, String description) {
         // TODO Task 4: 调 opc-ai-core HttpLlmClient 生成 JD 文案
         log.warn("generateLlm is not yet implemented (Task 4). companyId={} title={}", companyId, title);
@@ -134,5 +151,17 @@ public class OpcHrJobServiceImpl implements IOpcHrJobService {
             throw new ServiceException("岗位不存在或无权访问 id=" + id);
         }
         return job;
+    }
+
+    /**
+     * 获取当前登录用户 ID;若未登录(单元测试场景)返回 0L。
+     */
+    private Long getCurrentUserId() {
+        try {
+            return SecurityUtils.getUserId();
+        } catch (Exception e) {
+            // 单测场景无 SecurityContext,fallback 0L(对应系统用户)
+            return 0L;
+        }
     }
 }
