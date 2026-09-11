@@ -29,6 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # 共享的 application-dev.yml，各服务的 opc-<svc>-dev.yml 是空的)
 NAMES=(
   "application-dev.yml"
+  "opc-notification-dev.yml"
 )
 
 # ---------- 单文件推送（Python urllib + content 走 stdin）----------

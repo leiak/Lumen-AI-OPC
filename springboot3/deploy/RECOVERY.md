@@ -216,4 +216,59 @@ bash scripts/health-check.sh
 
 ---
 
-**Last updated:** 2026-09-10 (W48.7 固化)
+## 10. opc-notification 服务 (9310)
+
+**作用**：统一通知中心。邮件 / 短信 / 站内信 / WebSocket。
+
+**端口**：9310
+
+**数据**:
+- 4 张表: `opc_notification_email_log`、`opc_notification_sms_log`、`opc_notification_inbox`、`opc_notification_template`
+- 4 个默认模板（`welcome` / `order_paid` / `opportunity_assigned` / `inventory_low`）由 `94-opc-notification-template-seed.sql` 灌入
+- schema 初始化: `mysql-initdb.d/08-opc-notification-schema.sql`（首次 `mysql/data` 为空时自动跑）
+
+**Nacos 配置**:
+- DataID: `opc-notification-dev.yml` / `opc-notification-prod.yml`
+- 推送命令: `bash deploy/nacos/import-dev.sh`（W49 起 NAMES 已含 `opc-notification-dev.yml`）
+
+**启动**:
+```bash
+cd springboot3
+JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
+  mvn -pl ruoyi-modules/opc-notification -am clean package \
+    -Dmaven.test.skip=true -Dspring-boot.repackage.skip=true
+JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
+  mvn -pl ruoyi-modules/opc-notification dependency:copy-dependencies \
+    -DoutputDirectory=target/dependency
+cd deploy
+docker compose build aiopc-notification
+docker compose up -d aiopc-notification
+```
+
+**注意**:
+- 必须用 `-Dmaven.test.skip=true` 绕过 `opc-common` 测试编译错误（`OpcNacosStartupCheckerTest.java`）
+- 邮件/SMS 凭据在 Nacos `opc-notification-<profile>.yml` 里；没有 Aliyun SMS key 时 provider 自动降级为 NoOp（不抛异常，仅记录日志）
+- gateway 路由 `opc-notification` → `http://aiopc-notification:9310` 必须在 `ruoyi-gateway/src/main/resources/application.yml` 存在；改完要重启 gateway
+- thin jar 模式下 docker 容器 `java -cp "xxx.jar:lib/*" Main-Class` 启动，需先 `mvn dependency:copy-dependencies`
+
+**验证**:
+```bash
+bash deploy/scripts/health-check.sh | tail -20
+# 期望: 28/28 PASS
+```
+
+**快速 smoke test**:
+```bash
+TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' \
+  http://127.0.0.1:8080/login \
+  | python -c "import sys,json;print(json.load(sys.stdin)['data']['access_token'])")
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:8080/opc/notification/inbox?page=1&pageSize=5"
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:8080/opc/notification/inbox/unread-count"
+```
+
+---
+
+**Last updated:** 2026-09-11 (W49 — added opc-notification section)
