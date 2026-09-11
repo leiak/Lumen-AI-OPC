@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.crm.mapper.CrmCustomerMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.crm.domain.CrmCustomer">
+        <id property="id" column="id" />
+        <result property="name" column="name" />
+        <result property="source" column="source" />
+        <result property="tags" column="tags" />
+        <result property="ownerId" column="owner_id" />
+        <result property="level" column="level" />
+        <result property="phone" column="phone" />
+        <result property="email" column="email" />
+        <result property="address" column="address" />
+        <result property="remark" column="remark" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+        <result property="deleted" column="deleted" />
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, name, source, tags, owner_id, level, phone, email, address, remark,
+        create_by, create_time, update_by, update_time, deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.crm.domain.CrmCustomer" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_crm_customer (
+            name, source, tags, owner_id, level, phone, email, address, remark,
+            create_by, create_time, update_by, update_time, deleted
+        ) VALUES (
+            #{name}, #{source}, #{tags}, #{ownerId}, #{level}, #{phone}, #{email}, #{address}, #{remark},
+            #{createBy}, NOW(), #{updateBy}, NOW(), #{deleted}
+        )
+    </insert>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.crm.domain.CrmCustomer">
+        UPDATE opc_crm_customer SET
+            name = #{name}, source = #{source}, tags = #{tags}, owner_id = #{ownerId}, level = #{level},
+            phone = #{phone}, email = #{email}, address = #{address}, remark = #{remark},
+            deleted = #{deleted}, update_by = #{updateBy}, update_time = NOW()
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_crm_customer
+        WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectList" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_crm_customer
+        <where>
+            deleted = 0
+            <if test="ownerId != null">AND owner_id = #{ownerId}</if>
+            <if test="level != null and level != ''">AND level = #{level}</if>
+            <if test="source != null and source != ''">AND source = #{source}</if>
+            <if test="tag != null and tag != ''">AND FIND_IN_SET(#{tag}, tags)</if>
+            <if test="keyword != null and keyword != ''">
+                AND (name LIKE CONCAT('%', #{keyword}, '%') OR phone LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="countByOwner" resultType="int">
+        SELECT COUNT(*) FROM opc_crm_customer
+        WHERE owner_id = #{ownerId} AND deleted = 0
+    </select>
+
+    <select id="countByOwnerAndLevel" resultType="int">
+        SELECT COUNT(*) FROM opc_crm_customer
+        WHERE owner_id = #{ownerId} AND level = #{level} AND deleted = 0
+    </select>
+
+</mapper>

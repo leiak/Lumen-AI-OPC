@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.crm.mapper.CrmContractMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.crm.domain.CrmContract">
+        <id property="id" column="id" />
+        <result property="customerId" column="customer_id" />
+        <result property="opportunityId" column="opportunity_id" />
+        <result property="contractNo" column="contract_no" />
+        <result property="title" column="title" />
+        <result property="amount" column="amount" />
+        <result property="status" column="status" />
+        <result property="signedAt" column="signed_at" />
+        <result property="expireAt" column="expire_at" />
+        <result property="fileUrl" column="file_url" />
+        <result property="remark" column="remark" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+        <result property="deleted" column="deleted" />
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, customer_id, opportunity_id, contract_no, title, amount, status,
+        signed_at, expire_at, file_url, remark,
+        create_by, create_time, update_by, update_time, deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.crm.domain.CrmContract" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_crm_contract (
+            customer_id, opportunity_id, contract_no, title, amount, status,
+            signed_at, expire_at, file_url, remark,
+            create_by, create_time, update_by, update_time, deleted
+        ) VALUES (
+            #{customerId}, #{opportunityId}, #{contractNo}, #{title}, #{amount}, #{status},
+            #{signedAt}, #{expireAt}, #{fileUrl}, #{remark},
+            #{createBy}, NOW(), #{updateBy}, NOW(), #{deleted}
+        )
+    </insert>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.crm.domain.CrmContract">
+        UPDATE opc_crm_contract SET
+            customer_id = #{customerId}, opportunity_id = #{opportunityId}, title = #{title},
+            amount = #{amount}, status = #{status}, signed_at = #{signedAt}, expire_at = #{expireAt},
+            file_url = #{fileUrl}, remark = #{remark},
+            deleted = #{deleted}, update_by = #{updateBy}, update_time = NOW()
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_crm_contract
+        WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectByCustomerId" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_crm_contract
+        WHERE customer_id = #{customerId} AND deleted = 0
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="countByContractNo" resultType="int">
+        SELECT COUNT(*) FROM opc_crm_contract
+        WHERE contract_no = #{contractNo}
+    </select>
+
+</mapper>

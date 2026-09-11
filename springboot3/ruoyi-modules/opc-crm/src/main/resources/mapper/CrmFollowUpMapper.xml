@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.crm.mapper.CrmFollowUpMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.crm.domain.CrmFollowUp">
+        <id property="id" column="id" />
+        <result property="customerId" column="customer_id" />
+        <result property="contactId" column="contact_id" />
+        <result property="type" column="type" />
+        <result property="content" column="content" />
+        <result property="nextAt" column="next_at" />
+        <result property="ownerId" column="owner_id" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+        <result property="deleted" column="deleted" />
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, customer_id, contact_id, type, content, next_at, owner_id,
+        create_by, create_time, update_by, update_time, deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.crm.domain.CrmFollowUp" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_crm_follow_up (
+            customer_id, contact_id, type, content, next_at, owner_id,
+            create_by, create_time, update_by, update_time, deleted
+        ) VALUES (
+            #{customerId}, #{contactId}, #{type}, #{content}, #{nextAt}, #{ownerId},
+            #{createBy}, NOW(), #{updateBy}, NOW(), #{deleted}
+        )
+    </insert>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.crm.domain.CrmFollowUp">
+        UPDATE opc_crm_follow_up SET
+            customer_id = #{customerId}, contact_id = #{contactId}, type = #{type},
+            content = #{content}, next_at = #{nextAt}, owner_id = #{ownerId},
+            deleted = #{deleted}, update_by = #{updateBy}, update_time = NOW()
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_crm_follow_up
+        WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectByCustomerId" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_crm_follow_up
+        WHERE customer_id = #{customerId} AND deleted = 0
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectByOwnerId" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_crm_follow_up
+        WHERE owner_id = #{ownerId} AND deleted = 0
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectUpcoming" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_crm_follow_up
+        <where>
+            deleted = 0
+            AND next_at IS NOT NULL
+            <if test="ownerId != null">AND owner_id = #{ownerId}</if>
+            <if test="now != null">AND next_at &gt;= #{now}</if>
+        </where>
+        ORDER BY next_at ASC
+    </select>
+
+    <update id="deleteById">
+        UPDATE opc_crm_follow_up
+        SET deleted = 1, update_time = NOW()
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+</mapper>

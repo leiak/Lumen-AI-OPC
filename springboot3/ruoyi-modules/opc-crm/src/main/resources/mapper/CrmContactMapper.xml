@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.crm.mapper.CrmContactMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.crm.domain.CrmContact">
+        <id property="id" column="id" />
+        <result property="customerId" column="customer_id" />
+        <result property="name" column="name" />
+        <result property="phone" column="phone" />
+        <result property="email" column="email" />
+        <result property="position" column="position" />
+        <result property="isPrimary" column="is_primary" />
+        <result property="remark" column="remark" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+        <result property="deleted" column="deleted" />
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, customer_id, name, phone, email, position, is_primary, remark,
+        create_by, create_time, update_by, update_time, deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.crm.domain.CrmContact" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_crm_contact (
+            customer_id, name, phone, email, position, is_primary, remark,
+            create_by, create_time, update_by, update_time, deleted
+        ) VALUES (
+            #{customerId}, #{name}, #{phone}, #{email}, #{position}, #{isPrimary}, #{remark},
+            #{createBy}, NOW(), #{updateBy}, NOW(), #{deleted}
+        )
+    </insert>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.crm.domain.CrmContact">
+        UPDATE opc_crm_contact SET
+            customer_id = #{customerId}, name = #{name}, phone = #{phone}, email = #{email},
+            position = #{position}, is_primary = #{isPrimary}, remark = #{remark},
+            deleted = #{deleted}, update_by = #{updateBy}, update_time = NOW()
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_crm_contact
+        WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectByCustomerId" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_crm_contact
+        WHERE customer_id = #{customerId} AND deleted = 0
+        ORDER BY is_primary DESC, create_time DESC
+    </select>
+
+    <update id="unsetPrimaryForCustomer">
+        UPDATE opc_crm_contact
+        SET is_primary = 0, update_time = NOW()
+        WHERE customer_id = #{customerId} AND is_primary = 1 AND deleted = 0
+    </update>
+
+    <update id="setPrimary">
+        UPDATE opc_crm_contact
+        SET is_primary = 1, update_time = NOW()
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <update id="deleteById">
+        UPDATE opc_crm_contact
+        SET deleted = 1, update_time = NOW()
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+</mapper>
