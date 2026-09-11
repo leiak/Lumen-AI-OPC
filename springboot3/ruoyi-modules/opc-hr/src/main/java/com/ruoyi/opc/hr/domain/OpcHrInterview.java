@@ -7,7 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Data
 @Builder
@@ -24,16 +24,16 @@ public class OpcHrInterview {
     @JsonProperty("interviewer_id")
     private Long interviewerId;
 
-    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @JsonProperty("scheduled_at")
-    private Date scheduledAt;
+    private LocalDateTime scheduledAt;
 
     @JsonProperty("duration_min")
     private Integer durationMin;
     private String feedback;
     private String result;
 
-    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @JsonProperty("create_time")
-    private Date createTime;
+    private LocalDateTime createTime;
 }

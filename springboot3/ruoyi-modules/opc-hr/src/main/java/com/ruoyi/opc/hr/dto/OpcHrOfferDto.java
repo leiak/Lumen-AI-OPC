@@ -4,7 +4,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.math.BigDecimal;
-import java.util.Date;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Data
 public class OpcHrOfferDto {
@@ -13,8 +14,8 @@ public class OpcHrOfferDto {
     private Long applicationId;
     private BigDecimal salary;
     @JsonProperty("start_date")
-    private Date startDate;
+    private LocalDate startDate;
     @JsonProperty("expire_at")
-    private Date expireAt;
+    private LocalDateTime expireAt;
     private String status;
 }

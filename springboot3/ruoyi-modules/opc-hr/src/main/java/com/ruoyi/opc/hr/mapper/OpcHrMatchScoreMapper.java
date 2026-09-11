@@ -12,6 +12,7 @@ public interface OpcHrMatchScoreMapper {
     List<OpcHrMatchScore> selectByJobId(@Param("companyId") Long companyId,
                                         @Param("jobId") Long jobId);
 
-    OpcHrMatchScore selectByJobCandidate(@Param("jobId") Long jobId,
+    OpcHrMatchScore selectByJobCandidate(@Param("companyId") Long companyId,
+                                         @Param("jobId") Long jobId,
                                          @Param("candidateId") Long candidateId);
 }
