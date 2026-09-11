@@ -1,6 +1,6 @@
 # OPC 验证报告索引
 
-> 41 个 `OPC-W*-VERIFICATION-*.md` + 1 个 M4 部署报告。按周次 + 里程碑归档。
+> 48 个 `OPC-W*-VERIFICATION-*.md` + 1 个 M4 部署报告。按周次 + 里程碑归档。
 
 ## 周次速览
 
@@ -18,6 +18,7 @@
 | [W10](#week-10) | all-remaining (其余单元测试补齐) | 1 |
 | [W11](#week-11) | 前端单测 (W11) | 1 |
 | [W12](#week-12) | 前端单测 (W12) | 1 |
+| [W49](#week-49) | opc-notification 服务全栈交付 | 7 |
 | [late/](#late) | W19-W22 api 契约 + SFC Logo | 1 |
 | [M4](#m4-insight) | Insight MVP 部署 + 验证 | 2 |
 
@@ -128,6 +129,20 @@ mutation testing 三部曲。
 | 文件 | 主题 |
 |------|------|
 | [OPC-W12-VERIFICATION-frontend-tests.md](./week-12/OPC-W12-VERIFICATION-frontend-tests.md) | 前端单测 (W12) |
+
+## Week 49
+
+7 个文件, 覆盖 opc-notification 服务全栈交付 (后端 41 Java + 前端 Inbox + Helm + E2E + RECOVERY)。
+
+| 文件 | 主题 |
+|------|------|
+| [opc-notification-task13-verify.md](./week-49/opc-notification-task13-verify.md) | Task 13: Nacos push + 容器启动 + smoke |
+| [opc-notification-task14-health-check.md](./week-49/opc-notification-task14-health-check.md) | Task 14: health-check.sh 6 项 + 3 bug fixes (Nacos name / path prefix / static 判定) |
+| [opc-notification-task15-recovery.md](./week-49/opc-notification-task15-recovery.md) | Task 15: RECOVERY.md §10 + import-dev.sh NAMES |
+| [opc-notification-task16-helm.md](./week-49/opc-notification-task16-helm.md) | Task 16: Helm chart notification 服务 (4 values × 2 templates) |
+| [opc-notification-task17-frontend.md](./week-49/opc-notification-task17-frontend.md) | Task 17: 前端 Inbox.vue + WS composable + API |
+| [opc-notification-task18-e2e.md](./week-49/opc-notification-task18-e2e.md) | Task 18: notification_e2e.py 11/11 PASS |
+| [opc-notification-week49-verification.md](./week-49/opc-notification-week49-verification.md) | W49 验收报告 (Task 19) |
 
 ## Late
 
