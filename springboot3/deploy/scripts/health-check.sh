@@ -5,10 +5,12 @@
 # 用途: 部署后 / 改配置后 / 每周巡检
 #
 # 验证项:
-#   1) 13 个核心容器 Up
+#   1) 16 个核心容器 Up
 #   2) Nacos 注册中心 / 配置中心 健康
-#   3) 13 个 /opc/** 接口返回 R-code 200 (登录后)
+#   3) MySQL 抽查
 #   4) 前端 nginx 可访问
+#   5) 13 个 /opc/** 接口返回 R-code 200 (登录后)
+#   6) opc-notification 6 项健康检查 (W49 Task 14)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -197,6 +199,130 @@ check_mysql() {
   fi
 }
 
+# ---------- 6. opc-notification 健康 ----------
+check_notification() {
+  hr
+  echo "[6] opc-notification 健康检查 (W49 Task 14)"
+  hr
+
+  # 6.1 容器 Up
+  local c="aiopc-notification"
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${c}$"; then
+    status=$(docker inspect --format '{{.State.Status}}' "${c}" 2>/dev/null)
+    if [[ "${status}" == "running" ]]; then
+      ok "${c} running"
+    else
+      nok "${c} 状态异常: ${status}"
+    fi
+  else
+    nok "${c} 不存在"
+  fi
+
+  # 6.2 Nacos 注册 (opc-dev namespace)
+  local nacos_url="http://${GATEWAY_HOST}:${NACOS_PORT}/nacos/v1/ns/instance/list?serviceName=aiopc-notification&namespaceId=opc-dev"
+  local nacos_body
+  nacos_body=$(curl -sf -m 10 "${nacos_url}" 2>/dev/null) || nacos_body=""
+  local healthy_count
+  healthy_count=$(echo "${nacos_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin)
+    hosts = d.get('hosts', [])
+    print(len(hosts) if hosts else 0)
+except Exception:
+    print(0)
+" 2>/dev/null)
+  if [[ "${healthy_count}" -ge 1 ]]; then
+    ok "Nacos aiopc-notification 注册 ${healthy_count} 实例 (opc-dev)"
+  else
+    nok "Nacos aiopc-notification 未注册: ${nacos_body:-<no response>}"
+  fi
+
+  # 6.3 直接 /actuator/health (绕过网关直连 9310)
+  local health_body
+  health_body=$(curl -sf -m 10 "http://127.0.0.1:9310/actuator/health" 2>/dev/null) || health_body=""
+  if [[ "${health_body}" == "UP" ]] || echo "${health_body}" | grep -q '"status":"UP"'; then
+    ok "opc-notification /actuator/health UP"
+  else
+    nok "opc-notification /actuator/health: ${health_body:-<no response>}"
+  fi
+
+  # 6.4 业务接口 (需登录)
+  local login_body
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/login" 2>/dev/null) || true
+  if [[ -z "${login_body}" ]]; then
+    warn "登录失败, 跳过 opc-notification 业务接口"
+    return
+  fi
+  local token
+  token=$(echo "${login_body}" | python -c "
+import sys,json
+d = json.load(sys.stdin).get('data', {})
+print(d.get('token','') or d.get('access_token',''))
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    warn "未拿到 token, 跳过 opc-notification 业务接口"
+    return
+  fi
+
+  # 6.4 inbox 列表 (校验 body.code==200, 避免网关静态回退假阳性)
+  local inbox_body
+  inbox_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/prod-api/opc/notification/inbox?page=1&pageSize=5" 2>/dev/null) || inbox_body=""
+  local inbox_code
+  inbox_code=$(echo "${inbox_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${inbox_code}" == "200" ]]; then
+    ok "/prod-api/opc/notification/inbox body.code=200"
+  elif echo "${inbox_body}" | grep -q "No static resource"; then
+    nok "/prod-api/opc/notification/inbox 网关未路由 (静态回退): ${inbox_body:0:120}"
+  else
+    nok "/prod-api/opc/notification/inbox body.code=${inbox_code}: ${inbox_body:0:120}"
+  fi
+
+  # 6.5 unread-count (校验 body.code=200 且 data:<int>)
+  local unread_body
+  unread_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/prod-api/opc/notification/inbox/unread-count" 2>/dev/null) || unread_body=""
+  if echo "${unread_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin)
+    sys.exit(0 if d.get('code')==200 and isinstance(d.get('data'), int) else 1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null; then
+    ok "/prod-api/opc/notification/inbox/unread-count body.code=200 data:<int> (${unread_body})"
+  elif echo "${unread_body}" | grep -q "No static resource"; then
+    nok "/prod-api/opc/notification/inbox/unread-count 网关未路由 (静态回退): ${unread_body:0:120}"
+  else
+    nok "/prod-api/opc/notification/inbox/unread-count: ${unread_body:-<no response>}"
+  fi
+
+  # 6.6 Gateway 路由解析 — controller 真 404 不含 "No static resource", 静态回退含
+  local route_body
+  route_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/prod-api/opc/notification/inbox/__no_such_path__" 2>/dev/null) || route_body=""
+  if [[ -n "${route_body}" ]] && echo "${route_body}" | grep -q '^{' && ! echo "${route_body}" | grep -q "No static resource"; then
+    ok "Gateway /opc/notification/** 路由到 aiopc-notification (controller JSON 404)"
+  elif echo "${route_body}" | grep -q "No static resource"; then
+    nok "Gateway /opc/notification/** 未路由 (静态回退): ${route_body:0:120}"
+  else
+    nok "Gateway /opc/notification/** 异常响应: ${route_body:0:120}"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -207,6 +333,7 @@ main() {
   check_mysql
   check_frontend
   login_and_check
+  check_notification
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"
