@@ -109,6 +109,11 @@ spring:
               predicates:
                 - Path=/opc/community/**
 
+            - id: opc-hr
+              uri: http://aiopc-hr:9322
+              predicates:
+                - Path=/opc/hr/**
+
 security:
   ignore:
     whites:
@@ -154,6 +159,14 @@ security:
       - /opc/community/module/**
       - /opc/community/comment
       - /opc/community/rating
+
+      # W51: OPC HR 公开浏览 (dashboard 看板 + 职位列表 — 公开访问)
+      # 创建 JD / 投递 / 面试 / offer 仍需鉴权 — 由 service 层 SecurityUtils 校验
+      # GET dashboard = 看板,/job/list = 公开 JD 列表,/job/{id} = 公开 JD 详情
+      # POST /job /application /interview /offer 不在白名单 → 需登录
+      - /opc/hr/dashboard
+      - /opc/hr/job/list
+      - /opc/hr/job/**
 
 # 文档参考
 logging:
