@@ -29,6 +29,20 @@ OPC = **One-Person Company**，核心假设是未来大量"一人公司"会涌�
 
 ---
 
+## OPC 模块展示
+
+> 已交付业务模块的运行截图（持续更新中）
+
+### opc-community · 模块市场（W52）
+
+匿名浏览 + AI 推荐 + 详情抽屉 + 评分评论（参考 `[[opc-community-w52]]`）。
+
+| 登录 | 模块市场 | 类别筛选（CRM） | 详情抽屉 |
+|:---:|:---:|:---:|:---:|
+| ![login](./images/opc-community/01-login.png) | ![market](./images/opc-community/02-market.png) | ![filter](./images/opc-community/03-market-filter-crm.png) | ![drawer](./images/opc-community/04-market-detail-drawer.png) |
+
+---
+
 ## 技术栈
 
 ### 后端（`springboot3/`）
