@@ -110,6 +110,12 @@ export const constantRoutes = [
         meta: { title: 'OPC 首页', icon: 'home', affix: true }
       },
       {
+        path: 'community/market',
+        component: () => import('@/views/opc/community/Market.vue'),
+        name: 'OpcCommunityMarket',
+        meta: { title: '模块市场', icon: 'shop' }
+      },
+      {
         path: 'user/profile',
         component: () => import('@/views/opc/user/profile.vue'),
         name: 'OpcUserProfile',

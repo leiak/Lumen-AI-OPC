@@ -1,0 +1,52 @@
+# Tomcat — W52 中文乱码修复: charset=UTF-8 让 Jackson 序列化中文正确编码
+server:
+  port: ${SERVER_PORT:9316}
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+  tomcat:
+    uri-encoding: UTF-8
+
+# Spring
+spring:
+  application:
+    name: opc-community
+  profiles:
+    # 默认 dev；prod 通过 -Dspring.profiles.active=prod 或 SPRING_PROFILES_ACTIVE=prod 切换
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  cloud:
+    nacos:
+      # ====== 服务发现 ======
+      discovery:
+        server-addr: ${NACOS_SERVER:nacos1:8848}
+        namespace: ${NACOS_NAMESPACE:opc-dev}
+        # prod 必须显式开启；fail-fast 后启动失败直接退出
+        fail-fast: true
+        fail-fast-on-connection-refused: true
+      # ====== 配置中心 ======
+      config:
+        server-addr: ${NACOS_SERVER:nacos1:8848}
+        namespace: ${NACOS_NAMESPACE:opc-dev}
+        file-extension: yml
+        fail-fast: true
+        refresh-enabled: true
+        retry-time: 3000
+        max-retry-time: 60000
+  config:
+    file-extension: yml
+    import:
+      - nacos:application-${spring.profiles.active}.${spring.config.file-extension}
+      - nacos:${spring.application.name}-${spring.profiles.active}.${spring.config.file-extension}
+
+# Jasypt
+jasypt:
+  encryptor:
+    password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
+    algorithm: PBEWithMD5AndDES
+
+# 日志
+logging:
+  level:
+    com.ruoyi.opc: debug
+    com.alibaba.cloud.nacos: info

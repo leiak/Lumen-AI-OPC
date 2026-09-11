@@ -104,6 +104,11 @@ spring:
               predicates:
                 - Path=/opc/crm/**
 
+            - id: opc-community
+              uri: http://aiopc-community:9316
+              predicates:
+                - Path=/opc/community/**
+
 security:
   ignore:
     whites:
@@ -140,6 +145,15 @@ security:
       # 必须白名单否则 AuthFilter 报 "令牌不能为空"
       - /opc/notification/ws
       - /opc/notification/ws/**
+
+      # W52: OPC Community 公开浏览 (模块市场 / 评论 / 评分 公开)
+      # install / create 评论仍需鉴权 — 由 service 层 SecurityUtils 校验
+      # GET 是 list / detail,POST 是 create / install — POST 不在白名单 → 需登录
+      # /module/{id} = detail,/comment?moduleId=N = list,/rating?moduleId=N = list
+      - /opc/community/module/list
+      - /opc/community/module/**
+      - /opc/community/comment
+      - /opc/community/rating
 
 # 文档参考
 logging:

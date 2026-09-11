@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.community.mapper.CommunityModuleMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.community.domain.CommunityModule">
+        <id     column="id"             property="id"/>
+        <result column="code"           property="code"/>
+        <result column="name"           property="name"/>
+        <result column="category"       property="category"/>
+        <result column="description"    property="description"/>
+        <result column="owner_id"       property="ownerId"/>
+        <result column="owner_name"     property="ownerName"/>
+        <result column="icon"           property="icon"/>
+        <result column="rating"         property="rating"/>
+        <result column="rating_count"   property="ratingCount"/>
+        <result column="install_count"  property="installCount"/>
+        <result column="comment_count"  property="commentCount"/>
+        <result column="status"         property="status"/>
+        <result column="tags"           property="tags"/>
+        <result column="create_time"    property="createTime"/>
+        <result column="update_time"    property="updateTime"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, code, name, category, description, owner_id, owner_name, icon,
+        rating, rating_count, install_count, comment_count, status, tags,
+        create_time, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.community.domain.CommunityModule"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_community_module
+        (code, name, category, description, owner_id, owner_name, icon, tags,
+         rating, rating_count, install_count, comment_count, status, create_time, update_time)
+        VALUES
+        (#{code}, #{name}, #{category}, #{description}, #{ownerId}, #{ownerName}, #{icon}, #{tags},
+         0.00, 0, 0, 0, 'PUBLISHED', NOW(), NOW())
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_community_module WHERE id = #{id} AND status != 'DELETED'
+    </select>
+
+    <select id="selectByCode" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_community_module WHERE code = #{code} AND status != 'DELETED'
+    </select>
+
+    <select id="selectList" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_community_module
+        <where>
+            status != 'DELETED'
+            <if test="category != null and category != ''">
+                AND category = #{category}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (name LIKE CONCAT('%', #{keyword}, '%')
+                  OR code LIKE CONCAT('%', #{keyword}, '%')
+                  OR description LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY install_count DESC, rating DESC, id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countList" resultType="int">
+        SELECT COUNT(*) FROM opc_community_module
+        <where>
+            status != 'DELETED'
+            <if test="category != null and category != ''">
+                AND category = #{category}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (name LIKE CONCAT('%', #{keyword}, '%')
+                  OR code LIKE CONCAT('%', #{keyword}, '%')
+                  OR description LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+    </select>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.community.domain.CommunityModule">
+        UPDATE opc_community_module
+        <set>
+            <if test="name != null">name = #{name},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="icon != null">icon = #{icon},</if>
+            <if test="tags != null">tags = #{tags},</if>
+            <if test="status != null">status = #{status},</if>
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <update id="incrementInstall">
+        UPDATE opc_community_module SET install_count = install_count + 1, update_time = NOW() WHERE id = #{id}
+    </update>
+
+    <update id="updateRating">
+        UPDATE opc_community_module SET rating = #{rating}, rating_count = #{ratingCount}, update_time = NOW() WHERE id = #{id}
+    </update>
+
+    <update id="incrementCommentCount">
+        UPDATE opc_community_module SET comment_count = comment_count + #{delta}, update_time = NOW() WHERE id = #{id}
+    </update>
+</mapper>

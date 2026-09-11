@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.community.mapper.CommunityRatingMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.community.domain.CommunityRating">
+        <id     column="id"         property="id"/>
+        <result column="module_id"  property="moduleId"/>
+        <result column="user_id"    property="userId"/>
+        <result column="score"      property="score"/>
+        <result column="review"     property="review"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="upsert" parameterType="com.ruoyi.opc.community.domain.CommunityRating"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO opc_community_rating
+        (module_id, user_id, score, review, create_time, update_time)
+        VALUES
+        (#{moduleId}, #{userId}, #{score}, #{review}, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE
+        score = VALUES(score),
+        review = VALUES(review),
+        update_time = NOW()
+    </insert>
+
+    <select id="selectByModuleAndUser" resultMap="BaseResultMap">
+        SELECT id, module_id, user_id, score, review, create_time, update_time
+        FROM opc_community_rating
+        WHERE module_id = #{moduleId} AND user_id = #{userId}
+    </select>
+
+    <select id="selectByModuleId" resultMap="BaseResultMap">
+        SELECT id, module_id, user_id, score, review, create_time, update_time
+        FROM opc_community_rating
+        WHERE module_id = #{moduleId}
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="averageForModule" resultType="java.math.BigDecimal">
+        SELECT IFNULL(AVG(score), 0) FROM opc_community_rating WHERE module_id = #{moduleId}
+    </select>
+
+    <select id="countForModule" resultType="int">
+        SELECT COUNT(*) FROM opc_community_rating WHERE module_id = #{moduleId}
+    </select>
+</mapper>

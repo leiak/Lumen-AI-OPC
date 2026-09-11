@@ -1,0 +1,51 @@
+# ============================================================
+# OPC Community Nacos dev 配置 (W52 MVP)
+# 端口: 9316
+# 结构与 opc-crm-dev.yml 完全一致 (避免 dynamic-datasource 兼容问题)
+# ============================================================
+
+server:
+  port: 9316
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+  tomcat:
+    uri-encoding: UTF-8
+spring:
+  application:
+    name: opc-community
+  datasource:
+    dynamic:
+      primary: master
+      datasource:
+        master:
+          url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/${MYSQL_DB:ry-vue-opc}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+          username: ${MYSQL_USER:root}
+          password: ${MYSQL_PASSWORD:Opc@2026!}
+  redis:
+    host: ${REDIS_HOST:redis}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+  # W52 修复中文 mojibake: 响应编码 UTF-8
+  http:
+    encoding:
+      charset: UTF-8
+      force: true
+  jackson:
+    default-property-inclusion: non_null
+
+# OPC Community 业务配置
+opc:
+  community:
+    base-url: http://aiopc-community:9316
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.opc.community.domain
+  configuration:
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    com.ruoyi.opc.community: debug

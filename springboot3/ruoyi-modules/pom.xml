@@ -22,6 +22,7 @@
         <module>opc-insight</module>
         <module>opc-notification</module>
         <module>opc-crm</module>
+        <module>opc-community</module>
     </modules>
 
     <artifactId>ruoyi-modules</artifactId>

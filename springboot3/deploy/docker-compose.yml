@@ -550,6 +550,39 @@ services:
       - aiopc-net
     restart: unless-stopped
 
+  # ============ OPC Community（业务模块市场）============
+  aiopc-community:
+    build:
+      context: ..
+      dockerfile: ruoyi-modules/opc-community/Dockerfile
+    image: aiopc-community:latest
+    container_name: aiopc-community
+    ports:
+      - "9316:9316"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
+      SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE: opc-dev
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos1:8848
+      NACOS_NAMESPACE: opc-dev
+      JASYPT_PASSWORD: OpcEncrypt!2026
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DB: ry-vue-opc
+      MYSQL_USER: root
+      MYSQL_PASSWORD: Opc@2026!
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: Opc@2026!
+      SERVER_PORT: "9316"
+    depends_on:
+      - nacos1
+      - mysql
+      - redis
+    networks:
+      - aiopc-net
+    restart: unless-stopped
+
 networks:
   aiopc-net:
     driver: bridge
