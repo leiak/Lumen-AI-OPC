@@ -213,6 +213,38 @@ export const constantRoutes = [
         component: () => import('@/views/opc/crm/FollowUpTimeline.vue'),
         name: 'OpcFollowUpTimeline',
         meta: { title: '跟进记录', icon: 'time' }
+      },
+      {
+        path: 'hr/dashboard',
+        component: () => import('@/views/opc/hr/dashboard.vue'),
+        name: 'OpcHrDashboard',
+        meta: { title: 'HR 仪表盘', icon: 'data-analysis' }
+      },
+      {
+        path: 'hr/job',
+        component: () => import('@/views/opc/hr/job/index.vue'),
+        name: 'OpcHrJobList',
+        meta: { title: 'JD 列表', icon: 'briefcase' }
+      },
+      {
+        path: 'hr/job/:id(\\d+)',
+        component: () => import('@/views/opc/hr/job/detail.vue'),
+        name: 'OpcHrJobDetail',
+        meta: { title: 'JD 详情', activeMenu: '/opc/hr/job' },
+        hidden: true
+      },
+      {
+        path: 'hr/candidate',
+        component: () => import('@/views/opc/hr/candidate/index.vue'),
+        name: 'OpcHrCandidateList',
+        meta: { title: '候选人', icon: 'user' }
+      },
+      {
+        path: 'hr/candidate/:id(\\d+)',
+        component: () => import('@/views/opc/hr/candidate/detail.vue'),
+        name: 'OpcHrCandidateDetail',
+        meta: { title: '候选人详情', activeMenu: '/opc/hr/candidate' },
+        hidden: true
       }
     ]
   },
