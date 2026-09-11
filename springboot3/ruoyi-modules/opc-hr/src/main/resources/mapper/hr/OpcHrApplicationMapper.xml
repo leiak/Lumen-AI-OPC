@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.hr.mapper.OpcHrApplicationMapper">
+
+    <sql id="BaseColumns">
+        id, company_id, job_id, candidate_id, channel, score, score_reason,
+        status, current_stage, applied_at, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.hr.domain.OpcHrApplication">
+        INSERT INTO opc_hr_application (id, company_id, job_id, candidate_id, channel,
+                                        score, score_reason, status, current_stage, applied_at)
+        VALUES (#{id}, #{companyId}, #{jobId}, #{candidateId}, #{channel},
+                #{score}, #{scoreReason}, #{status}, #{currentStage}, #{appliedAt})
+    </insert>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.hr.domain.OpcHrApplication">
+        UPDATE opc_hr_application
+        <set>
+            <if test="score != null">score = #{score},</if>
+            <if test="scoreReason != null">score_reason = #{scoreReason},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="currentStage != null">current_stage = #{currentStage},</if>
+        </set>
+        WHERE id = #{id} AND company_id = #{companyId}
+    </update>
+
+    <select id="selectById" resultType="com.ruoyi.opc.hr.domain.OpcHrApplication">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_hr_application
+        WHERE id = #{id} AND company_id = #{companyId}
+    </select>
+
+    <select id="selectList" resultType="com.ruoyi.opc.hr.domain.OpcHrApplication">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_hr_application
+        <where>
+            company_id = #{companyId}
+            <if test="jobId != null">AND job_id = #{jobId}</if>
+            <if test="candidateId != null">AND candidate_id = #{candidateId}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+        </where>
+        ORDER BY applied_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countList" resultType="int">
+        SELECT COUNT(1)
+        FROM opc_hr_application
+        <where>
+            company_id = #{companyId}
+            <if test="jobId != null">AND job_id = #{jobId}</if>
+            <if test="candidateId != null">AND candidate_id = #{candidateId}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+        </where>
+    </select>
+
+    <select id="countByStatusForDashboard" resultType="java.util.Map">
+        SELECT status AS status, COUNT(1) AS count
+        FROM opc_hr_application
+        WHERE company_id = #{companyId}
+          AND applied_at &gt;= DATE_SUB(NOW(), INTERVAL #{sinceDays} DAY)
+        GROUP BY status
+    </select>
+
+    <select id="avgHireDaysForAcceptedOffers" resultType="java.lang.Double">
+        SELECT AVG(DATEDIFF(o.responded_at, a.applied_at)) AS avg_days
+        FROM opc_hr_offer o
+        JOIN opc_hr_application a ON o.application_id = a.id
+        WHERE a.company_id = #{companyId}
+          AND o.status = 'ACCEPTED'
+          AND o.responded_at &gt;= DATE_SUB(NOW(), INTERVAL #{sinceDays} DAY)
+    </select>
+</mapper>
