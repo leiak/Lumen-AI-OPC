@@ -176,6 +176,12 @@ export const constantRoutes = [
         component: () => import('@/views/opc/llm/chat.vue'),
         name: 'LlmChat',
         meta: { title: 'AI 对话', icon: 'chat' }
+      },
+      {
+        path: 'inbox',
+        component: () => import('@/views/opc/inbox.vue'),
+        name: 'OpcInbox',
+        meta: { title: '通知中心', icon: 'bell' }
       }
     ]
   },
