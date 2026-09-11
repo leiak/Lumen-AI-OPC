@@ -99,6 +99,11 @@ spring:
               predicates:
                 - Path=/opc/notification/**
 
+            - id: opc-crm
+              uri: http://aiopc-crm:9312
+              predicates:
+                - Path=/opc/crm/**
+
 security:
   ignore:
     whites:

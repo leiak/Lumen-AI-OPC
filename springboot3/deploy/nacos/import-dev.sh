@@ -30,6 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAMES=(
   "application-dev.yml"
   "opc-notification-dev.yml"
+  "opc-crm-dev.yml"
 )
 
 # ---------- 单文件推送（Python urllib + content 走 stdin）----------
