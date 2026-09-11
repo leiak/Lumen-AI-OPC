@@ -84,6 +84,11 @@ spring:
               predicates:
                 - Path=/opc/finance/**
 
+            - id: opc-notification
+              uri: http://aiopc-notification:9310
+              predicates:
+                - Path=/opc/notification/**
+
 security:
   ignore:
     whites:
