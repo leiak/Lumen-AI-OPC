@@ -339,4 +339,67 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 ---
 
-**Last updated:** 2026-09-11 (W50 — added opc-crm section)
+**Last updated:** 2026-09-11 (W50 — added opc-crm section + §12 状态快照 + 一键 deploy.sh)
+
+---
+
+## 12. 全栈状态快照 (W50 固化)
+
+> 团队 onboarding / 容量规划 / 异常回滚对账 时,跑一次导出当前 deploy 状态。
+
+### 一键快照
+
+```bash
+cd springboot3/deploy/scripts
+bash snapshot-stack.sh                     # 默认今天日期
+bash snapshot-stack.sh 2026-09-11          # 指定日期(写入 git 历史可追溯)
+```
+
+### 产物 (git ignored)
+
+```
+deploy/snapshot-containers-<date>.txt        # 所有 aiopc-* 容器 (running + all)
+deploy/mysql/snapshot-info-<date>.json       # 74 张表 + 行数 (含 crm/notification 分组)
+deploy/mysql/snapshot-tables-<date>.txt      # 同上,人类可读
+deploy/redis/snapshot-<date>.txt             # DBSIZE + 按前缀分组 (login_tokens/sys_dict/sys_config)
+deploy/nacos/configs-list-<date>.txt         # 注册服务清单 + 已知 DataID 存在性
+```
+
+> 跑完即可丢 `.gitignore` (整个 `deploy/{mysql,redis,nacos,nacos/data,backups}/` + `deploy/snapshot-*` 都 git ignored)。
+
+### 典型用例
+
+| 场景 | 用 |
+|------|---|
+| 团队成员第一次 onboarding | 看 `snapshot-info-<date>.json` 知道有几张表 |
+| 想验证 Redis 缓存清理有没有误删 | 看 `redis/snapshot-<date>.txt` 前后比对 |
+| Nacos 漂移告警 | 看 `nacos/configs-list-<date>.txt` 对比 import-dev.sh 的 NAMES |
+| 容器异常退出 | 看 `snapshot-containers-<date>.txt` 找 missing 容器 |
+
+---
+
+## 13. 一键全栈 deploy (`deploy.sh`)
+
+> 任何协作者第一次 clone repo 后,**只跑这一个脚本**就能拉起完整 aiopc stack。
+
+```bash
+cd springboot3/deploy
+bash deploy.sh                             # 拉起 mysql + nacos + 业务容器 (build 镜像)
+bash deploy.sh status                      # 等价 docker compose ps
+bash deploy.sh stop                        # 停所有容器,保留 host 数据
+bash deploy.sh nuke                        # ⚠️ 删 mysql/redis/nacos 数据卷重新初始化
+```
+
+### 行为
+
+1. 检测 `.env`,缺失则提示 `cp .env.example .env`
+2. 检测 Docker 是否在跑
+3. `docker compose up -d nacos1 mysql redis` 先起基建 (mysql 自动跑 initdb.d)
+4. 等 30s 让 MySQL 建库
+5. 跑 `nacos/import-dev.sh` 把 dev 配置推 Nacos
+6. `docker compose up -d` 起业务容器 (首次会 build 镜像, ~8 分钟)
+7. 提示跑 `bash scripts/health-check.sh` 验证
+
+> ⚠️ `deploy.sh` 不重建镜像。如果改了 OPC 服务源码,先 `mvn package + mvn dependency:copy-dependencies`,再 `deploy.sh rebuild crm` (或 `rebuild all` 重建所有 OPC 模块镜像)。
+
+---

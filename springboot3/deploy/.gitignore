@@ -7,6 +7,16 @@ qdrant/data/*
 minio/data/*
 es/data/*
 
+# W50 固化: snapshot-stack.sh 生成的运行时快照 (容器/MySQL/Redis/Nacos),
+# 每次跑会更新,日期后缀。保留在 host 上,但不入 repo。
+mysql/snapshot-*.json
+mysql/snapshot-*.txt
+redis/snapshot-*.txt
+nacos/configs-list-*.txt
+snapshot-containers-*.txt
+snapshot-info-*.json
+.tmp-rows-*.tsv
+
 # nacos/conf is special — we commit application.properties but should not
 # commit user-added cluster configs (handled by nacos ops scripts).
 nacos/conf/cluster.conf

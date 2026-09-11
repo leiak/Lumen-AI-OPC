@@ -63,8 +63,25 @@ case "${cmd}" in
     ls -lht "${BACKUP_DIR}"/aiopc-mysql-*.sql.gz 2>/dev/null || echo "(无备份)"
     ;;
 
+  list-tables)
+    # 列出当前 DB 下所有表 + 关键业务表行数 (W50 固化:crm + notification)
+    echo "[INFO] ${DB} 表清单:"
+    docker exec "${CONTAINER}" mysql -uroot -p"${ROOT_PWD}" -N -B \
+      -e "SELECT CONCAT(TABLE_SCHEMA,'.',TABLE_NAME) AS tbl, TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA='${DB}' ORDER BY TABLE_ROWS DESC" 2>/dev/null
+    echo ""
+    echo "[INFO] 关键业务表行数:"
+    for t in opc_crm_customer opc_crm_contact opc_crm_follow_up opc_crm_opportunity \
+             opc_crm_contract opc_crm_order \
+             opc_notification_email_log opc_notification_sms_log \
+             opc_notification_template opc_notification_inbox; do
+      cnt=$(docker exec "${CONTAINER}" mysql -uroot -p"${ROOT_PWD}" -N -B \
+        -e "SELECT COUNT(*) FROM ${DB}.${t}" 2>/dev/null | tr -d '[:space:]')
+      printf "  %-32s %s\n" "${t}" "${cnt:-N/A}"
+    done
+    ;;
+
   *)
-    echo "Usage: $0 {backup|restore <file>|list}" >&2
+    echo "Usage: $0 {backup|restore <file>|list|list-tables}" >&2
     exit 1
     ;;
 esac

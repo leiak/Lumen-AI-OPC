@@ -213,6 +213,37 @@ def main():
             f.write(f"| {r[0]} | {r[1]} | `{r[2]}` | {r[3]} | {r[4]} | {r[5][:40]} | {r[6]} {mark} |\n")
     print("\nReport written to tmp_e2e/e2e_report.md")
 
+    # ============ SUB-SERVICE E2E (W49 notification + W50 crm) ============
+    # These have their own detailed scripts; run them and report pass/fail counts.
+    import subprocess
+    print("\n" + "="*60)
+    print("SUB-SERVICE E2E (notification + crm)")
+    print("="*60)
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    sub_scripts = [
+        ("notification", "notification_e2e.py"),
+        ("crm",          "crm_e2e.py"),
+    ]
+    for label, fname in sub_scripts:
+        fpath = os.path.join(script_dir, fname)
+        if not os.path.isfile(fpath):
+            print(f"  [SKIP] {label}: {fname} not found")
+            continue
+        print(f"\n--- {label.upper()} ({fname}) ---")
+        try:
+            cp = subprocess.run(
+                [sys.executable, fpath],
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                capture_output=True, text=True, timeout=300,
+            )
+            tail = "\n".join(cp.stdout.splitlines()[-15:])
+            print(tail)
+            if cp.returncode != 0:
+                print(f"  [{label}] exit={cp.returncode}")
+        except subprocess.TimeoutExpired:
+            print(f"  [TIMEOUT] {label} > 300s")
+
 
 if __name__ == "__main__":
     main()
