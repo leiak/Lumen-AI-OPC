@@ -1,0 +1,66 @@
+# ============================================================
+# opc-notification dev 配置
+# 命名空间：opc-dev
+# DataID：opc-notification-dev.yml
+# ============================================================
+
+server:
+  port: 9310
+
+spring:
+  application:
+    name: opc-notification
+  datasource:
+    dynamic:
+      primary: master
+      datasource:
+        master:
+          url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/${MYSQL_DB:ry-vue-opc}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+          username: ${MYSQL_USER:root}
+          password: ${MYSQL_PASSWORD:root}
+  redis:
+    host: ${REDIS_HOST:redis}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    timeout: 10s
+
+# 邮件（dev 指向本地 MailHog / mailpit，无需真实凭据）
+mail:
+  host: ${MAIL_HOST:smtp.dev.local}
+  port: ${MAIL_PORT:1025}
+  username: ${MAIL_USER:dev@opc.local}
+  password: ${MAIL_PASSWORD:devpass}
+  properties:
+    mail:
+      smtp:
+        auth: true
+        starttls:
+          enable: false
+        ssl:
+          enable: false
+
+# 通知中心业务配置
+opc:
+  notification:
+    email:
+      max-retries: 3
+      retry-backoff-ms: 100
+    sms:
+      provider: aliyun
+      sign-name: OPCNOTIFY
+      max-retries: 3
+      retry-backoff-ms: 100
+    # 留空 => ProviderConfig 装配 no-op SmsProvider（dev 不真发短信）
+    aliyun:
+      access-key: ${ALIYUN_ACCESS_KEY:}
+      access-secret: ${ALIYUN_ACCESS_SECRET:}
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.opc.notification.domain
+  configuration:
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    com.ruoyi.opc.notification: debug

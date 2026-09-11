@@ -1,0 +1,67 @@
+# OPC 通知中心默认配置（Nacos 中可覆盖）
+spring:
+  main:
+    allow-bean-definition-overriding: true
+  cloud:
+    # Spring Cloud OpenFeign 的 FeignClient 注册跑在 bootstrap 阶段，优先于
+    # spring.main.allow-bean-definition-overriding 加载，所以这里必须独立声明。
+    allow-bean-definition-overriding: true
+  datasource:
+    dynamic:
+      primary: master
+      datasource:
+        master:
+          # Docker 容器里 127.0.0.1 是容器本身，必须用 Docker DNS 名 'mysql'
+          url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/${MYSQL_DB:ry-vue-opc}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+          username: ${MYSQL_USER:root}
+          password: ${MYSQL_PASSWORD:root}
+  redis:
+    host: ${REDIS_HOST:redis}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+
+jasypt:
+  encryptor:
+    password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
+    algorithm: PBEWithMD5AndDES
+
+# MyBatis（MybatisConfig 只做 @MapperScan，XML 位置由这里注入）
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.opc.notification.domain
+  configuration:
+    map-underscore-to-camel-case: true
+
+# 邮件发送兜底默认值（真实 SMTP 凭据由 Nacos 的 opc-notification-<profile>.yml 覆盖）
+# MailConfig 读取 mail.* 且 host/port/username/password 无默认值，
+# 这里给出本地可启动的占位，避免没配 Nacos 时 context 起不来。
+mail:
+  host: ${MAIL_HOST:localhost}
+  port: ${MAIL_PORT:25}
+  username: ${MAIL_USER:}
+  password: ${MAIL_PASSWORD:}
+  properties:
+    mail:
+      smtp:
+        auth: false
+        starttls:
+          enable: false
+        ssl:
+          enable: false
+
+# 通知中心业务配置
+# 注意：key 路径必须与 ProviderConfig / EmailServiceImpl / SmsServiceImpl 的 @Value 完全一致
+opc:
+  notification:
+    email:
+      max-retries: 3
+      retry-backoff-ms: 100
+    sms:
+      provider: aliyun
+      sign-name: OPCNOTIFY
+      max-retries: 3
+      retry-backoff-ms: 100
+    # ProviderConfig 读的是 opc.notification.aliyun.*（不是 opc.notification.sms.aliyun.*）
+    aliyun:
+      access-key: ${ALIYUN_ACCESS_KEY:}
+      access-secret: ${ALIYUN_ACCESS_SECRET:}
