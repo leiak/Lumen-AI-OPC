@@ -35,7 +35,7 @@ export function unreadCount(): Promise<AjaxResult<number>> {
 
 /** 标记已读 */
 export function markRead(id: number): Promise<AjaxResult<void>> {
-  return request({ url: `/opc/notification/inbox/${id}/read`, method: 'post' })
+  return request({ url: `/opc/notification/inbox/read/${id}`, method: 'post' })
 }
 
 /** 全部标记已读 */

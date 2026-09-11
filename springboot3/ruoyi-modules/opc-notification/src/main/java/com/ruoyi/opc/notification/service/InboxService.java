@@ -27,6 +27,11 @@ public interface InboxService {
     void markRead(Long userId, Long inboxId);
 
     /**
+     * 批量标记某用户全部未读站内信为已读
+     */
+    int markAllRead(Long userId);
+
+    /**
      * 查询某用户未读站内信数量
      */
     long unreadCount(Long userId);

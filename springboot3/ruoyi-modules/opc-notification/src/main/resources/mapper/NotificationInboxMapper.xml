@@ -78,4 +78,10 @@
         LIMIT #{offset}, #{limit}
     </select>
 
+    <update id="markAllRead">
+        UPDATE opc_notification_inbox
+        SET read_at = NOW()
+        WHERE user_id = #{userId} AND read_at IS NULL
+    </update>
+
 </mapper>

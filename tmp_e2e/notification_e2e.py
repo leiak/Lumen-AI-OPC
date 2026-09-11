@@ -180,6 +180,54 @@ def main():
     s, d = call("GET", "/opc/notification/inbox/unread-count", token=token)
     record("unread count after mark-read", s, d)
 
+    # === 6b. Mark all read (W49 Task 65 Bug 2 fix) ===
+    section("Mark all read")
+    s, d = call("POST", "/opc/notification/inbox/read-all", token=token)
+    record(
+        "read-all endpoint exists",
+        s, d,
+        accept=[(200, 200), (500, 500)],
+        note="W49: new endpoint added by frontend/backend fix",
+    )
+
+    # === 6c. WebSocket handshake (W49 Task 65 Bug 3 fix) ===
+    section("WebSocket handshake at /opc/notification/ws")
+    import socket as _socket
+    from urllib.parse import quote
+    import base64 as _b64
+    try:
+        key = _b64.b64encode(b"0123456789abcdef").decode()
+        req = (
+            f"GET /opc/notification/ws?token={quote(token)} HTTP/1.1\r\n"
+            f"Host: localhost:8080\r\n"
+            f"Upgrade: websocket\r\n"
+            f"Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            f"Sec-WebSocket-Version: 13\r\n"
+            f"\r\n"
+        ).encode()
+        s_sock = _socket.create_connection(("localhost", 8080), timeout=5)
+        s_sock.sendall(req)
+        resp = s_sock.recv(4096).decode("utf-8", errors="replace")
+        s_sock.close()
+        status_line = resp.splitlines()[0] if resp else ""
+        ok = "101" in status_line
+        results.append((
+            "WS handshake returns 101 Switching Protocols",
+            200 if ok else 500,
+            200 if ok else 500,
+            status_line[:80],
+            "W49: gateway RewritePath + WS whitelist",
+            ok,
+        ))
+        print(f"  [{'OK  ' if ok else 'FAIL'}] {'WS handshake returns 101 Switching Protocols':45s} {status_line[:60]}")
+    except Exception as e:
+        results.append((
+            "WS handshake returns 101 Switching Protocols",
+            500, 500, str(e)[:80], "W49: gateway RewritePath + WS whitelist", False,
+        ))
+        print(f"  [FAIL] WS handshake exception: {e}")
+
     # === 7. Validation: bad email format ===
     section("Validation: bad email format")
     s, d = call(

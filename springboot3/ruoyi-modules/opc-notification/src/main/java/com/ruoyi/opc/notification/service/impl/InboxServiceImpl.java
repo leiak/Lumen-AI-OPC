@@ -91,6 +91,11 @@ public class InboxServiceImpl implements InboxService {
     }
 
     @Override
+    public int markAllRead(Long userId) {
+        return mapper.markAllRead(userId);
+    }
+
+    @Override
     public long unreadCount(Long userId) {
         Long count = mapper.selectUnreadCount(userId);
         return count == null ? 0L : count;

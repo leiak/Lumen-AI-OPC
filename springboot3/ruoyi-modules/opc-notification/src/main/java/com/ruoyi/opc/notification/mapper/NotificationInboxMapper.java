@@ -28,4 +28,6 @@ public interface NotificationInboxMapper {
     List<NotificationInbox> selectInboxPage(@Param("userId") Long userId,
                                             @Param("offset") int offset,
                                             @Param("limit") int limit);
+
+    int markAllRead(@Param("userId") Long userId);
 }

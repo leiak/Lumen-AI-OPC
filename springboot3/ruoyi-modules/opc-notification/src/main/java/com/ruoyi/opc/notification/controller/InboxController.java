@@ -38,6 +38,19 @@ public class InboxController {
         return R.ok();
     }
 
+    /**
+     * 全部标记已读
+     */
+    @PostMapping("/read-all")
+    public R<Void> markAllRead() {
+        Long userId = SecurityUtils.getUserId();
+        if (userId == null) {
+            return R.fail("未登录");
+        }
+        inboxService.markAllRead(userId);
+        return R.ok();
+    }
+
     @GetMapping("/unread-count")
     public R<Long> unreadCount() {
         return R.ok(inboxService.unreadCount(SecurityUtils.getUserId()));

@@ -84,6 +84,16 @@ spring:
               predicates:
                 - Path=/opc/finance/**
 
+            # === Notification WebSocket (MUST come BEFORE broader /opc/notification/** route) ===
+            # 改写 /opc/notification/ws -> /ws/notification 以匹配后端 WebSocketHandlerRegistry
+            # (后端 @RequestMapping 用全路径 /opc/notification/inbox 等,不能 StripPrefix)
+            - id: opc-notification-ws
+              uri: http://aiopc-notification:9310
+              predicates:
+                - Path=/opc/notification/ws,/opc/notification/ws/**
+              filters:
+                - RewritePath=/opc/notification/ws(?<segment>/?.*), /ws/notification$\{segment}
+
             - id: opc-notification
               uri: http://aiopc-notification:9310
               predicates:
@@ -120,6 +130,11 @@ security:
       - /refresh
       - /register
       - /unlockscreen
+
+      # W49: Notification WebSocket — token 在 URL ?token= 里,不走 Authorization 头
+      # 必须白名单否则 AuthFilter 报 "令牌不能为空"
+      - /opc/notification/ws
+      - /opc/notification/ws/**
 
 # 文档参考
 logging:
