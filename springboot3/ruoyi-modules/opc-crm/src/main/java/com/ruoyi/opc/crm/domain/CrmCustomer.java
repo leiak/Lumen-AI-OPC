@@ -1,12 +1,14 @@
 package com.ruoyi.opc.crm.domain;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import lombok.Builder;
 import lombok.Data;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
+@Builder
 public class CrmCustomer implements Serializable {
     private Long id;
     private String name;
