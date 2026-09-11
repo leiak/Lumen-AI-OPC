@@ -36,6 +36,7 @@ public class OpportunityServiceImpl implements OpportunityService {
         if (opportunity.getStage() == null) {
             opportunity.setStage(OpportunityStage.LEAD.name());
         }
+        if (opportunity.getScore() == null) opportunity.setScore(0);
         opportunity.setCreateBy(String.valueOf(operatorId));
         opportunity.setUpdateBy(String.valueOf(operatorId));
         if (opportunity.getDeleted() == null) opportunity.setDeleted(0);
