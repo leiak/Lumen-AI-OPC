@@ -1,0 +1,18 @@
+spring:
+  cloud:
+    nacos:
+      discovery:
+        server-addr: nacos1:8848
+        namespace: opc-dev
+      config:
+        server-addr: nacos1:8848
+        namespace: opc-dev
+        file-extension: yml
+        shared-configs:
+          - application-common.yml
+          - application-rbac.yml
+          - application-redis.yml
+          - application-datasource.yml
+
+nacos:
+  fail-fast: true

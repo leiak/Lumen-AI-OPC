@@ -23,6 +23,7 @@
         <module>opc-notification</module>
         <module>opc-crm</module>
         <module>opc-community</module>
+        <module>opc-hr</module>
     </modules>
 
     <artifactId>ruoyi-modules</artifactId>
