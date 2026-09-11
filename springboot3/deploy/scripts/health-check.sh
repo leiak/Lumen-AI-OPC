@@ -509,6 +509,160 @@ except Exception:
   fi
 }
 
+# ---------- 8. opc-hr 健康 ----------
+check_hr() {
+  hr
+  echo "[8] opc-hr 健康检查 (W71 Task 12)"
+  hr
+
+  # 8.1 容器 Up
+  local c="aiopc-hr"
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${c}$"; then
+    status=$(docker inspect --format '{{.State.Status}}' "${c}" 2>/dev/null)
+    if [[ "${status}" == "running" ]]; then
+      ok "${c} running"
+    else
+      nok "${c} 状态异常: ${status}"
+    fi
+  else
+    nok "${c} 不存在"
+  fi
+
+  # 8.2 Nacos 注册 (opc-dev namespace)
+  local nacos_url="http://${GATEWAY_HOST}:${NACOS_PORT}/nacos/v1/ns/instance/list?serviceName=opc-hr&namespaceId=opc-dev"
+  local nacos_body
+  nacos_body=$(curl -sf -m 10 "${nacos_url}" 2>/dev/null) || nacos_body=""
+  local healthy_count
+  healthy_count=$(echo "${nacos_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin)
+    hosts = d.get('hosts', [])
+    print(len(hosts) if hosts else 0)
+except Exception:
+    print(0)
+" 2>/dev/null)
+  if [[ "${healthy_count}" -ge 1 ]]; then
+    ok "Nacos opc-hr 注册 ${healthy_count} 实例 (opc-dev)"
+  else
+    nok "Nacos opc-hr 未注册: ${nacos_body:-<no response>}"
+  fi
+
+  # 8.3 直接 /actuator/health (绕过网关直连 9322)
+  local health_body
+  health_body=$(curl -sf -m 10 "http://127.0.0.1:9322/actuator/health" 2>/dev/null) || health_body=""
+  if [[ "${health_body}" == "UP" ]] || echo "${health_body}" | grep -q '"status":"UP"'; then
+    ok "opc-hr /actuator/health UP"
+  else
+    nok "opc-hr /actuator/health: ${health_body:-<no response>}"
+  fi
+
+  # 8.4 业务接口 (需登录,复用 admin)
+  local login_body
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/login" 2>/dev/null) || true
+  if [[ -z "${login_body}" ]]; then
+    warn "登录失败, 跳过 opc-hr 业务接口"
+    return
+  fi
+  local token
+  token=$(echo "${login_body}" | python -c "
+import sys,json
+d = json.load(sys.stdin).get('data', {})
+print(d.get('token','') or d.get('access_token',''))
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    warn "未拿到 token, 跳过 opc-hr 业务接口"
+    return
+  fi
+
+  # 8.5 gateway /opc/hr/dashboard (funnel)
+  local dash_body
+  dash_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/hr/dashboard?companyId=1" 2>/dev/null) || dash_body=""
+  local dash_code
+  dash_code=$(echo "${dash_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${dash_code}" == "200" ]]; then
+    ok "/opc/hr/dashboard body.code=200 (funnel/conversion/avg/job_status)"
+  elif echo "${dash_body}" | grep -q "No static resource"; then
+    nok "/opc/hr/dashboard 网关未路由 (静态回退): ${dash_body:0:120}"
+  else
+    nok "/opc/hr/dashboard body.code=${dash_code}: ${dash_body:0:120}"
+  fi
+
+  # 8.6 gateway /opc/hr/job/list
+  local job_body
+  job_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/hr/job/list?companyId=1" 2>/dev/null) || job_body=""
+  local job_code
+  job_code=$(echo "${job_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${job_code}" == "200" ]]; then
+    ok "/opc/hr/job/list body.code=200"
+  elif echo "${job_body}" | grep -q "No static resource"; then
+    nok "/opc/hr/job/list 网关未路由 (静态回退): ${job_body:0:120}"
+  else
+    nok "/opc/hr/job/list body.code=${job_code}: ${job_body:0:120}"
+  fi
+
+  # 8.7 gateway /opc/hr/candidate/list
+  local cand_body
+  cand_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/hr/candidate/list?companyId=1" 2>/dev/null) || cand_body=""
+  local cand_code
+  cand_code=$(echo "${cand_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${cand_code}" == "200" ]]; then
+    ok "/opc/hr/candidate/list body.code=200"
+  elif echo "${cand_body}" | grep -q "No static resource"; then
+    nok "/opc/hr/candidate/list 网关未路由 (静态回退): ${cand_body:0:120}"
+  else
+    nok "/opc/hr/candidate/list body.code=${cand_code}: ${cand_body:0:120}"
+  fi
+
+  # 8.8 gateway /opc/hr/application/list
+  local app_body
+  app_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/hr/application/list?companyId=1" 2>/dev/null) || app_body=""
+  local app_code
+  app_code=$(echo "${app_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${app_code}" == "200" ]]; then
+    ok "/opc/hr/application/list body.code=200"
+  elif echo "${app_body}" | grep -q "No static resource"; then
+    nok "/opc/hr/application/list 网关未路由 (静态回退): ${app_body:0:120}"
+  else
+    nok "/opc/hr/application/list body.code=${app_code}: ${app_body:0:120}"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -521,6 +675,7 @@ main() {
   login_and_check
   check_notification
   check_crm
+  check_hr
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"

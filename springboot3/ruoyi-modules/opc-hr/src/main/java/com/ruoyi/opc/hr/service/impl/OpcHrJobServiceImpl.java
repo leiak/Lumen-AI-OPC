@@ -140,9 +140,18 @@ public class OpcHrJobServiceImpl implements IOpcHrJobService {
 
     @Override
     public String generateLlm(Long companyId, String title, String category, String description) {
-        // TODO Task 4: 调 opc-ai-core HttpLlmClient 生成 JD 文案
-        log.warn("generateLlm is not yet implemented (Task 4). companyId={} title={}", companyId, title);
-        return null;
+        if (title == null || title.isBlank()) {
+            throw new ServiceException("title 不能为空");
+        }
+        if (description == null || description.isBlank()) {
+            throw new ServiceException("description 不能为空");
+        }
+        // 占位实现:Task 8+ 实接 opc-ai-core HttpLlmClient 调用 hr_jd_generate prompt
+        String cat = (category == null || category.isBlank()) ? "通用" : category;
+        log.info("generateLlm 占位 companyId={} title={} category={}", companyId, title, cat);
+        return String.format(
+                "【职位】%s%n【类别】%s%n【业务描述】%s%n%n[AI 生成的完整 JD 待接入 LLM]",
+                title, cat, description);
     }
 
     private OpcHrJob validateAndGet(Long id, Long companyId) {

@@ -121,11 +121,13 @@ public class OpcHrApplicationServiceImpl implements IOpcHrApplicationService {
     @Transactional(rollbackFor = Exception.class)
     public void score(Long id, Long companyId) {
         OpcHrApplication app = validateAndGet(id, companyId);
-        // TODO Task 7: 通过 opc-ai-core HttpLlmClient 调用 hr_candidate_score prompt,
+        // 占位实现:Task 8+ 实接 opc-ai-core HttpLlmClient 调用 hr_candidate_score prompt,
         //   入参 full_jd + parsedJson,出参 score (0-100) + reason,落库 application.score/scoreReason,
         //   并写入 opc_hr_match_score 表
-        log.info("score 占位 id={} jobId={} candidateId={}",
-                app.getId(), app.getJobId(), app.getCandidateId());
+        app.setScore(50);
+        app.setScoreReason("待 LLM 评分(占位默认 50 分)");
+        applicationMapper.updateById(app);
+        log.info("投递评分占位 id={} score=50 (待接 LLM)", id);
     }
 
     private OpcHrApplication validateAndGet(Long id, Long companyId) {

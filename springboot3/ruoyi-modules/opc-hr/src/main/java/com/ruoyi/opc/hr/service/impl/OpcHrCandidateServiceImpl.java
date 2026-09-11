@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 
@@ -100,9 +101,18 @@ public class OpcHrCandidateServiceImpl implements IOpcHrCandidateService {
     @Transactional(rollbackFor = Exception.class)
     public void parse(Long id, Long companyId) {
         OpcHrCandidate existing = validateAndGet(id, companyId);
-        // TODO Task 7: 通过 opc-ai-core HttpLlmClient 调用 hr_resume_parse prompt,
-        //   把 parsedJson (结构化画像) + embedding (Qdrant 向量) 落库
-        log.info("parse 占位 id={} name={} resumeUrl={}", existing.getId(), existing.getName(), existing.getResumeUrl());
+        if (existing.getResumeMd() == null || existing.getResumeMd().isBlank()) {
+            throw new ServiceException("候选人简历为空,无法解析");
+        }
+        // 占位实现:Task 8+ 实接 opc-ai-core HttpLlmClient 调用 hr_resume_parse prompt
+        //   输出 parsedJson (结构化画像) + embedding (Qdrant 向量) 落库
+        String rawResume = existing.getResumeMd().replace("\\", "\\\\").replace("\"", "\\\"");
+        String parsedJson = String.format(
+                "{\"raw_resume_md\":\"%s\",\"parsed_at\":\"%s\",\"status\":\"pending_llm\"}",
+                rawResume, LocalDateTime.now());
+        existing.setParsedJson(parsedJson);
+        candidateMapper.updateById(existing);
+        log.info("候选人简历占位解析 id={} (待接 LLM)", id);
     }
 
     @Override
@@ -110,8 +120,8 @@ public class OpcHrCandidateServiceImpl implements IOpcHrCandidateService {
         if (req == null || req.getQuery() == null || req.getQuery().isBlank()) {
             throw new ServiceException("query 不能为空");
         }
-        // TODO Task 7: Qdrant 向量召回 top-K + LLM 重排序
-        log.info("search 占位 companyId={} query={} topK={}",
+        // 占位实现:Task 8+ 实接 Qdrant 向量召回 top-K + LLM 重排序
+        log.info("候选人语义搜索 companyId={} query={} topK={} (占位)",
                 companyId, req.getQuery(), req.getTopK());
         return Collections.emptyList();
     }
