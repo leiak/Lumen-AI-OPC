@@ -182,6 +182,31 @@ export const constantRoutes = [
         component: () => import('@/views/opc/inbox.vue'),
         name: 'OpcInbox',
         meta: { title: '通知中心', icon: 'bell' }
+      },
+      {
+        path: 'crm/customers',
+        component: () => import('@/views/opc/crm/CustomerList.vue'),
+        name: 'OpcCustomerList',
+        meta: { title: '客户管理', icon: 'user' }
+      },
+      {
+        path: 'crm/customers/:id(\\d+)',
+        component: () => import('@/views/opc/crm/CustomerDetail.vue'),
+        name: 'OpcCustomerDetail',
+        meta: { title: '客户详情', activeMenu: '/opc/crm/customers' },
+        hidden: true
+      },
+      {
+        path: 'crm/opportunities',
+        component: () => import('@/views/opc/crm/OpportunityKanban.vue'),
+        name: 'OpcOpportunityKanban',
+        meta: { title: '商机看板', icon: 'trend-charts' }
+      },
+      {
+        path: 'crm/follow-ups',
+        component: () => import('@/views/opc/crm/FollowUpTimeline.vue'),
+        name: 'OpcFollowUpTimeline',
+        meta: { title: '跟进记录', icon: 'time' }
       }
     ]
   },
