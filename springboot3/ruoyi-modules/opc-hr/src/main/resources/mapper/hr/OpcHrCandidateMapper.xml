@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.hr.mapper.OpcHrCandidateMapper">
+
+    <sql id="BaseColumns">
+        id, company_id, name, email, phone, resume_url, resume_md,
+        parsed_json, embedding, source, tags_json, created_by,
+        create_time, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.hr.domain.OpcHrCandidate">
+        INSERT INTO opc_hr_candidate (id, company_id, name, email, phone,
+                                       resume_url, resume_md, parsed_json, embedding,
+                                       source, tags_json, created_by)
+        VALUES (#{id}, #{companyId}, #{name}, #{email}, #{phone},
+                #{resumeUrl}, #{resumeMd}, #{parsedJson}, #{embedding},
+                #{source}, #{tagsJson}, #{createdBy})
+    </insert>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.hr.domain.OpcHrCandidate">
+        UPDATE opc_hr_candidate
+        <set>
+            <if test="name != null">name = #{name},</if>
+            <if test="email != null">email = #{email},</if>
+            <if test="phone != null">phone = #{phone},</if>
+            <if test="resumeUrl != null">resume_url = #{resumeUrl},</if>
+            <if test="resumeMd != null">resume_md = #{resumeMd},</if>
+            <if test="parsedJson != null">parsed_json = #{parsedJson},</if>
+            <if test="tagsJson != null">tags_json = #{tagsJson},</if>
+        </set>
+        WHERE id = #{id} AND company_id = #{companyId}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM opc_hr_candidate
+        WHERE id = #{id} AND company_id = #{companyId}
+    </delete>
+
+    <select id="selectById" resultType="com.ruoyi.opc.hr.domain.OpcHrCandidate">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_hr_candidate
+        WHERE id = #{id} AND company_id = #{companyId}
+    </select>
+
+    <select id="selectByEmail" resultType="com.ruoyi.opc.hr.domain.OpcHrCandidate">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_hr_candidate
+        WHERE email = #{email} AND company_id = #{companyId}
+    </select>
+
+    <select id="selectList" resultType="com.ruoyi.opc.hr.domain.OpcHrCandidate">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_hr_candidate
+        WHERE company_id = #{companyId}
+        ORDER BY create_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countList" resultType="int">
+        SELECT COUNT(1)
+        FROM opc_hr_candidate
+        WHERE company_id = #{companyId}
+    </select>
+</mapper>
