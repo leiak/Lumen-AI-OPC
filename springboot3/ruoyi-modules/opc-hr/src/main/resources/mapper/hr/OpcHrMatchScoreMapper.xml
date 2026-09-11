@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.hr.mapper.OpcHrMatchScoreMapper">
+
+    <sql id="BaseColumns">
+        id, company_id, job_id, candidate_id, score, reason, computed_at
+    </sql>
+
+    <insert id="insertOrUpdate" parameterType="com.ruoyi.opc.hr.domain.OpcHrMatchScore">
+        INSERT INTO opc_hr_match_score (id, company_id, job_id, candidate_id, score, reason, computed_at)
+        VALUES (#{id}, #{companyId}, #{jobId}, #{candidateId}, #{score}, #{reason}, #{computedAt})
+        ON DUPLICATE KEY UPDATE
+            score = VALUES(score),
+            reason = VALUES(reason),
+            computed_at = VALUES(computed_at)
+    </insert>
+
+    <select id="selectByJobId" resultType="com.ruoyi.opc.hr.domain.OpcHrMatchScore">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_hr_match_score
+        WHERE company_id = #{companyId} AND job_id = #{jobId}
+        ORDER BY computed_at DESC
+    </select>
+
+    <select id="selectByJobCandidate" resultType="com.ruoyi.opc.hr.domain.OpcHrMatchScore">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_hr_match_score
+        WHERE company_id = #{companyId}
+          AND job_id = #{jobId}
+          AND candidate_id = #{candidateId}
+    </select>
+</mapper>

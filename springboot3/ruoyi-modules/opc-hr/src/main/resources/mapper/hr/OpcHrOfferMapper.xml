@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.hr.mapper.OpcHrOfferMapper">
+
+    <sql id="BaseColumns">
+        id, company_id, application_id, salary, start_date, expire_at,
+        status, sent_at, responded_at, create_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.hr.domain.OpcHrOffer">
+        INSERT INTO opc_hr_offer (id, company_id, application_id, salary, start_date, expire_at,
+                                   status, sent_at, responded_at)
+        VALUES (#{id}, #{companyId}, #{applicationId}, #{salary}, #{startDate}, #{expireAt},
+                #{status}, #{sentAt}, #{respondedAt})
+    </insert>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.hr.domain.OpcHrOffer">
+        UPDATE opc_hr_offer
+        <set>
+            <if test="salary != null">salary = #{salary},</if>
+            <if test="startDate != null">start_date = #{startDate},</if>
+            <if test="expireAt != null">expire_at = #{expireAt},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="sentAt != null">sent_at = #{sentAt},</if>
+            <if test="respondedAt != null">responded_at = #{respondedAt},</if>
+        </set>
+        WHERE id = #{id} AND company_id = #{companyId}
+    </update>
+
+    <select id="selectById" resultType="com.ruoyi.opc.hr.domain.OpcHrOffer">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_hr_offer
+        WHERE id = #{id} AND company_id = #{companyId}
+    </select>
+
+    <select id="selectByApplicationId" resultType="com.ruoyi.opc.hr.domain.OpcHrOffer">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_hr_offer
+        WHERE application_id = #{applicationId}
+    </select>
+</mapper>
