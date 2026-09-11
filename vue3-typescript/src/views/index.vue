@@ -2,9 +2,9 @@
   <div class="app-container home">
     <el-row :gutter="20">
       <el-col :sm="24" :lg="12" style="padding-left: 20px">
-        <h2>若依后台管理框架</h2>
+        <h2>OPC 管理后台</h2>
         <p>
-          一直想做一款后台管理系统，看了很多优秀的开源项目但是发现没有合适自己的。于是利用空闲休息时间开始自己写一套后台系统。如此有了若依管理系统，她可以用于所有的Web应用程序，如网站管理后台，网站会员中心，CMS，CRM，OA等等，当然，您也可以对她进行深度定制，以做出更强系统。所有前端后台代码封装过后十分精简易上手，出错概率低。同时支持移动客户端访问。系统会陆续更新一些实用功能。
+          OPC (Open Personal Cloud) 是面向中小团队的 AI 中后台，基于 RuoYi v3.6.8 微服务架构构建。已扩展 AI 核心、客户关系管理、HR、洞察、通知、模块市场等 OPC 业务模块，可用于网站管理后台、会员中心、CRM、OA、AI Agent 平台等场景。所有前后端代码封装精简、出错概率低，同时支持移动端访问。系统会持续迭代 OPC 业务能力。
         </p>
         <p>
           <b>当前版本:</b> <span>v{{ version }}</span>
@@ -17,13 +17,13 @@
             type="primary"
             icon="Cloudy"
             plain
-            @click="goTarget('https://gitee.com/y_project/RuoYi-Cloud')"
+            @click="goTarget('https://gitee.com/lumen-opc/opc-cloud')"
             >访问码云</el-button
           >
           <el-button
             icon="HomeFilled"
             plain
-            @click="goTarget('http://ruoyi.vip')"
+            @click="goTarget('https://opc.cloud')"
             >访问主页</el-button
           >
         </p>
@@ -75,9 +75,9 @@
           <div class="body">
             <p>
               <i class="el-icon-s-promotion"></i> 官网：<el-link
-                href="http://www.ruoyi.vip"
+                href="https://opc.cloud"
                 target="_blank"
-                >http://www.ruoyi.vip</el-link
+                >https://opc.cloud</el-link
               >
             </p>
             <p>
@@ -89,14 +89,14 @@
             <p>
               <i class="el-icon-chat-dot-round"></i> 微信：<a
                 href="javascript:;"
-                >/ *若依</a
+                >/ *OPC</a
               >
             </p>
             <p>
               <i class="el-icon-money"></i> 支付宝：<a
                 href="javascript:;"
                 class="支付宝信息"
-                >/ *若依</a
+                >/ *OPC</a
               >
             </p>
           </div>
@@ -991,7 +991,7 @@
             </el-collapse-item>
             <el-collapse-item title="v1.0.0 - 2020-05-20">
               <ol>
-                <li>若依微服务系统正式发布</li>
+                <li>OPC 微服务系统正式发布</li>
               </ol>
             </el-collapse-item>
           </el-collapse>

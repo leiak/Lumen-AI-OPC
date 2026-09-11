@@ -151,7 +151,7 @@ DRY_RUN=1 ./apply-whitelist.sh dev  # 仅预览,不推送
 (Ant 模式: `*` 匹配单层路径段,**匹配多层。`{code}` 8 位 base32 视为单层)
 
 **⚠️ 已知限制**:
-RuoYi `AuthFilter` 的 `whites` 是 path-only,不支持 HTTP method 维度。
+OPC 沿用的 RuoYi `AuthFilter` 的 `whites` 是 path-only,不支持 HTTP method 维度。
 因此 `/opc/user/invitations/*` 会**同时豁免** POST /generate 和 POST /accept。
 但下游 controller `SecurityUtils.getUserId()` 在未鉴权时返回 null → 抛 `OpcException("userId 不能为空")` → 500,**不会**真正创建邀请 / 发放奖励。
 风险评估:🟡 低(只暴露 500,无数据风险)。

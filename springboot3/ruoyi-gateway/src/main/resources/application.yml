@@ -44,7 +44,7 @@ spring:
 
             # === 系统 (用户/角色/菜单/字典) ===
             # /system/** StripPrefix=1:gateway 去掉 /system 前缀转发给 ruoyi-system
-            # (RuoYi 单体时代遗留 /system 前缀,拆分架构下 system controller
+            # (OPC 沿用 RuoYi 单体时代遗留 /system 前缀,拆分架构下 system controller
             #  直接暴露在 /user /role /menu 等)
             - id: ruoyi-system
               uri: http://aiopc-system:9201
@@ -123,7 +123,7 @@ security:
       - /opc/user/invitations/accept
       - /opc/user/invitations/{code:[A-HJ-KM-NP-Z2-9]{8}}
 
-      # RuoYi 默认白名单
+      # OPC 默认白名单
       - /auth/logout
       - /auth/register
       - /auth/login

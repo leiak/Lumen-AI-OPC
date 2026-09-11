@@ -1,6 +1,6 @@
 根据你的对话内容，我理解你想构建一个**线上OPC（One Person Company）社区平台**，核心是通过AI数字员工（Agent）赋能个人和小微企业，让他们能以极低的人力成本运转完整的业务流程。
 
-结合**若依（RuoYi）微服务框架**，我为你生成一套完整的项目文档体系。
+结合**若依（RuoYi）微服务框架（OPC 在此基础上扩展）**，我为你生成一套完整的项目文档体系。
 
 ---
 
@@ -38,13 +38,13 @@
 
 ---
 
-## 二、技术架构（基于若依微服务）
+## 二、技术架构（基于若依微服务 + OPC 扩展）
 
 ### 2.1 技术选型
 | 层次 | 技术 |
 |------|------|
-| 前端 | Vue3 + Element Plus（若依前端框架） |
-| 后端 | Spring Cloud Alibaba（若依Cloud版） |
+| 前端 | Vue3 + Element Plus（基于若依前端框架的 OPC 扩展） |
+| 后端 | Spring Cloud Alibaba（基于若依 Cloud 版的 OPC 扩展） |
 | 注册中心 | Nacos |
 | 网关 | Spring Cloud Gateway |
 | 服务调用 | OpenFeign |
@@ -61,7 +61,7 @@
 | 链路追踪 | SkyWalking |
 | 日志 | ELK（Elasticsearch + Logstash + Kibana） |
 
-### 2.2 微服务模块划分（基于若依扩展）
+### 2.2 微服务模块划分（基于若依 + OPC 扩展）
 
 ```
 opc-community/
@@ -188,7 +188,7 @@ opc-community/
 
 ### 4.1 用户相关
 ```sql
-sys_user                    -- 系统用户表（若依原生）
+sys_user                    -- 系统用户表（沿用若依原生）
 opc_user_profile            -- OPC用户画像（创业者/企业主/服务商）
 opc_company_profile         -- 公司档案（关联OPC）
 ```
@@ -459,4 +459,4 @@ agent:
 
 ---
 
-以上就是基于若依微服务框架，结合你的OPC社区构想生成的完整项目文档体系。如果需要我进一步细化某个模块（如Agent引擎详细设计、数据库DDL、API完整文档、前端页面原型等），随时告诉我。
+以上就是基于若依微服务框架 + OPC 扩展，结合你的OPC社区构想生成的完整项目文档体系。如果需要我进一步细化某个模块（如Agent引擎详细设计、数据库DDL、API完整文档、前端页面原型等），随时告诉我。

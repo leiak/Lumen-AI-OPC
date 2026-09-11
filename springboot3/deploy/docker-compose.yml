@@ -191,7 +191,7 @@ services:
       - aiopc-net
     restart: unless-stopped
 
-  # ============ RuoYi Gateway（Spring Cloud Gateway）============
+  # ============ OPC Gateway（Spring Cloud Gateway）============
   aiopc-gateway:
     build:
       context: ..
@@ -221,7 +221,7 @@ services:
       - aiopc-net
     restart: unless-stopped
 
-  # ============ RuoYi Auth (login/captcha — /login, /code) ============
+  # ============ OPC Auth (login/captcha — /login, /code) ============
   aiopc-auth:
     build:
       context: ..
@@ -251,7 +251,7 @@ services:
       - aiopc-net
     restart: unless-stopped
 
-  # ============ RuoYi System（用户/角色/菜单）============
+  # ============ OPC System（用户/角色/菜单）============
   aiopc-system:
     build:
       context: ..

@@ -10,7 +10,7 @@
 #   GET /opc/user/invitations/{code}     ← 落地页匿名访问必需
 #
 # 已知限制:
-#   RuoYi AuthFilter 使用 AntPathMatcher + 路径白名单,
+#   OPC AuthFilter 使用 AntPathMatcher + 路径白名单,
 #   不支持 HTTP method 维度。因此 `/opc/user/invitations/*`
 #   会同时豁免:
 #     - POST /opc/user/invitations/generate  ← 期望:需登录
@@ -34,7 +34,7 @@ security:
       # 邀请落地页公开查接口 (Ant: * = 一层路径段,** = 多层)
       - /opc/user/invitations/*
 
-      # ===== 以下为 RuoYi 既有白名单(保留,不要删)=====
+      # ===== 以下为 OPC 沿用 RuoYi 既有白名单(保留,不要删)=====
       # 认证相关
       - /auth/logout
       - /auth/register

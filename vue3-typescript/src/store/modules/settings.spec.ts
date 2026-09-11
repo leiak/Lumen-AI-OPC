@@ -39,7 +39,7 @@ vi.mock('@/utils/theme', async () => {
 
 vi.mock('@/settings', () => ({
   default: {
-    title: '若依管理系统',
+    title: 'OPC 管理后台',
     sideTheme: 'theme-dark',
     showSettings: true,
     navType: 1,
@@ -51,7 +51,7 @@ vi.mock('@/settings', () => ({
     sidebarLogo: true,
     dynamicTitle: false,
     footerVisible: false,
-    footerContent: 'Copyright © 2018-2026 RuoYi',
+    footerContent: 'Copyright © 2018-2026 OPC',
   },
 }))
 
@@ -91,7 +91,7 @@ describe('settings store', () => {
     expect(s.sidebarLogo).toBe(true)
     expect(s.dynamicTitle).toBe(false)
     expect(s.footerVisible).toBe(false)
-    expect(s.footerContent).toBe('Copyright © 2018-2026 RuoYi')
+    expect(s.footerContent).toBe('Copyright © 2018-2026 OPC')
     expect(s.isDark).toBe(false)
   })
 

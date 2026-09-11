@@ -30,7 +30,7 @@ import { useDynamicTitle } from '@/utils/dynamicTitle'
 // boolean (otherwise store.dynamicTitle is undefined).
 vi.mock('@/settings', () => ({
   default: {
-    title: '若依管理系统',
+    title: 'OPC 管理后台',
     dynamicTitle: false,
   },
 }))
@@ -50,14 +50,14 @@ describe('dynamicTitle', () => {
   // W12.2 baseline — preserved
   // ---------------------------------------------------------------
 
-  it('1. dynamicTitle=true with title="Dashboard" -> "Dashboard - 若依管理系统"', () => {
+  it('1. dynamicTitle=true with title="Dashboard" -> "Dashboard - OPC 管理后台"', () => {
     const store = useSettingsStore()
     store.dynamicTitle = true
     store.title = 'Dashboard'
 
     useDynamicTitle()
 
-    expect(document.title).toBe('Dashboard - 若依管理系统')
+    expect(document.title).toBe('Dashboard - OPC 管理后台')
   })
 
   it('2. dynamicTitle=false -> falls back to defaultSettings.title alone', () => {
@@ -67,12 +67,12 @@ describe('dynamicTitle', () => {
 
     useDynamicTitle()
 
-    expect(document.title).toBe('若依管理系统')
+    expect(document.title).toBe('OPC 管理后台')
   })
 
-  it('3. dynamicTitle=true with title="" -> "- 若依管理系统" (leading space stripped by happy-dom)', () => {
+  it('3. dynamicTitle=true with title="" -> "- OPC 管理后台" (leading space stripped by happy-dom)', () => {
     // KNOWN: source code is `title + ' - ' + defaultSettings.title` so the
-    // literal would be " - 若依管理系统" (with leading space). However,
+    // literal would be " - OPC 管理后台" (with leading space). However,
     // happy-dom (and most browsers) trim leading/trailing whitespace when
     // setting document.title. We pin the observed browser-realistic value
     // so the test matches what users actually see in the tab.
@@ -82,7 +82,7 @@ describe('dynamicTitle', () => {
 
     useDynamicTitle()
 
-    expect(document.title).toBe('- 若依管理系统')
+    expect(document.title).toBe('- OPC 管理后台')
   })
 
   // ---------------------------------------------------------------
@@ -97,7 +97,7 @@ describe('dynamicTitle', () => {
 
     useDynamicTitle()
 
-    expect(document.title).toBe('若依管理系统')
+    expect(document.title).toBe('OPC 管理后台')
   })
 
   // ---------------------------------------------------------------
@@ -111,7 +111,7 @@ describe('dynamicTitle', () => {
 
     useDynamicTitle()
 
-    expect(document.title).toBe('用户管理 - 若依管理系统')
+    expect(document.title).toBe('用户管理 - OPC 管理后台')
   })
 
   it('6. dynamicTitle=true with HTML-looking title preserves verbatim (document.title is plain text)', () => {
@@ -123,7 +123,7 @@ describe('dynamicTitle', () => {
 
     // document.title does NOT interpret HTML — the literal string is shown.
     // Pin to defend against any future sanitizer that would change behavior.
-    expect(document.title).toBe('<script>alert(1)</script> - 若依管理系统')
+    expect(document.title).toBe('<script>alert(1)</script> - OPC 管理后台')
   })
 
   it('7. dynamicTitle=true with title="A B" preserves internal whitespace (no collapse)', () => {
@@ -134,9 +134,9 @@ describe('dynamicTitle', () => {
     useDynamicTitle()
 
     // happy-dom strips ONLY leading/trailing whitespace from document.title,
-    // NOT internal whitespace. Source produces 'A  B - 若依管理系统' — no
+    // NOT internal whitespace. Source produces 'A  B - OPC 管理后台' — no
     // surrounding whitespace → exact preservation.
-    expect(document.title).toBe('A  B - 若依管理系统')
+    expect(document.title).toBe('A  B - OPC 管理后台')
   })
 
   it('8. dynamicTitle=true with title containing quotes "She said \'hi\'" preserves verbatim', () => {
@@ -146,7 +146,7 @@ describe('dynamicTitle', () => {
 
     useDynamicTitle()
 
-    expect(document.title).toBe("She said 'hi' - 若依管理系统")
+    expect(document.title).toBe("She said 'hi' - OPC 管理后台")
   })
 
   // ---------------------------------------------------------------
@@ -161,7 +161,7 @@ describe('dynamicTitle', () => {
 
     expect(store.title).toBe('Dashboard')
     // setTitle() calls useDynamicTitle() internally → document.title mutated.
-    expect(document.title).toBe('Dashboard - 若依管理系统')
+    expect(document.title).toBe('Dashboard - OPC 管理后台')
   })
 
   it('10. setTitle("X") with dynamicTitle=false: store.title captured but document.title is default only', () => {
@@ -172,7 +172,7 @@ describe('dynamicTitle', () => {
 
     expect(store.title).toBe('X')
     // dynamicTitle is false → composite NOT applied; title goes nowhere.
-    expect(document.title).toBe('若依管理系统')
+    expect(document.title).toBe('OPC 管理后台')
   })
 
   it('11. setTitle called multiple times: document.title tracks the LATEST title', () => {
@@ -180,13 +180,13 @@ describe('dynamicTitle', () => {
     store.dynamicTitle = true
 
     store.setTitle('First')
-    expect(document.title).toBe('First - 若依管理系统')
+    expect(document.title).toBe('First - OPC 管理后台')
 
     store.setTitle('Second')
-    expect(document.title).toBe('Second - 若依管理系统')
+    expect(document.title).toBe('Second - OPC 管理后台')
 
     store.setTitle('Third')
-    expect(document.title).toBe('Third - 若依管理系统')
+    expect(document.title).toBe('Third - OPC 管理后台')
   })
 
   // ---------------------------------------------------------------
@@ -198,12 +198,12 @@ describe('dynamicTitle', () => {
     store.dynamicTitle = true
     store.title = 'Profile'
     useDynamicTitle()
-    expect(document.title).toBe('Profile - 若依管理系统')
+    expect(document.title).toBe('Profile - OPC 管理后台')
 
     store.dynamicTitle = false
     useDynamicTitle()
 
-    expect(document.title).toBe('若依管理系统')
+    expect(document.title).toBe('OPC 管理后台')
   })
 
   it('13. toggling dynamicTitle false→true mid-flight switches title from default-only to composite', () => {
@@ -211,12 +211,12 @@ describe('dynamicTitle', () => {
     store.dynamicTitle = false
     store.title = 'Settings'
     useDynamicTitle()
-    expect(document.title).toBe('若依管理系统')
+    expect(document.title).toBe('OPC 管理后台')
 
     store.dynamicTitle = true
     useDynamicTitle()
 
-    expect(document.title).toBe('Settings - 若依管理系统')
+    expect(document.title).toBe('Settings - OPC 管理后台')
   })
 
   // ---------------------------------------------------------------
@@ -229,13 +229,13 @@ describe('dynamicTitle', () => {
     store.title = 'Stable'
 
     useDynamicTitle()
-    expect(document.title).toBe('Stable - 若依管理系统')
+    expect(document.title).toBe('Stable - OPC 管理后台')
 
     useDynamicTitle()
-    expect(document.title).toBe('Stable - 若依管理系统')
+    expect(document.title).toBe('Stable - OPC 管理后台')
 
     useDynamicTitle()
-    expect(document.title).toBe('Stable - 若依管理系统')
+    expect(document.title).toBe('Stable - OPC 管理后台')
   })
 
   // ---------------------------------------------------------------
@@ -252,7 +252,7 @@ describe('dynamicTitle', () => {
 
     useDynamicTitle()
 
-    expect(document.title).toBe('undefined - 若依管理系统')
+    expect(document.title).toBe('undefined - OPC 管理后台')
   })
 
   it('16. dynamicTitle=true with title=null produces "null - <default>" (JS coercion)', () => {
@@ -262,6 +262,6 @@ describe('dynamicTitle', () => {
 
     useDynamicTitle()
 
-    expect(document.title).toBe('null - 若依管理系统')
+    expect(document.title).toBe('null - OPC 管理后台')
   })
 })

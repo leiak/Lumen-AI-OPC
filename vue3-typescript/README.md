@@ -1,19 +1,20 @@
 <p align="center">
 	<img alt="logo" src="https://oscimg.oschina.net/oscnet/up-b99b286755aef70355a7084753f89cdb7c9.png">
 </p>
-<h1 align="center" style="margin: 30px 0 30px; font-weight: bold;">RuoYi v3.6.8</h1>
-<h4 align="center">基于 Vue3/Element Plus 和 Spring Boot/Spring Cloud & Alibaba 前后端分离的分布式微服务架构</h4>
+<h1 align="center" style="margin: 30px 0 30px; font-weight: bold;">OPC 前端（RuoYi v3.6.8 微服务基线）</h1>
+<h4 align="center">基于 Vue3/Element Plus 和 Spring Boot/Spring Cloud & Alibaba 前后端分离的分布式微服务架构 — OPC 在 RuoYi 上扩展 AI/CRM/HR/Insight/Notification/Community 等业务模块</h4>
 <p align="center">
 	<a href="https://gitee.com/y_project/RuoYi-Cloud/stargazers"><img src="https://gitee.com/y_project/RuoYi-Cloud/badge/star.svg?theme=dark"></a>
 	<a href="https://gitee.com/y_project/RuoYi-Cloud"><img src="https://img.shields.io/badge/RuoYi-v3.6.8-brightgreen.svg"></a>
 	<a href="https://gitee.com/y_project/RuoYi-Cloud/blob/master/LICENSE"><img src="https://img.shields.io/github/license/mashape/apistatus.svg"></a>
 </p>
 
+> **OPC 定制说明**：本目录 (`vue3-typescript/`) 是 OPC 项目的前端模块集。基线是 RuoYi-Cloud-Vue3-TypeScript；OPC 在其基础上扩展了 OPC 业务页面（AI、CRM、HR、Insight、Notification、Community 等），并保留了若依的内置页面（系统管理、监控、代码生成等）。OPC 扩展内容以 MIT 协议发布，详见 `LICENSE` 文件。
+
 ## 平台简介
 
-* 本仓库为前端技术栈 [TypeScript](https://www.typescriptlang.org) + [Vue3](https://v3.cn.vuejs.org) + [Element Plus](https://element-plus.org/zh-CN) + [Vite](https://cn.vitejs.dev) 版本。
-* 配套后端代码仓库地址[RuoYi-Cloud](https://gitee.com/y_project/RuoYi-Cloud) 或 [RuoYi-Cloud-Oracle](https://github.com/yangzongzhuan/RuoYi-Cloud-Oracle) 版本。
-* 阿里云折扣场：[点我进入](http://aly.ruoyi.vip)，腾讯云秒杀场：[点我进入](http://txy.ruoyi.vip)&nbsp;&nbsp;
+* 本仓库为 OPC 项目前端，技术栈 [TypeScript](https://www.typescriptlang.org) + [Vue3](https://v3.cn.vuejs.org) + [Element Plus](https://element-plus.org/zh-CN) + [Vite](https://cn.vitejs.dev)。
+* 配套后端位于同仓库 `springboot3/` 目录（基于 [RuoYi-Cloud](https://gitee.com/y_project/RuoYi-Cloud) 的 OPC 扩展）。
 
 # 版本对比
 

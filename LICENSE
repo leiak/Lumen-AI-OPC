@@ -2,6 +2,19 @@
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
 
+   OPC 项目 (Open Personal Cloud / One-Person Company)
+   Copyright 2026 OPC Project Contributors
+
+   本项目包含来自以下上游项目的代码,均遵循其原始许可协议:
+   - RuoYi-Cloud (Spring Boot 3 后端, Apache License 2.0)
+     https://gitee.com/y_project/RuoYi-Cloud
+   - RuoYi-Cloud-Vue3-TypeScript (前端, MIT License)
+     https://gitee.com/y_project/RuoYi-Cloud
+
+   OPC 在其基础上扩展 AI、客户关系管理、HR、洞察、通知、模块市场等业务模块。
+   OPC 项目代码以 Apache License 2.0 发布;上游 RuoYi 子模块遵循各自的原始协议,
+   详见 springboot3/LICENSE 与 vue3-typescript/LICENSE。
+
    TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
    1. Definitions.
@@ -54,7 +67,7 @@
       means any form of electronic, verbal, or written communication sent
       to the Licensor or its representatives, including but not limited to
       communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
+      and issue tracking systems, that are managed by, or on behalf of, the
       Licensor for the purpose of discussing and improving the Work, but
       excluding communication that is conspicuously marked or otherwise
       designated in writing by the copyright owner as "Not a Contribution."
@@ -63,15 +76,15 @@
       on behalf of whom a Contribution has been received by Licensor and
       subsequently incorporated within the Work.
 
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
+   2. Grant of Copyright License. Subject to the terms and conditions
+      of this License, each Contributor hereby grants to You a perpetual,
       worldwide, non-exclusive, no-charge, royalty-free, irrevocable
       copyright license to reproduce, prepare Derivative Works of,
       publicly display, publicly perform, sublicense, and distribute the
       Work and such Derivative Works in Source or Object form.
 
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
+   3. Grant of Patent License. Subject to the terms and conditions
+      of this License, each Contributor hereby grants to You a perpetual,
       worldwide, non-exclusive, no-charge, royalty-free, irrevocable
       (except as stated in this section) patent license to make, have made,
       use, offer to sell, sell, import, and otherwise transfer the Work,
@@ -129,8 +142,8 @@
 
    5. Submission of Contributions. Unless You explicitly state otherwise,
       any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
+      by You to the Licensor shall be under the terms and conditions
+      of this License, without any additional terms or conditions.
       Notwithstanding the above, nothing herein shall supersede or modify
       the terms of any separate license agreement you may have executed
       with Licensor regarding such Contributions.
@@ -167,7 +180,7 @@
       and charge a fee for, acceptance of support, warranty, indemnity,
       or other liability obligations and/or rights consistent with this
       License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
+      on your own behalf and on your sole responsibility, not on behalf
       of any other Contributor, and only if You agree to indemnify,
       defend, and hold each Contributor harmless for any liability
       incurred by, or claims asserted against, such Contributor by reason
@@ -186,7 +199,7 @@
       same "printed page" as the copyright notice for easier
       identification within third-party archives.
 
-   Copyright [yyyy] [name of copyright owner]
+   Copyright 2026 OPC Project Contributors
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.

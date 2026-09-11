@@ -54,7 +54,7 @@
 
 | 能力 | 后端 | 前端 | 数据库 | 部署 |
 |------|------|------|--------|------|
-| RuoYi 基线跑通 | ✅ | ✅ | ry_* | ✅ |
+| OPC 在 RuoYi 基线上跑通 | ✅ | ✅ | ry_* | ✅ |
 | 用户中心（注册 / 公司 / 画像） | ✅ | ✅ | opc_user_profile / opc_company_profile | ✅ |
 | Agent Hub（市场 / 雇佣 / 实例 / 任务） | ✅ | ✅ | opc_agent_definition / _instance / _task | ✅ |
 | 财务 Agent（流水 / 凭证 / 审核 / 日报） | ✅ | ✅ | opc_finance_voucher / _bank_flow | ✅ |
@@ -146,7 +146,7 @@ npm install && npm run dev
 | 财务 Agent 评测准确率 > 85% | ⚠️ | 评测集 v0.1 10 用例已 seed，需扩到 100 |
 | 单用户每日 Token 成本 < ¥1 | ⚠️ | 计量埋点已埋，需观察 |
 | 公测 7 天无 P0 故障 | ⚠️ | 公测环境 W10 启动后验证 |
-| 关键操作审计日志 | ✅ | opc_audit_log 表 + RuoYi SysOperLog |
+| 关键操作审计日志 | ✅ | opc_audit_log 表 + 沿用 RuoYi SysOperLog |
 | 监控覆盖 4 大黄金指标 | ✅ | opc-overview.json Grafana 大盘 |
 | 故障 5 分钟告警 / 30 分钟定位 | ✅ | runbook F-01..F-07 |
 | 完整文档（产品 / 用户 / 运维） | ✅ | deploy/README + runbook + 本文档 |
@@ -157,7 +157,7 @@ npm install && npm run dev
 
 1. **AI 工程师**：把 `opc_agent_eval_case` 从 10 个扩到 100+，跑通 Prompt v0.2。
 2. **后端 A**：补 `application-prod.yml`，生产配置走 Nacos 而非本地 yml。
-3. **后端 B**：把 RuoYi `ruoyi-job` 接入 `WorkflowEngine`，实现 cron 触发器。
+3. **后端 B**：把 RuoYi `ruoyi-job`（OPC 沿用）接入 `WorkflowEngine`，实现 cron 触发器。
 4. **后端 C**：补 `opc_finance_tax_report` Controller 和 Service。
 5. **前端**：补移动端适配（Element Plus 的 xs/sm 响应式断点）。
 6. **DevOps**：把 `docker-compose.yml` 改为 K8s Helm Chart，便于多环境复用。

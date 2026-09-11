@@ -1,7 +1,6 @@
 # OPC (一人公司 + N 个数字员工)
 
-> 一站式智能财务 SaaS。基于 RuoYi Cloud Spring Boot 3 + Vue 3 + TypeScript，
-> 让"一人公司"以**自然语言**驱动 7×24 的 AI 数字员工团队完成记账、报税、对账、报销、风控。
+> 一站式智能财务 SaaS。基于 RuoYi Cloud Spring Boot 3 + Vue 3 + TypeScript（OPC 扩展），让"一人公司"以**自然语言**驱动 7×24 的 AI 数字员工团队完成记账、报税、对账、报销、风控。
 
 [![W1 验收](https://img.shields.io/badge/W1-8%20Task%2F25%20Sub--task-brightgreen)](./OPC-W1-TASK-BREAKDOWN.md)
 [![安全](https://img.shields.io/badge/ASR-3.3%25%20%7C%20FP-0%25-success)](./OPC-SECURITY-REPORT-v0.1.md)
@@ -41,7 +40,7 @@ OPC = **One-Person Company**，核心假设是未来大量"一人公司"会涌�
 - **RabbitMQ** 异步事件
 - **Qdrant** 向量库（Agent 长期记忆）
 - **Sentinel** 限流熔断
-- **Quartz** 定时任务（RuoYi 原生 `ruoyi-job`，不走 XXL-Job）
+- **Quartz** 定时任务（OPC 沿用 RuoYi 原生 `ruoyi-job`，不走 XXL-Job）
 - **OpenFeign** 微服务调用（带 Sentinel 降级）
 - **Jasypt** 配置加密（口令 `OpcEncrypt!2026`）
 
@@ -74,7 +73,7 @@ opc-agent-hub    (9303) Agent 调度 ── Workflow Engine + 多 Agent 编排
 opc-billing      (9304) 计费     ── 钱包 / 代金券 / 流水
 opc-finance      (9305) 财务     ── 凭证 / 流水 / 报税报表
 
-RuoYi 内置模块：
+OPC 沿用的 RuoYi 内置模块：
   ruoyi-gateway     (9200) Spring Cloud Gateway + Sentinel 流控
   ruoyi-auth        (9201) OAuth2 统一认证
   ruoyi-system      (9202) 用户 / 角色 / 菜单 / 字典

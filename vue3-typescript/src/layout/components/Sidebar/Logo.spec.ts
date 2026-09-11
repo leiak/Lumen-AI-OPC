@@ -2,7 +2,7 @@
 //
 // Source flow:
 //   1. const title = import.meta.env.VITE_APP_TITLE (from .env.development
-//      => '若依管理系统')
+//      => 'OPC 管理后台')
 //   2. useSettingsStore() reads isDark / navType / sideTheme
 //   3. Computed getLogoBackground:
 //        if (isDark)                          -> 'var(--sidebar-bg)'
@@ -58,7 +58,7 @@ vi.mock('@/utils/theme', async () => {
 
 vi.mock('@/settings', () => ({
   default: {
-    title: '若依管理系统',
+    title: 'OPC 管理后台',
     sideTheme: 'theme-dark',
     showSettings: true,
     navType: 1,
@@ -70,7 +70,7 @@ vi.mock('@/settings', () => ({
     sidebarLogo: true,
     dynamicTitle: false,
     footerVisible: false,
-    footerContent: 'Copyright © 2018-2026 RuoYi',
+    footerContent: 'Copyright © 2018-2026 OPC',
   },
 }))
 
@@ -311,11 +311,11 @@ describe('Logo.vue — collapse prop', () => {
 describe('Logo.vue — title from env', () => {
   it('21. title is sourced from import.meta.env.VITE_APP_TITLE (undefined in vitest)', () => {
     // happy-dom does not auto-load .env files, so VITE_APP_TITLE is
-    // undefined. In production (real Vite build) it would be '若依管理系统'.
+    // undefined. In production (real Vite build) it would be 'OPC 管理后台'.
     // Pin the contract: title is bound to env, not hardcoded.
     const w = mountLogo({ collapse: false })
     const title = (w.vm as any).$.setupState.title
-    expect(title === undefined || title === '若依管理系统').toBe(true)
+    expect(title === undefined || title === 'OPC 管理后台').toBe(true)
   })
 })
 
