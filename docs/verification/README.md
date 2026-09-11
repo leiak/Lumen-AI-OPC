@@ -19,6 +19,7 @@
 | [W11](#week-11) | 前端单测 (W11) | 1 |
 | [W12](#week-12) | 前端单测 (W12) | 1 |
 | [W49](#week-49) | opc-notification 服务全栈交付 | 7 |
+| [W50](#week-50) | opc-crm 客户关系管理服务全栈交付 | 20 |
 | [late/](#late) | W19-W22 api 契约 + SFC Logo | 1 |
 | [M4](#m4-insight) | Insight MVP 部署 + 验证 | 2 |
 
@@ -143,6 +144,33 @@ mutation testing 三部曲。
 | [opc-notification-task17-frontend.md](./week-49/opc-notification-task17-frontend.md) | Task 17: 前端 Inbox.vue + WS composable + API |
 | [opc-notification-task18-e2e.md](./week-49/opc-notification-task18-e2e.md) | Task 18: notification_e2e.py 11/11 PASS |
 | [opc-notification-week49-verification.md](./week-49/opc-notification-week49-verification.md) | W49 验收报告 (Task 19) |
+
+## Week 50
+
+20 个文件, 覆盖 opc-crm 服务全栈交付 (后端 35 Java + 前端 4 views + Helm + E2E + RECOVERY + W50 验收报告)。
+
+| 文件 | 主题 |
+|------|------|
+| [opc-crm-task1-scaffold.md](./week-50/opc-crm-task1-scaffold.md) | Task 1: scaffold opc-crm (pom + Dockerfile + app + yml) |
+| [opc-crm-task2-mysql-seed.md](./week-50/opc-crm-task2-mysql-seed.md) | Task 2: 6 表 schema + seed (10/30/50/20/8/12) |
+| [opc-crm-task3-enums.md](./week-50/opc-crm-task3-enums.md) | Task 3: 5 enums + 1 FollowUpType (state machines) |
+| [opc-crm-task4-entities.md](./week-50/opc-crm-task4-entities.md) | Task 4: 6 POJOs (@Data @Builder @JsonFormat) |
+| [opc-crm-task5-mappers.md](./week-50/opc-crm-task5-mappers.md) | Task 5: 6 Mappers + 6 XML + MybatisConfig |
+| [opc-crm-task6-customer-service.md](./week-50/opc-crm-task6-customer-service.md) | Task 6: CustomerService + 8 @Test (CRUD + level filter) |
+| [opc-crm-task7-contact-service.md](./week-50/opc-crm-task7-contact-service.md) | Task 7: ContactService + 6 @Test (create + setPrimary 2-step) |
+| [opc-crm-task8-followup-service.md](./week-50/opc-crm-task8-followup-service.md) | Task 8: FollowUpService + 6 @Test (CRUD + list upcoming) |
+| [opc-crm-task9-opportunity-service.md](./week-50/opc-crm-task9-opportunity-service.md) | Task 9: OpportunityService + 10 @Test (state machine + LLM score) |
+| [opc-crm-task10-contract-service.md](./week-50/opc-crm-task10-contract-service.md) | Task 10: ContractService + 6 @Test (state machine) |
+| [opc-crm-task11-order-service.md](./week-50/opc-crm-task11-order-service.md) | Task 11: OrderService + 6 @Test (pay/ship/complete/cancel) |
+| [opc-crm-task12-dashboard-service.md](./week-50/opc-crm-task12-dashboard-service.md) | Task 12: DashboardService + 4 @Test (funnel/level/follow-ups) |
+| [opc-crm-task13-feign-gateways.md](./week-50/opc-crm-task13-feign-gateways.md) | Task 13: 3 OpenFeign gateways + FeignConfig + 4 @Test |
+| [opc-crm-task14-controllers.md](./week-50/opc-crm-task14-controllers.md) | Task 14: 7 REST controllers + StageChangeRequest + 41 endpoints |
+| [opc-crm-task15-deployment-files.md](./week-50/opc-crm-task15-deployment-files.md) | Task 15: Nacos dev/prod + docker-compose + gateway route |
+| [opc-crm-task16-deploy.md](./week-50/opc-crm-task16-deploy.md) | Task 16: thin jar 94K + 204 deps + 容器启动 9.14s |
+| [opc-crm-task17-health-recovery-helm.md](./week-50/opc-crm-task17-health-recovery-helm.md) | Task 17: health-check +8 + RECOVERY §11 + Helm chart |
+| [opc-crm-task18-frontend.md](./week-50/opc-crm-task18-frontend.md) | Task 18: 4 Vue 3 views + crm.ts (41 fns) + router |
+| [opc-crm-task19-e2e.md](./week-50/opc-crm-task19-e2e.md) | Task 19: crm_e2e.py 23/23 PASS (1 bug fix: score NOT NULL) |
+| [opc-crm-week50-verification.md](./week-50/opc-crm-week50-verification.md) | W50 验收报告 (Task 20) |
 
 ## Late
 
