@@ -478,6 +478,42 @@ services:
       - aiopc-net
     restart: unless-stopped
 
+  # ============ OPC Notification（邮件/短信/站内信/WebSocket）============
+  aiopc-notification:
+    build:
+      context: ..
+      dockerfile: ruoyi-modules/opc-notification/Dockerfile
+    image: aiopc-notification:latest
+    container_name: aiopc-notification
+    ports:
+      - "9310:9310"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
+      SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE: opc-dev
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos1:8848
+      NACOS_NAMESPACE: opc-dev
+      JASYPT_PASSWORD: OpcEncrypt!2026
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DB: ry-vue-opc
+      MYSQL_USER: root
+      MYSQL_PASSWORD: Opc@2026!
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: Opc@2026!
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: Opc@2026!
+      SERVER_PORT: "9310"
+    depends_on:
+      - nacos1
+      - mysql
+      - redis
+    networks:
+      - aiopc-net
+    restart: unless-stopped
+
 networks:
   aiopc-net:
     driver: bridge
