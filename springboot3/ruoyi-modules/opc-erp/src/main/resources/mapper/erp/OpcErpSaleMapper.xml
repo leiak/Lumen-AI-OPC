@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.erp.mapper.OpcErpSaleMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.erp.domain.OpcErpSale">
+        <id property="id" column="id"/>
+        <result property="companyId" column="company_id"/>
+        <result property="saleNo" column="sale_no"/>
+        <result property="customerName" column="customer_name"/>
+        <result property="customerPhone" column="customer_phone"/>
+        <result property="totalAmount" column="total_amount"/>
+        <result property="status" column="status"/>
+        <result property="operatorId" column="operator_id"/>
+        <result property="confirmedBy" column="confirmed_by"/>
+        <result property="confirmedAt" column="confirmed_at"/>
+        <result property="completedAt" column="completed_at"/>
+        <result property="cancelledAt" column="cancelled_at"/>
+        <result property="remark" column="remark"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, company_id, sale_no, customer_name, customer_phone, total_amount,
+        status, operator_id, confirmed_by, confirmed_at, completed_at,
+        cancelled_at, remark, created_by, create_time, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.erp.domain.OpcErpSale">
+        INSERT INTO opc_erp_sale (
+            <include refid="BaseColumns"/>
+        )
+        VALUES (
+            #{id}, #{companyId}, #{saleNo}, #{customerName}, #{customerPhone},
+            #{totalAmount}, #{status}, #{operatorId}, #{confirmedBy},
+            #{confirmedAt}, #{completedAt}, #{cancelledAt}, #{remark},
+            #{createdBy}, NOW(), NOW()
+        )
+    </insert>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.erp.domain.OpcErpSale">
+        UPDATE opc_erp_sale
+        <set>
+            <if test="saleNo != null">sale_no = #{saleNo},</if>
+            <if test="customerName != null">customer_name = #{customerName},</if>
+            <if test="customerPhone != null">customer_phone = #{customerPhone},</if>
+            <if test="totalAmount != null">total_amount = #{totalAmount},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="operatorId != null">operator_id = #{operatorId},</if>
+            <if test="confirmedBy != null">confirmed_by = #{confirmedBy},</if>
+            <if test="confirmedAt != null">confirmed_at = #{confirmedAt},</if>
+            <if test="completedAt != null">completed_at = #{completedAt},</if>
+            <if test="cancelledAt != null">cancelled_at = #{cancelledAt},</if>
+            <if test="remark != null">remark = #{remark},</if>
+            update_time = NOW()
+        </set>
+        WHERE id = #{id} AND company_id = #{companyId}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM opc_erp_sale
+        WHERE id = #{id} AND company_id = #{companyId}
+    </delete>
+
+    <select id="selectById" resultType="com.ruoyi.opc.erp.domain.OpcErpSale">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_sale
+        WHERE id = #{id} AND company_id = #{companyId}
+    </select>
+
+    <select id="selectBySaleNo" resultType="com.ruoyi.opc.erp.domain.OpcErpSale">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_sale
+        WHERE company_id = #{companyId} AND sale_no = #{saleNo}
+    </select>
+
+    <select id="selectList" resultType="com.ruoyi.opc.erp.domain.OpcErpSale">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_sale
+        <where>
+            company_id = #{companyId}
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+            <if test="customerName != null and customerName != ''">
+                AND customer_name LIKE CONCAT('%', #{customerName}, '%')
+            </if>
+        </where>
+        ORDER BY id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countList" resultType="int">
+        SELECT COUNT(1)
+        FROM opc_erp_sale
+        <where>
+            company_id = #{companyId}
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+            <if test="customerName != null and customerName != ''">
+                AND customer_name LIKE CONCAT('%', #{customerName}, '%')
+            </if>
+        </where>
+    </select>
+
+    <select id="selectListByStatus" resultType="com.ruoyi.opc.erp.domain.OpcErpSale">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_sale
+        WHERE company_id = #{companyId}
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY id DESC
+    </select>
+
+    <update id="updateStatus">
+        UPDATE opc_erp_sale
+        SET status = #{status},
+            update_time = NOW()
+        WHERE id = #{id} AND company_id = #{companyId}
+    </update>
+
+    <select id="countTodaySales" resultType="java.lang.Integer">
+        SELECT COUNT(1)
+        FROM opc_erp_sale
+        WHERE company_id = #{companyId}
+          AND DATE(create_time) = #{today}
+    </select>
+
+</mapper>

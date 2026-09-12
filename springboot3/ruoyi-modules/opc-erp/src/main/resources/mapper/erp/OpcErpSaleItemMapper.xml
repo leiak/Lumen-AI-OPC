@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.erp.mapper.OpcErpSaleItemMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.erp.domain.OpcErpSaleItem">
+        <id property="id" column="id"/>
+        <result property="companyId" column="company_id"/>
+        <result property="saleId" column="sale_id"/>
+        <result property="skuId" column="sku_id"/>
+        <result property="quantity" column="quantity"/>
+        <result property="unitPrice" column="unit_price"/>
+        <result property="subtotal" column="subtotal"/>
+        <result property="batchId" column="batch_id"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, company_id, sale_id, sku_id, quantity, unit_price, subtotal, batch_id
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.erp.domain.OpcErpSaleItem">
+        INSERT INTO opc_erp_sale_item (
+            <include refid="BaseColumns"/>
+        )
+        VALUES (
+            #{id}, #{companyId}, #{saleId}, #{skuId}, #{quantity},
+            #{unitPrice}, #{subtotal}, #{batchId}
+        )
+    </insert>
+
+    <insert id="insertBatch" parameterType="java.util.List">
+        INSERT INTO opc_erp_sale_item (
+            <include refid="BaseColumns"/>
+        )
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.id}, #{item.companyId}, #{item.saleId}, #{item.skuId},
+             #{item.quantity}, #{item.unitPrice}, #{item.subtotal},
+             #{item.batchId})
+        </foreach>
+    </insert>
+
+    <select id="selectBySaleId" resultType="com.ruoyi.opc.erp.domain.OpcErpSaleItem">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_sale_item
+        WHERE company_id = #{companyId} AND sale_id = #{saleId}
+        ORDER BY id ASC
+    </select>
+
+    <delete id="deleteBySaleId">
+        DELETE FROM opc_erp_sale_item
+        WHERE company_id = #{companyId} AND sale_id = #{saleId}
+    </delete>
+
+</mapper>
