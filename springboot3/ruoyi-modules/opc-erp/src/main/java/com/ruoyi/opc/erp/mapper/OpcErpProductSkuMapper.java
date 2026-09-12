@@ -23,6 +23,9 @@ public interface OpcErpProductSkuMapper {
     List<OpcErpProductSku> selectByProductId(@Param("companyId") Long companyId,
                                              @Param("productId") Long productId);
 
+    /** 公司下所有 SKU（Task 7 Quartz Job 用：扫所有 SKU 落每日快照） */
+    List<OpcErpProductSku> selectByCompany(@Param("companyId") Long companyId);
+
     /** 低库存预警: stock < threshold */
     List<OpcErpProductSku> selectLowStock(@Param("companyId") Long companyId,
                                           @Param("threshold") Integer threshold);

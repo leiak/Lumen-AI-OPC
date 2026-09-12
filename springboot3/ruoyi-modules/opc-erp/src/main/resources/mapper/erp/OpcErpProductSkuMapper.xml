@@ -73,6 +73,13 @@
         ORDER BY id ASC
     </select>
 
+    <select id="selectByCompany" resultType="com.ruoyi.opc.erp.domain.OpcErpProductSku">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_product_sku
+        WHERE company_id = #{companyId}
+        ORDER BY id ASC
+    </select>
+
     <select id="selectLowStock" resultType="com.ruoyi.opc.erp.domain.OpcErpProductSku">
         SELECT <include refid="BaseColumns"/>
         FROM opc_erp_product_sku

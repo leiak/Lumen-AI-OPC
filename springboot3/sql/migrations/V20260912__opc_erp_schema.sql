@@ -243,6 +243,24 @@ CREATE TABLE IF NOT EXISTS `opc_erp_return` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 退货单';
 
 -- -----------------------------------------------------------------------------
+-- 11) 库存每日快照（Task 7 — Quartz 每日 23:55 落库，供日报/月报查询）
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `opc_erp_daily_snapshot` (
+  `id`             BIGINT       NOT NULL PRIMARY KEY                    COMMENT '雪花 ID',
+  `company_id`     BIGINT       NOT NULL                                COMMENT '所属公司',
+  `snapshot_date`  DATE         NOT NULL                                COMMENT '快照日期',
+  `sku_id`         BIGINT       NOT NULL                                COMMENT 'SKU ID',
+  `opening_stock`  INT          NOT NULL DEFAULT 0                      COMMENT '期初库存',
+  `in_qty`         INT          NOT NULL DEFAULT 0                      COMMENT '当日入库合计',
+  `out_qty`        INT          NOT NULL DEFAULT 0                      COMMENT '当日出库合计',
+  `closing_stock`  INT          NOT NULL DEFAULT 0                      COMMENT '期末库存',
+  `create_time`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP       COMMENT '创建时间',
+  KEY `idx_company_date` (`company_id`, `snapshot_date`),
+  KEY `idx_company_date_sku` (`company_id`, `snapshot_date`, `sku_id`),
+  UNIQUE KEY `uk_company_date_sku` (`company_id`, `snapshot_date`, `sku_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 库存每日快照';
+
+-- -----------------------------------------------------------------------------
 -- Seed: 5 个默认供应商
 -- -----------------------------------------------------------------------------
 INSERT IGNORE INTO `opc_erp_supplier` (`id`, `company_id`, `name`, `contact`, `phone`, `level`, `created_by`)

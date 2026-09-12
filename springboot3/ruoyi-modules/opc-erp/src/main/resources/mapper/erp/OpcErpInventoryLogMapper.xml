@@ -39,4 +39,15 @@
           </if>
     </select>
 
+    <!-- 单日区间 [date 00:00:00, date+1 00:00:00) -->
+    <select id="selectBySkuIdAndDate" resultType="com.ruoyi.opc.erp.domain.OpcErpInventoryLog">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_inventory_log
+        WHERE company_id = #{companyId}
+          AND sku_id = #{skuId}
+          AND create_time &gt;= CONCAT(#{date}, ' 00:00:00')
+          AND create_time &lt; DATE_ADD(CONCAT(#{date}, ' 00:00:00'), INTERVAL 1 DAY)
+        ORDER BY create_time ASC
+    </select>
+
 </mapper>

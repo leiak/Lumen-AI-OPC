@@ -51,6 +51,24 @@ public class OpcErpReportDto {
     }
 
     /**
+     * 日报响应（Task 7）：单日所有 SKU 快照明细 + 汇总字段。
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DailyReport {
+        @JsonFormat(pattern = "yyyy-MM-dd", timezone = "GMT+8")
+        private LocalDate date;
+        @JsonProperty("sku_count")
+        private Integer skuCount;
+        @JsonProperty("total_closing_stock")
+        private Integer totalClosingStock;
+        @JsonProperty("details")
+        private java.util.List<DailySnapshot> details;
+    }
+
+    /**
      * 顶层报表响应：低库存计数 + 月度数组
      */
     @Data
