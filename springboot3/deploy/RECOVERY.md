@@ -403,3 +403,94 @@ bash deploy.sh nuke                        # ⚠️ 删 mysql/redis/nacos 数据
 > ⚠️ `deploy.sh` 不重建镜像。如果改了 OPC 服务源码,先 `mvn package + mvn dependency:copy-dependencies`,再 `deploy.sh rebuild crm` (或 `rebuild all` 重建所有 OPC 模块镜像)。
 
 ---
+
+## 14. opc-erp 服务 (9311, W72)
+
+**作用**：进销存管理。商品/SKU/采购/销售/退货/库存查询/日报月报 + FIFO 批次出库算法 + 销退/采退双路退货 + 每日库存快照。
+
+**端口**：9311
+
+**依赖服务**:
+- opc-notification (9310) — 库存预警 / 退货完成通知 (Task 8 Feign Gateway)
+- MySQL `ry-vue-opc` 库 (11 张 opc_erp_* 表)
+
+**11 张核心表**:
+- `opc_erp_supplier` (供应商 NORMAL/PREFERRED/BLOCKED 等级)
+- `opc_erp_product` (商品,含 spec_attrs JSON 动态规格)
+- `opc_erp_product_sku` (SKU 笛卡尔积自动生成,`@Version` 乐观锁,stock 字段)
+- `opc_erp_batch` (批次表,`production_date` + `remaining` 字段支持 FIFO 出库)
+- `opc_erp_inventory_log` (库存流水,5 种 type: PURCHASE_IN/SALE_OUT/SALES_RETURN_IN/SUPPLIER_RETURN_OUT/ADJUST)
+- `opc_erp_purchase` (采购单 DRAFT/CONFIRMED/COMPLETED/CANCELLED 状态机,`purchase_no = PO-yyyyMMdd-XXXX`)
+- `opc_erp_purchase_item` (采购明细,含 batch_no + production_date + expiry_date)
+- `opc_erp_sale` (销售单 同采购单状态机,`sale_no = SO-yyyyMMdd-XXXX`,含 customer_phone)
+- `opc_erp_sale_item` (销售明细,`batch_id` 是 FIFO 扣减后写入的)
+- `opc_erp_return` (退货单 SALES_RETURN/SUPPLIER_RETURN 双路,`return_no = RT-yyyyMMdd-XXXX`)
+- `opc_erp_daily_snapshot` (Quartz 每日 23:55 落库,供日报/月报查询)
+
+**schema 初始化**:
+- `mysql-initdb.d/15-opc-erp-schema.sql` (11 张表,首次 `mysql/data` 为空时自动跑)
+- `mysql-initdb.d/96-opc-erp-seed.sql` (5 个默认供应商 INSERT IGNORE)
+
+**Nacos 配置**:
+- DataID: `opc-erp-dev.yml` / `opc-erp-prod.yml`
+- 推送命令: `bash deploy/nacos/import-dev.sh` (W72 起 NAMES 已含 `opc-erp-dev.yml`)
+
+**启动**:
+```bash
+cd springboot3
+JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
+  mvn -pl ruoyi-modules/opc-erp -am clean package \
+    -Dmaven.test.skip=true -Dspring-boot.repackage.skip=true
+JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
+  mvn -pl ruoyi-modules/opc-erp dependency:copy-dependencies \
+    -DoutputDirectory=target/dependency
+cd deploy
+docker compose build aiopc-erp
+docker compose up -d aiopc-erp aiopc-gateway
+```
+
+**注意**:
+- 必须用 `-Dmaven.test.skip=true` 绕过 `opc-common` 测试编译错误 (`OpcNacosStartupCheckerTest.java`)
+- gateway 路由 `opc-erp` → `http://aiopc-erp:9311` 已在 `ruoyi-gateway/src/main/resources/application.yml`;白名单包含 `/opc/erp/product/**` (公开浏览) + `/opc/erp/inventory/low-stock` (公开预警查询);改完要重启 gateway
+- thin jar 模式下 docker 容器 `java -cp "xxx.jar:lib/*" Main-Class` 启动,需先 `mvn dependency:copy-dependencies`
+- FIFO 出库使用 `SELECT ... FOR UPDATE` 行锁;并发场景下 `opc_erp_batch.remaining` 不会超扣
+- SUPPLIER_RETURN 路径当前缺 `FOR UPDATE` 锁 (Task 6 reviewer 关注点),并发高时需在生产前加 `updateRemainingWithCheck` (UPDATE ... WHERE remaining >= qty)
+- `/opc/notification/inbox/send` Feign 路径在 opc-notification 端是 aspirational (W49 教训),会 fallback 到 `R.ok()` 不影响主流程
+
+**验证**:
+```bash
+bash deploy/scripts/health-check.sh | tail -20
+# 期望: 53/53 PASS (44 + 9 new erp checks)
+```
+
+**快速 smoke test**:
+```bash
+TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' \
+  http://127.0.0.1:8080/login \
+  | python -c "import sys,json;print(json.load(sys.stdin)['data']['access_token'])")
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:8080/opc/erp/product/list?companyId=1"
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:8080/opc/erp/purchase/list?companyId=1"
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:8080/opc/erp/inventory/low-stock?companyId=1"
+```
+
+**E2E 脚本**:
+```bash
+python tmp_e2e/e2e_erp.py
+# 10 步全流程:登录 → 创建商品(笛卡尔积) → 列 SKU → 创建采购单 →
+# 确认采购单 → 销售单列表 → 低库存预警 → 日报 → 月报 → 供应商列表
+```
+
+**W72 教训（与 opc-erp 部署相关）**:
+- `docker compose build aiopc-frontend && docker compose up -d aiopc-frontend` 必须在所有 OPC 服务重建后跑(W50 教训):nginx.conf build 时烧进镜像,上游 IP 漂移会导致前端 502
+- 容器跑 `mvn clean package` 后变 thin jar 缺 Main-Class(W52 教训):用 `-Dmaven.test.skip=true` 不带 clean repackage 出 104MB fat jar
+- 部署链路完整顺序:`mvn package` → `mvn dependency:copy-dependencies` → `docker compose build aiopc-erp` → `docker compose up -d aiopc-erp` → `docker compose build aiopc-frontend && docker compose up -d aiopc-frontend`(最后一步,防 502)
+
+---
+
+**Last updated:** 2026-09-12 (W72 — added opc-erp section §14 + 11 表 schema initdb + 5 seed 供应商 + 9 health-check)
+
+---
