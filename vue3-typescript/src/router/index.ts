@@ -245,6 +245,57 @@ export const constantRoutes = [
         name: 'OpcHrCandidateDetail',
         meta: { title: '候选人详情', activeMenu: '/opc/hr/candidate' },
         hidden: true
+      },
+      {
+        path: 'erp/product',
+        component: () => import('@/views/opc/erp/product/index.vue'),
+        name: 'OpcErpProductList',
+        meta: { title: '商品管理', icon: 'goods' }
+      },
+      {
+        path: 'erp/product/:id(\\d+)',
+        component: () => import('@/views/opc/erp/product/detail.vue'),
+        name: 'OpcErpProductDetail',
+        meta: { title: '商品详情', activeMenu: '/opc/erp/product' },
+        hidden: true
+      },
+      {
+        path: 'erp/purchase',
+        component: () => import('@/views/opc/erp/purchase/index.vue'),
+        name: 'OpcErpPurchaseList',
+        meta: { title: '采购单', icon: 'shopping-cart' }
+      },
+      {
+        path: 'erp/purchase/new',
+        component: () => import('@/views/opc/erp/purchase/new.vue'),
+        name: 'OpcErpPurchaseNew',
+        meta: { title: '新建采购单', activeMenu: '/opc/erp/purchase' },
+        hidden: true
+      },
+      {
+        path: 'erp/sale',
+        component: () => import('@/views/opc/erp/sale/index.vue'),
+        name: 'OpcErpSaleList',
+        meta: { title: '销售单', icon: 'sell' }
+      },
+      {
+        path: 'erp/sale/new',
+        component: () => import('@/views/opc/erp/sale/new.vue'),
+        name: 'OpcErpSaleNew',
+        meta: { title: '新建销售单', activeMenu: '/opc/erp/sale' },
+        hidden: true
+      },
+      {
+        path: 'erp/return',
+        component: () => import('@/views/opc/erp/return/index.vue'),
+        name: 'OpcErpReturnList',
+        meta: { title: '退货单', icon: 'refresh' }
+      },
+      {
+        path: 'erp/inventory',
+        component: () => import('@/views/opc/erp/inventory/index.vue'),
+        name: 'OpcErpInventory',
+        meta: { title: '库存查询', icon: 'box' }
       }
     ]
   },
