@@ -43,4 +43,10 @@ public interface OpcErpPurchaseMapper {
      */
     Integer countTodayPurchases(@Param("companyId") Long companyId,
                                 @Param("today") LocalDate today);
+
+    /**
+     * 按 supplier 统计采购单数（供应商删除守卫）。
+     */
+    Integer countBySupplier(@Param("companyId") Long companyId,
+                            @Param("supplierId") Long supplierId);
 }

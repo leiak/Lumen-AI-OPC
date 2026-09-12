@@ -28,4 +28,11 @@ public interface OpcErpBatchMapper {
     List<OpcErpBatch> selectFifoOrderForUpdate(@Param("companyId") Long companyId,
                                                @Param("skuId") Long skuId,
                                                @Param("limit") int limit);
+
+    /**
+     * 按 (companyId, skuId, batchNo) 查询批次(Task 6 采退入库使用)
+     */
+    OpcErpBatch selectBySkuAndBatchNo(@Param("companyId") Long companyId,
+                                      @Param("skuId") Long skuId,
+                                      @Param("batchNo") String batchNo);
 }

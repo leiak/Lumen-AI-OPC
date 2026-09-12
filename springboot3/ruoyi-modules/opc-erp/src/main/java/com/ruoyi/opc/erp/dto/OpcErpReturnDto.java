@@ -18,6 +18,8 @@ import java.util.List;
 @AllArgsConstructor
 public class OpcErpReturnDto {
     private Long id;
+    @JsonProperty("company_id")
+    private Long companyId;
     @JsonProperty("return_no")
     private String returnNo;
     @JsonProperty("return_type")

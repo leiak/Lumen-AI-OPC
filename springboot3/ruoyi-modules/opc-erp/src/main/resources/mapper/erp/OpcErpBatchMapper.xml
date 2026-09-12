@@ -79,4 +79,13 @@
         FOR UPDATE
     </select>
 
+    <!-- Task 6: 按 (companyId, skuId, batchNo) 查询单批次(采退入库使用) -->
+    <select id="selectBySkuAndBatchNo" resultType="com.ruoyi.opc.erp.domain.OpcErpBatch">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_batch
+        WHERE company_id = #{companyId}
+          AND sku_id = #{skuId}
+          AND batch_no = #{batchNo}
+    </select>
+
 </mapper>

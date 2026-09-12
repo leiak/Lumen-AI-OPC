@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.erp.mapper.OpcErpSupplierMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.erp.domain.OpcErpSupplier">
+        <id property="id" column="id"/>
+        <result property="companyId" column="company_id"/>
+        <result property="name" column="name"/>
+        <result property="contact" column="contact"/>
+        <result property="phone" column="phone"/>
+        <result property="email" column="email"/>
+        <result property="address" column="address"/>
+        <result property="level" column="level"/>
+        <result property="status" column="status"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, company_id, name, contact, phone, email, address, level, status,
+        created_by, create_time, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.erp.domain.OpcErpSupplier">
+        INSERT INTO opc_erp_supplier (
+            <include refid="BaseColumns"/>
+        )
+        VALUES (
+            #{id}, #{companyId}, #{name}, #{contact}, #{phone}, #{email},
+            #{address}, #{level}, #{status}, #{createdBy}, NOW(), NOW()
+        )
+    </insert>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.erp.domain.OpcErpSupplier">
+        UPDATE opc_erp_supplier
+        <set>
+            <if test="contact != null">contact = #{contact},</if>
+            <if test="phone != null">phone = #{phone},</if>
+            <if test="email != null">email = #{email},</if>
+            <if test="address != null">address = #{address},</if>
+            <if test="level != null">level = #{level},</if>
+            <if test="status != null">status = #{status},</if>
+            update_time = NOW()
+        </set>
+        WHERE id = #{id} AND company_id = #{companyId}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM opc_erp_supplier
+        WHERE id = #{id} AND company_id = #{companyId}
+    </delete>
+
+    <select id="selectById" resultType="com.ruoyi.opc.erp.domain.OpcErpSupplier">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_supplier
+        WHERE id = #{id} AND company_id = #{companyId}
+    </select>
+
+    <select id="selectByName" resultType="com.ruoyi.opc.erp.domain.OpcErpSupplier">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_supplier
+        WHERE company_id = #{companyId} AND name = #{name}
+    </select>
+
+    <select id="selectList" resultType="com.ruoyi.opc.erp.domain.OpcErpSupplier">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_supplier
+        <where>
+            company_id = #{companyId}
+            <if test="level != null and level != ''">
+                AND level = #{level}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (name LIKE CONCAT('%', #{keyword}, '%')
+                  OR contact LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY id ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countList" resultType="int">
+        SELECT COUNT(1)
+        FROM opc_erp_supplier
+        <where>
+            company_id = #{companyId}
+            <if test="level != null and level != ''">
+                AND level = #{level}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (name LIKE CONCAT('%', #{keyword}, '%')
+                  OR contact LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+    </select>
+
+    <select id="selectListByLevel" resultType="com.ruoyi.opc.erp.domain.OpcErpSupplier">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_supplier
+        WHERE company_id = #{companyId} AND level = #{level}
+        ORDER BY id ASC
+    </select>
+
+</mapper>

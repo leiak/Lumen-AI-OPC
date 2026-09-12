@@ -127,4 +127,12 @@
           AND DATE(create_time) = #{today}
     </select>
 
+    <!-- Task 6: 按 supplier 统计采购单数(供应商删除守卫) -->
+    <select id="countBySupplier" resultType="java.lang.Integer">
+        SELECT COUNT(1)
+        FROM opc_erp_purchase
+        WHERE company_id = #{companyId}
+          AND supplier_id = #{supplierId}
+    </select>
+
 </mapper>

@@ -3,6 +3,7 @@ package com.ruoyi.opc.erp.mapper;
 import com.ruoyi.opc.erp.domain.OpcErpReturn;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public interface OpcErpReturnMapper {
@@ -33,4 +34,10 @@ public interface OpcErpReturnMapper {
     int updateStatus(@Param("id") Long id,
                      @Param("companyId") Long companyId,
                      @Param("status") String status);
+
+    /**
+     * 统计今日退货单数,用于 return_no 序号生成
+     */
+    Integer countTodayReturns(@Param("companyId") Long companyId,
+                              @Param("today") LocalDate today);
 }
