@@ -114,6 +114,11 @@ spring:
               predicates:
                 - Path=/opc/hr/**
 
+            - id: opc-erp
+              uri: http://aiopc-erp:9311
+              predicates:
+                - Path=/opc/erp/**
+
 security:
   ignore:
     whites:
@@ -167,6 +172,15 @@ security:
       - /opc/hr/dashboard
       - /opc/hr/job/list
       - /opc/hr/job/**
+
+      # W72: OPC ERP 公开浏览 (商品 SKU 列表 + 库存预警 — 公开访问)
+      # 创建商品 / 采购 / 销售 / 退货仍需鉴权 — 由 service 层 SecurityUtils 校验
+      # GET /product/list = 商品列表,/product/{id} = 商品详情,
+      # /product/product-sku/list = SKU 列表,/inventory/low-stock = 库存预警
+      # POST /product /purchase /sale /return 不在白名单 → 需登录
+      - /opc/erp/product/list
+      - /opc/erp/product/**
+      - /opc/erp/inventory/low-stock
 
 # 文档参考
 logging:
