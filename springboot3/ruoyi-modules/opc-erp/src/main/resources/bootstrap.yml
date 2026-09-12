@@ -1,0 +1,50 @@
+# Tomcat
+server:
+  port: ${SERVER_PORT:9311}
+
+# Spring
+spring:
+  application:
+    name: opc-erp
+  profiles:
+    # 默认 dev;prod 通过 -Dspring.profiles.active=prod 或 SPRING_PROFILES_ACTIVE=prod 切换
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  cloud:
+    nacos:
+      # ====== 服务发现 ======
+      discovery:
+        server-addr: ${NACOS_SERVER:nacos1:8848}
+        namespace: ${NACOS_NAMESPACE:opc-dev}
+        # prod 必须显式开启;fail-fast 后启动失败直接退出
+        fail-fast: true
+        fail-fast-on-connection-refused: true
+      # ====== 配置中心 ======
+      config:
+        server-addr: ${NACOS_SERVER:nacos1:8848}
+        namespace: ${NACOS_NAMESPACE:opc-dev}
+        file-extension: yml
+        fail-fast: true
+        refresh-enabled: true
+        # 重试机制:解决 Nacos 短暂抖动
+        retry-time: 3000
+        max-retry-time: 60000
+  config:
+    file-extension: yml
+    # Spring Boot 3 / Spring Cloud Alibaba 2022+ 下 Nacos 配置必须通过 config.import 拉取,
+    # 仅写 extension-configs/ext-config 不会生效(与其他 OPC 模块保持一致)。
+    import:
+      - nacos:application-${spring.profiles.active}.${spring.config.file-extension}
+      - nacos:${spring.application.name}-${spring.profiles.active}.${spring.config.file-extension}
+      - nacos:opc-common-${spring.profiles.active}.${spring.config.file-extension}
+
+# Jasypt(Nacos 配置里的 ENC(...) 解密,必须在 bootstrap 阶段可用)
+jasypt:
+  encryptor:
+    password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
+    algorithm: PBEWithMD5AndDES
+
+# 日志
+logging:
+  level:
+    com.ruoyi.opc: debug
+    com.alibaba.cloud.nacos: info

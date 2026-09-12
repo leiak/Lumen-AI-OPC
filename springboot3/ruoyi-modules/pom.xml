@@ -24,6 +24,7 @@
         <module>opc-crm</module>
         <module>opc-community</module>
         <module>opc-hr</module>
+        <module>opc-erp</module>
     </modules>
 
     <artifactId>ruoyi-modules</artifactId>
