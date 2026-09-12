@@ -34,7 +34,7 @@ USE ry-vue-opc;
 -- 1) 供应商
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `opc_erp_supplier` (
-  `id`          BIGINT       NOT NULL                                COMMENT '雪花 ID',
+  `id`          BIGINT       NOT NULL PRIMARY KEY                    COMMENT '雪花 ID',
   `company_id`  BIGINT       NOT NULL                                COMMENT '所属公司',
   `name`        VARCHAR(128) NOT NULL                                COMMENT '供应商名称',
   `contact`     VARCHAR(64)                                                   COMMENT '联系人',
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS `opc_erp_supplier` (
 -- 2) 商品
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `opc_erp_product` (
-  `id`          BIGINT       NOT NULL                                COMMENT '雪花 ID',
+  `id`          BIGINT       NOT NULL PRIMARY KEY                    COMMENT '雪花 ID',
   `company_id`  BIGINT       NOT NULL                                COMMENT '所属公司',
   `sku_root`    VARCHAR(64)  NOT NULL                                COMMENT 'SKU 根编码(前缀)',
   `name`        VARCHAR(128) NOT NULL                                COMMENT '商品名称',
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS `opc_erp_product` (
   `brand`       VARCHAR(64)                                                   COMMENT '品牌',
   `unit`        VARCHAR(16)  NOT NULL DEFAULT '件'                    COMMENT '计量单位',
   `description` TEXT                                                       COMMENT '商品描述',
-  `spec_attrs`  JSON                                                      COMMENT '规格属性 JSON:[{"name":"颜色","values":["黑","白"]}]',
+  `spec_attrs`  JSON         NOT NULL                                COMMENT '规格属性 JSON:[{"name":"颜色","values":["黑","白"]}]',
   `status`      VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE'                COMMENT 'ACTIVE/INACTIVE',
   `created_by`  BIGINT       NOT NULL                                COMMENT '创建人',
   `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP       COMMENT '创建时间',
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS `opc_erp_product` (
 -- 3) 商品 SKU（动态笛卡尔积规格）
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `opc_erp_product_sku` (
-  `id`          BIGINT       NOT NULL                                COMMENT '雪花 ID',
+  `id`          BIGINT       NOT NULL PRIMARY KEY                    COMMENT '雪花 ID',
   `company_id`  BIGINT       NOT NULL                                COMMENT '所属公司',
   `product_id`  BIGINT       NOT NULL                                COMMENT '所属商品',
   `sku_code`    VARCHAR(128) NOT NULL                                COMMENT 'SKU 编码(=sku_root + spec values)',
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS `opc_erp_product_sku` (
 -- 4) 批次（FIFO 按 production_date ASC 扣减）
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `opc_erp_batch` (
-  `id`              BIGINT       NOT NULL                                COMMENT '雪花 ID',
+  `id`              BIGINT       NOT NULL PRIMARY KEY                    COMMENT '雪花 ID',
   `company_id`      BIGINT       NOT NULL                                COMMENT '所属公司',
   `sku_id`          BIGINT       NOT NULL                                COMMENT '所属 SKU',
   `batch_no`        VARCHAR(64)  NOT NULL                                COMMENT '批次号',
@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS `opc_erp_batch` (
   `update_time`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   KEY `idx_company_sku` (`company_id`, `sku_id`),
   KEY `idx_company_sku_prod` (`company_id`, `sku_id`, `production_date`),
+  KEY `idx_company_sku_remaining_fifo` (`company_id`, `sku_id`, `remaining`, `production_date`),
   UNIQUE KEY `uk_company_batch_no` (`company_id`, `batch_no`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 批次(FIFO)';
 
@@ -119,14 +120,16 @@ CREATE TABLE IF NOT EXISTS `opc_erp_batch` (
 -- 5) 库存流水
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `opc_erp_inventory_log` (
-  `id`          BIGINT       NOT NULL                                COMMENT '雪花 ID',
+  `id`          BIGINT       NOT NULL PRIMARY KEY                    COMMENT '雪花 ID',
   `company_id`  BIGINT       NOT NULL                                COMMENT '所属公司',
   `sku_id`      BIGINT       NOT NULL                                COMMENT 'SKU ID',
+  `batch_id`    BIGINT                                                    COMMENT '批次 ID(可空,非批次场景)',
   `change`      INT          NOT NULL                                COMMENT '变化数量(正入库/负出库)',
   `type`        VARCHAR(32)  NOT NULL                                COMMENT 'PURCHASE_IN/SALE_OUT/SALES_RETURN_IN/SUPPLIER_RETURN_OUT/ADJUST',
   `ref_type`    VARCHAR(32)                                                   COMMENT '引用类型:PURCHASE/SALE/RETURN/MANUAL',
   `ref_id`      BIGINT                                                    COMMENT '引用单据 ID',
   `remark`      VARCHAR(512)                                                  COMMENT '备注',
+  `created_by`  BIGINT       NOT NULL                                COMMENT '创建人',
   `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP       COMMENT '创建时间',
   KEY `idx_company_sku_time` (`company_id`, `sku_id`, `create_time`),
   KEY `idx_company_ref` (`company_id`, `ref_type`, `ref_id`)
@@ -136,7 +139,7 @@ CREATE TABLE IF NOT EXISTS `opc_erp_inventory_log` (
 -- 6) 采购单
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `opc_erp_purchase` (
-  `id`            BIGINT        NOT NULL                                COMMENT '雪花 ID',
+  `id`            BIGINT        NOT NULL PRIMARY KEY                    COMMENT '雪花 ID',
   `company_id`    BIGINT        NOT NULL                                COMMENT '所属公司',
   `purchase_no`   VARCHAR(64)   NOT NULL                                COMMENT '采购单号:PO-yyyyMMdd-XXXX',
   `supplier_id`   BIGINT        NOT NULL                                COMMENT '供应商 ID',
@@ -145,6 +148,8 @@ CREATE TABLE IF NOT EXISTS `opc_erp_purchase` (
   `operator_id`   BIGINT        NOT NULL                                COMMENT '经办人',
   `confirmed_by`  BIGINT                                                     COMMENT '确认人',
   `confirmed_at`  DATETIME                                                  COMMENT '确认时间',
+  `completed_at`  DATETIME                                                  COMMENT '入库完成时间',
+  `cancelled_at`  DATETIME                                                  COMMENT '取消时间',
   `remark`        VARCHAR(512)                                             COMMENT '备注',
   `created_by`    BIGINT        NOT NULL                                COMMENT '创建人',
   `create_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP       COMMENT '创建时间',
@@ -158,7 +163,7 @@ CREATE TABLE IF NOT EXISTS `opc_erp_purchase` (
 -- 7) 采购明细
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `opc_erp_purchase_item` (
-  `id`              BIGINT        NOT NULL                                COMMENT '雪花 ID',
+  `id`              BIGINT        NOT NULL PRIMARY KEY                    COMMENT '雪花 ID',
   `company_id`      BIGINT        NOT NULL                                COMMENT '所属公司',
   `purchase_id`     BIGINT        NOT NULL                                COMMENT '采购单 ID',
   `sku_id`          BIGINT        NOT NULL                                COMMENT 'SKU ID',
@@ -176,19 +181,22 @@ CREATE TABLE IF NOT EXISTS `opc_erp_purchase_item` (
 -- 8) 销售单
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `opc_erp_sale` (
-  `id`            BIGINT        NOT NULL                                COMMENT '雪花 ID',
-  `company_id`    BIGINT        NOT NULL                                COMMENT '所属公司',
-  `sale_no`       VARCHAR(64)   NOT NULL                                COMMENT '销售单号:SO-yyyyMMdd-XXXX',
-  `customer_name` VARCHAR(128)  NOT NULL                                COMMENT '客户名称',
-  `total_amount`  DECIMAL(18,2) NOT NULL DEFAULT 0                      COMMENT '销售总金额',
-  `status`        VARCHAR(16)   NOT NULL DEFAULT 'DRAFT'                 COMMENT 'DRAFT/CONFIRMED/COMPLETED/CANCELLED',
-  `operator_id`   BIGINT        NOT NULL                                COMMENT '经办人',
-  `confirmed_by`  BIGINT                                                     COMMENT '确认人',
-  `confirmed_at`  DATETIME                                                  COMMENT '确认时间',
-  `remark`        VARCHAR(512)                                             COMMENT '备注',
-  `created_by`    BIGINT        NOT NULL                                COMMENT '创建人',
-  `create_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP       COMMENT '创建时间',
-  `update_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `id`             BIGINT        NOT NULL PRIMARY KEY                   COMMENT '雪花 ID',
+  `company_id`     BIGINT        NOT NULL                                COMMENT '所属公司',
+  `sale_no`        VARCHAR(64)   NOT NULL                                COMMENT '销售单号:SO-yyyyMMdd-XXXX',
+  `customer_name`  VARCHAR(128)  NOT NULL                                COMMENT '客户名称',
+  `customer_phone` VARCHAR(32)                                            COMMENT '客户电话(销退通知)',
+  `total_amount`   DECIMAL(18,2) NOT NULL DEFAULT 0                      COMMENT '销售总金额',
+  `status`         VARCHAR(16)   NOT NULL DEFAULT 'DRAFT'                 COMMENT 'DRAFT/CONFIRMED/COMPLETED/CANCELLED',
+  `operator_id`    BIGINT        NOT NULL                                COMMENT '经办人',
+  `confirmed_by`   BIGINT                                                     COMMENT '确认人',
+  `confirmed_at`   DATETIME                                                  COMMENT '确认时间',
+  `completed_at`   DATETIME                                                  COMMENT '出库完成时间',
+  `cancelled_at`   DATETIME                                                  COMMENT '取消时间',
+  `remark`         VARCHAR(512)                                             COMMENT '备注',
+  `created_by`     BIGINT        NOT NULL                                COMMENT '创建人',
+  `create_time`    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP       COMMENT '创建时间',
+  `update_time`    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   KEY `idx_company_status` (`company_id`, `status`),
   UNIQUE KEY `uk_company_sale_no` (`company_id`, `sale_no`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 销售单';
@@ -197,7 +205,7 @@ CREATE TABLE IF NOT EXISTS `opc_erp_sale` (
 -- 9) 销售明细（batch_id FIFO 指派）
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `opc_erp_sale_item` (
-  `id`          BIGINT        NOT NULL                                COMMENT '雪花 ID',
+  `id`          BIGINT        NOT NULL PRIMARY KEY                    COMMENT '雪花 ID',
   `company_id`  BIGINT        NOT NULL                                COMMENT '所属公司',
   `sale_id`     BIGINT        NOT NULL                                COMMENT '销售单 ID',
   `sku_id`      BIGINT        NOT NULL                                COMMENT 'SKU ID',
@@ -214,7 +222,7 @@ CREATE TABLE IF NOT EXISTS `opc_erp_sale_item` (
 -- 10) 退货单
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `opc_erp_return` (
-  `id`            BIGINT        NOT NULL                                COMMENT '雪花 ID',
+  `id`            BIGINT        NOT NULL PRIMARY KEY                    COMMENT '雪花 ID',
   `company_id`    BIGINT        NOT NULL                                COMMENT '所属公司',
   `return_no`     VARCHAR(64)   NOT NULL                                COMMENT '退货单号:RT-yyyyMMdd-XXXX',
   `return_type`   VARCHAR(32)   NOT NULL                                COMMENT 'SALES_RETURN/SUPPLIER_RETURN',
@@ -224,7 +232,8 @@ CREATE TABLE IF NOT EXISTS `opc_erp_return` (
   `operator_id`   BIGINT        NOT NULL                                COMMENT '经办人',
   `confirmed_by`  BIGINT                                                     COMMENT '确认人',
   `confirmed_at`  DATETIME                                                  COMMENT '确认时间',
-  `remark`        VARCHAR(512)                                             COMMENT '备注',
+  `completed_at`  DATETIME                                                  COMMENT '退货完成时间',
+  `reason`        VARCHAR(256)                                             COMMENT '退货原因',
   `created_by`    BIGINT        NOT NULL                                COMMENT '创建人',
   `create_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP       COMMENT '创建时间',
   `update_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
