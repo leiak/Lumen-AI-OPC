@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.erp.mapper.OpcErpInventoryLogMapper">
+
+    <sql id="BaseColumns">
+        id, company_id, sku_id, batch_id, change, type, ref_type, ref_id,
+        remark, created_by, create_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.erp.domain.OpcErpInventoryLog">
+        INSERT INTO opc_erp_inventory_log (
+            <include refid="BaseColumns"/>
+        )
+        VALUES (
+            #{id}, #{companyId}, #{skuId}, #{batchId}, #{change}, #{type},
+            #{refType}, #{refId}, #{remark}, #{createdBy}, NOW()
+        )
+    </insert>
+
+    <select id="selectBySkuId" resultType="com.ruoyi.opc.erp.domain.OpcErpInventoryLog">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_inventory_log
+        WHERE company_id = #{companyId}
+          AND sku_id = #{skuId}
+          <if test="sinceDate != null">
+              AND create_time &gt;= #{sinceDate}
+          </if>
+        ORDER BY create_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countBySkuId" resultType="int">
+        SELECT COUNT(1)
+        FROM opc_erp_inventory_log
+        WHERE company_id = #{companyId}
+          AND sku_id = #{skuId}
+          <if test="sinceDate != null">
+              AND create_time &gt;= #{sinceDate}
+          </if>
+    </select>
+
+</mapper>
