@@ -12,6 +12,8 @@
 #   5) 13 个 /opc/** 接口返回 R-code 200 (登录后)
 #   6) opc-notification 6 项健康检查 (W49 Task 14)
 #   7) opc-crm 8 项健康检查 (W50 Task 17)
+#   8) opc-hr 8 项健康检查 (W71 Task 12)
+#   9) opc-erp 9 项健康检查 (W72 Task 12)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -663,6 +665,202 @@ except Exception:
   fi
 }
 
+# ---------- 9. opc-erp 健康 ----------
+check_erp() {
+  hr
+  echo "[9] opc-erp 健康检查 (W72 Task 12)"
+  hr
+
+  # 9.1 容器 Up
+  local c="aiopc-erp"
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${c}$"; then
+    status=$(docker inspect --format '{{.State.Status}}' "${c}" 2>/dev/null)
+    if [[ "${status}" == "running" ]]; then
+      ok "${c} running"
+    else
+      nok "${c} 状态异常: ${status}"
+    fi
+  else
+    nok "${c} 不存在"
+  fi
+
+  # 9.2 Nacos 注册 (opc-dev namespace)
+  local nacos_url="http://${GATEWAY_HOST}:${NACOS_PORT}/nacos/v1/ns/instance/list?serviceName=opc-erp&namespaceId=opc-dev"
+  local nacos_body
+  nacos_body=$(curl -sf -m 10 "${nacos_url}" 2>/dev/null) || nacos_body=""
+  local healthy_count
+  healthy_count=$(echo "${nacos_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin)
+    hosts = d.get('hosts', [])
+    print(len(hosts) if hosts else 0)
+except Exception:
+    print(0)
+" 2>/dev/null)
+  if [[ "${healthy_count}" -ge 1 ]]; then
+    ok "Nacos opc-erp 注册 ${healthy_count} 实例 (opc-dev)"
+  else
+    nok "Nacos opc-erp 未注册: ${nacos_body:-<no response>}"
+  fi
+
+  # 9.3 直接 /actuator/health (绕过网关直连 9311)
+  local health_body
+  health_body=$(curl -sf -m 10 "http://127.0.0.1:9311/actuator/health" 2>/dev/null) || health_body=""
+  if [[ "${health_body}" == "UP" ]] || echo "${health_body}" | grep -q '"status":"UP"'; then
+    ok "opc-erp /actuator/health UP"
+  else
+    nok "opc-erp /actuator/health: ${health_body:-<no response>}"
+  fi
+
+  # 9.4 业务接口 (需登录,复用 admin)
+  local login_body
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/login" 2>/dev/null) || true
+  if [[ -z "${login_body}" ]]; then
+    warn "登录失败, 跳过 opc-erp 业务接口"
+    return
+  fi
+  local token
+  token=$(echo "${login_body}" | python -c "
+import sys,json
+d = json.load(sys.stdin).get('data', {})
+print(d.get('token','') or d.get('access_token',''))
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    warn "未拿到 token, 跳过 opc-erp 业务接口"
+    return
+  fi
+
+  # 9.5 gateway /opc/erp/product/list
+  local product_body
+  product_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/erp/product/list?companyId=1" 2>/dev/null) || product_body=""
+  local product_code
+  product_code=$(echo "${product_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${product_code}" == "200" ]]; then
+    ok "/opc/erp/product/list body.code=200"
+  elif echo "${product_body}" | grep -q "No static resource"; then
+    nok "/opc/erp/product/list 网关未路由 (静态回退): ${product_body:0:120}"
+  else
+    nok "/opc/erp/product/list body.code=${product_code}: ${product_body:0:120}"
+  fi
+
+  # 9.6 gateway /opc/erp/product/product-sku/list (公开白名单)
+  local sku_body
+  sku_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/erp/product/product-sku/list?companyId=1" 2>/dev/null) || sku_body=""
+  local sku_code
+  sku_code=$(echo "${sku_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${sku_code}" == "200" ]]; then
+    ok "/opc/erp/product/product-sku/list body.code=200 (公开)"
+  elif echo "${sku_body}" | grep -q "No static resource"; then
+    nok "/opc/erp/product/product-sku/list 网关未路由 (静态回退): ${sku_body:0:120}"
+  else
+    nok "/opc/erp/product/product-sku/list body.code=${sku_code}: ${sku_body:0:120}"
+  fi
+
+  # 9.7 gateway /opc/erp/purchase/list
+  local purchase_body
+  purchase_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/erp/purchase/list?companyId=1" 2>/dev/null) || purchase_body=""
+  local purchase_code
+  purchase_code=$(echo "${purchase_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${purchase_code}" == "200" ]]; then
+    ok "/opc/erp/purchase/list body.code=200"
+  elif echo "${purchase_body}" | grep -q "No static resource"; then
+    nok "/opc/erp/purchase/list 网关未路由 (静态回退): ${purchase_body:0:120}"
+  else
+    nok "/opc/erp/purchase/list body.code=${purchase_code}: ${purchase_body:0:120}"
+  fi
+
+  # 9.8 gateway /opc/erp/sale/list
+  local sale_body
+  sale_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/erp/sale/list?companyId=1" 2>/dev/null) || sale_body=""
+  local sale_code
+  sale_code=$(echo "${sale_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${sale_code}" == "200" ]]; then
+    ok "/opc/erp/sale/list body.code=200"
+  elif echo "${sale_body}" | grep -q "No static resource"; then
+    nok "/opc/erp/sale/list 网关未路由 (静态回退): ${sale_body:0:120}"
+  else
+    nok "/opc/erp/sale/list body.code=${sale_code}: ${sale_body:0:120}"
+  fi
+
+  # 9.9 gateway /opc/erp/supplier/list
+  local supplier_body
+  supplier_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/erp/supplier/list?companyId=1" 2>/dev/null) || supplier_body=""
+  local supplier_code
+  supplier_code=$(echo "${supplier_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${supplier_code}" == "200" ]]; then
+    ok "/opc/erp/supplier/list body.code=200"
+  elif echo "${supplier_body}" | grep -q "No static resource"; then
+    nok "/opc/erp/supplier/list 网关未路由 (静态回退): ${supplier_body:0:120}"
+  else
+    nok "/opc/erp/supplier/list body.code=${supplier_code}: ${supplier_body:0:120}"
+  fi
+
+  # 9.10 gateway /opc/erp/inventory/low-stock (公开白名单)
+  local low_body
+  low_body=$(curl -s -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/erp/inventory/low-stock?companyId=1" 2>/dev/null) || low_body=""
+  local low_code
+  low_code=$(echo "${low_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${low_code}" == "200" ]]; then
+    ok "/opc/erp/inventory/low-stock body.code=200 (公开)"
+  elif echo "${low_body}" | grep -q "No static resource"; then
+    nok "/opc/erp/inventory/low-stock 网关未路由 (静态回退): ${low_body:0:120}"
+  else
+    nok "/opc/erp/inventory/low-stock body.code=${low_code}: ${low_body:0:120}"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -676,6 +874,7 @@ main() {
   check_notification
   check_crm
   check_hr
+  check_erp
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"
