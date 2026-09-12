@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.erp.mapper.OpcErpBatchMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.erp.domain.OpcErpBatch">
+        <id property="id" column="id"/>
+        <result property="companyId" column="company_id"/>
+        <result property="skuId" column="sku_id"/>
+        <result property="batchNo" column="batch_no"/>
+        <result property="quantity" column="quantity"/>
+        <result property="remaining" column="remaining"/>
+        <result property="productionDate" column="production_date"/>
+        <result property="expiryDate" column="expiry_date"/>
+        <result property="supplierId" column="supplier_id"/>
+        <result property="purchaseId" column="purchase_id"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, company_id, sku_id, batch_no, quantity, remaining, production_date,
+        expiry_date, supplier_id, purchase_id, create_time, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.erp.domain.OpcErpBatch">
+        INSERT INTO opc_erp_batch (
+            <include refid="BaseColumns"/>
+        )
+        VALUES (
+            #{id}, #{companyId}, #{skuId}, #{batchNo}, #{quantity}, #{remaining},
+            #{productionDate}, #{expiryDate}, #{supplierId}, #{purchaseId},
+            NOW(), NOW()
+        )
+    </insert>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.erp.domain.OpcErpBatch">
+        UPDATE opc_erp_batch
+        <set>
+            <if test="remaining != null">remaining = #{remaining},</if>
+            update_time = NOW()
+        </set>
+        WHERE id = #{id} AND company_id = #{companyId}
+    </update>
+
+    <!-- FIFO 扣减: remaining = remaining + delta（delta 可负） -->
+    <update id="updateRemaining">
+        UPDATE opc_erp_batch
+        SET remaining = remaining + #{delta},
+            update_time = NOW()
+        WHERE id = #{id} AND company_id = #{companyId}
+    </update>
+
+    <select id="selectById" resultType="com.ruoyi.opc.erp.domain.OpcErpBatch">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_batch
+        WHERE id = #{id} AND company_id = #{companyId}
+    </select>
+
+    <!-- FIFO 顺序: production_date ASC, 同日期按 id ASC -->
+    <select id="selectFifoOrder" resultType="com.ruoyi.opc.erp.domain.OpcErpBatch">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_batch
+        WHERE company_id = #{companyId}
+          AND sku_id = #{skuId}
+          AND remaining &gt; 0
+        ORDER BY production_date ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <!-- FIFO + 悲观锁: Task 5 销售出库使用 -->
+    <select id="selectFifoOrderForUpdate" resultType="com.ruoyi.opc.erp.domain.OpcErpBatch">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_batch
+        WHERE company_id = #{companyId}
+          AND sku_id = #{skuId}
+          AND remaining &gt; 0
+        ORDER BY production_date ASC, id ASC
+        LIMIT #{limit}
+        FOR UPDATE
+    </select>
+
+</mapper>

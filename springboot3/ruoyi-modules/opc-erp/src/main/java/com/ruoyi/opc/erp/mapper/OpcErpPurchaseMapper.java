@@ -3,6 +3,7 @@ package com.ruoyi.opc.erp.mapper;
 import com.ruoyi.opc.erp.domain.OpcErpPurchase;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public interface OpcErpPurchaseMapper {
@@ -36,4 +37,10 @@ public interface OpcErpPurchaseMapper {
     int updateStatus(@Param("id") Long id,
                      @Param("companyId") Long companyId,
                      @Param("status") String status);
+
+    /**
+     * 当日采购单计数（用于 purchase_no 序号生成）。
+     */
+    Integer countTodayPurchases(@Param("companyId") Long companyId,
+                                @Param("today") LocalDate today);
 }

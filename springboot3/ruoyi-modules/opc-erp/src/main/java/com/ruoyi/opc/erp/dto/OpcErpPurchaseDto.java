@@ -15,6 +15,8 @@ import java.util.List;
 @AllArgsConstructor
 public class OpcErpPurchaseDto {
     private Long id;
+    @JsonProperty("company_id")
+    private Long companyId;
     @JsonProperty("purchase_no")
     private String purchaseNo;
     @JsonProperty("supplier_id")

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.erp.mapper.OpcErpPurchaseItemMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.erp.domain.OpcErpPurchaseItem">
+        <id property="id" column="id"/>
+        <result property="companyId" column="company_id"/>
+        <result property="purchaseId" column="purchase_id"/>
+        <result property="skuId" column="sku_id"/>
+        <result property="quantity" column="quantity"/>
+        <result property="unitPrice" column="unit_price"/>
+        <result property="subtotal" column="subtotal"/>
+        <result property="batchNo" column="batch_no"/>
+        <result property="productionDate" column="production_date"/>
+        <result property="expiryDate" column="expiry_date"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, company_id, purchase_id, sku_id, quantity, unit_price, subtotal,
+        batch_no, production_date, expiry_date
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.erp.domain.OpcErpPurchaseItem">
+        INSERT INTO opc_erp_purchase_item (
+            <include refid="BaseColumns"/>
+        )
+        VALUES (
+            #{id}, #{companyId}, #{purchaseId}, #{skuId}, #{quantity},
+            #{unitPrice}, #{subtotal}, #{batchNo},
+            #{productionDate}, #{expiryDate}
+        )
+    </insert>
+
+    <insert id="insertBatch" parameterType="java.util.List">
+        INSERT INTO opc_erp_purchase_item (
+            <include refid="BaseColumns"/>
+        )
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.id}, #{item.companyId}, #{item.purchaseId}, #{item.skuId},
+             #{item.quantity}, #{item.unitPrice}, #{item.subtotal},
+             #{item.batchNo}, #{item.productionDate}, #{item.expiryDate})
+        </foreach>
+    </insert>
+
+    <select id="selectByPurchaseId" resultType="com.ruoyi.opc.erp.domain.OpcErpPurchaseItem">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_erp_purchase_item
+        WHERE company_id = #{companyId} AND purchase_id = #{purchaseId}
+    </select>
+
+    <delete id="deleteByPurchaseId">
+        DELETE FROM opc_erp_purchase_item
+        WHERE company_id = #{companyId} AND purchase_id = #{purchaseId}
+    </delete>
+
+</mapper>
