@@ -33,7 +33,9 @@ services:
   mysql:
     image: mysql:8.0
     container_name: aiopc-mysql
-    ports: ["3307:3306"]
+    # 3308 避开 lumen-platform-mysql 占用的 3307
+    # 容器内仍用 3306 (其他服务 MYSQL_PORT=3306 不变)
+    ports: ["3308:3306"]
     environment:
       MYSQL_ROOT_PASSWORD: Opc@2026!
       MYSQL_DATABASE: ry-vue-opc
@@ -607,6 +609,14 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: Opc@2026!
+      # Spring 约定: SPRING_DATA_REDIS_* 直接覆盖 Nacos 共享配置中的 127.0.0.1 (W51 教训)
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: Opc@2026!
+      # MySQL 同理 (覆盖共享 application-dev.yml 里的 127.0.0.1)
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_URL: jdbc:mysql://mysql:3306/ry-vue-opc?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_USERNAME: root
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_PASSWORD: Opc@2026!
       SERVER_PORT: "9322"
     depends_on:
       - nacos1
@@ -632,12 +642,13 @@ services:
       SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos1:8848
       NACOS_NAMESPACE: opc-dev
       JASYPT_PASSWORD: OpcEncrypt!2026
-      MYSQL_HOST: mysql
+      # W72 fix: 本 compose 网络里 MySQL 容器名是 aiopc-mysql,不能用占位 fallback 'mysql'
+      MYSQL_HOST: aiopc-mysql
       MYSQL_PORT: "3306"
       MYSQL_DB: ry-vue-opc
       MYSQL_USER: root
       MYSQL_PASSWORD: Opc@2026!
-      REDIS_HOST: redis
+      REDIS_HOST: aiopc-redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: Opc@2026!
       SERVER_PORT: "9311"
