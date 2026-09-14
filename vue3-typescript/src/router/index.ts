@@ -296,6 +296,44 @@ export const constantRoutes = [
         component: () => import('@/views/opc/erp/inventory/index.vue'),
         name: 'OpcErpInventory',
         meta: { title: '库存查询', icon: 'box' }
+      },
+      {
+        path: 'content/dashboard',
+        component: () => import('@/views/opc/content/dashboard.vue'),
+        name: 'OpcContentDashboard',
+        meta: { title: '内容仪表盘', icon: 'data-board' }
+      },
+      {
+        path: 'content/script',
+        component: () => import('@/views/opc/content/script/index.vue'),
+        name: 'OpcContentScriptList',
+        meta: { title: '脚本管理', icon: 'document' }
+      },
+      {
+        path: 'content/script/:id(\\d+)',
+        component: () => import('@/views/opc/content/script/detail.vue'),
+        name: 'OpcContentScriptDetail',
+        meta: { title: '脚本详情', activeMenu: '/opc/content/script' },
+        hidden: true
+      },
+      {
+        path: 'content/script/:id(\\d+)/adapt',
+        component: () => import('@/views/opc/content/script/adapt.vue'),
+        name: 'OpcContentScriptAdapt',
+        meta: { title: '平台适配', activeMenu: '/opc/content/script' },
+        hidden: true
+      },
+      {
+        path: 'content/platform-account',
+        component: () => import('@/views/opc/content/platform-account/index.vue'),
+        name: 'OpcContentPlatformAccount',
+        meta: { title: '平台账号', icon: 'user' }
+      },
+      {
+        path: 'content/publish',
+        component: () => import('@/views/opc/content/publish/index.vue'),
+        name: 'OpcContentPublishList',
+        meta: { title: '发布记录', icon: 'upload' }
       }
     ]
   },
