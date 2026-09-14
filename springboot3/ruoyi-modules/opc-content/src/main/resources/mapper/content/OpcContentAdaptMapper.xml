@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.content.mapper.OpcContentAdaptMapper">
+
+    <resultMap id="AdaptResultMap" type="com.ruoyi.opc.content.domain.OpcContentAdapt">
+        <id property="id" column="id" />
+        <result property="companyId" column="company_id" />
+        <result property="sourceScriptId" column="source_script_id" />
+        <result property="adaptedScriptId" column="adapted_script_id" />
+        <result property="targetPlatform" column="target_platform" />
+        <result property="tone" column="tone" />
+        <result property="hashtags" column="hashtags" />
+        <result property="note" column="note" />
+        <result property="createdAt" column="created_at" />
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, company_id, source_script_id, adapted_script_id, target_platform,
+        tone, hashtags, note, created_at
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.content.domain.OpcContentAdapt">
+        INSERT INTO opc_content_adapt
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="id != null">id,</if>
+            <if test="companyId != null">company_id,</if>
+            <if test="sourceScriptId != null">source_script_id,</if>
+            <if test="adaptedScriptId != null">adapted_script_id,</if>
+            <if test="targetPlatform != null">target_platform,</if>
+            <if test="tone != null">tone,</if>
+            <if test="hashtags != null">hashtags,</if>
+            <if test="note != null">note,</if>
+            <if test="createdAt != null">created_at,</if>
+        </trim>
+        <trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+            <if test="id != null">#{id},</if>
+            <if test="companyId != null">#{companyId},</if>
+            <if test="sourceScriptId != null">#{sourceScriptId},</if>
+            <if test="adaptedScriptId != null">#{adaptedScriptId},</if>
+            <if test="targetPlatform != null">#{targetPlatform},</if>
+            <if test="tone != null">#{tone},</if>
+            <if test="hashtags != null">#{hashtags},</if>
+            <if test="note != null">#{note},</if>
+            <if test="createdAt != null">#{createdAt},</if>
+        </trim>
+    </insert>
+
+    <select id="selectBySource" resultMap="AdaptResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_content_adapt
+        WHERE source_script_id = #{sourceScriptId} AND company_id = #{companyId}
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectByAdapted" resultMap="AdaptResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_content_adapt
+        WHERE adapted_script_id = #{adaptedScriptId} AND company_id = #{companyId}
+        LIMIT 1
+    </select>
+
+    <select id="selectListByCompany" resultMap="AdaptResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_content_adapt
+        WHERE company_id = #{companyId}
+        ORDER BY created_at DESC
+    </select>
+
+</mapper>
