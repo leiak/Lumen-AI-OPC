@@ -79,17 +79,19 @@ opc-hr 为 OPC 提供"AI 增强的招聘 / 人事管理"后端，覆盖：JD 生
 
 ### 3.1 单元测试
 
-opc-hr 累计 **66 单测全过**(commit a3c6856 后):
-- Task 3:18(OpcHrJobServiceImplTest,含 pause + create_blankTitle 边界)
-- Task 4:10(OpcHrCandidateServiceImplTest,含 email 重复校验)
-- Task 5:10(OpcHrApplicationServiceImplTest,含状态机 5 转换 + 终态保护 + 跳级拒绝)
-- Task 6:8(OpcHrInterview 4 + OpcHrOffer 4,含 round 自增 + duplicate application)
-- Task 7:8(OpcHrDashboardServiceImplTest,含 funnel/conversion/avgHireDays/sinceDays 边界)
-- Task 8:4(OpcHrNotificationGatewayFactory 2 + OpcHrAiCoreGatewayFactory 2,fallback 验证)
+opc-hr 累计单测全过(2026-09-14 实测):
+- OpcHrJobServiceImplTest:18(pause + create_blankTitle 边界)
+- OpcHrCandidateServiceImplTest:10(email 重复校验)
+- OpcHrApplicationServiceImplTest:10(状态机 5 转换 + 终态保护 + 跳级拒绝)
+- OpcHrInterviewServiceImplTest:4 + OpcHrOfferServiceImplTest:4(round 自增 + duplicate application)
+- OpcHrDashboardServiceImplTest:8(funnel/conversion/avgHireDays/sinceDays 边界)
+- OpcHrAiCoreGatewayFactoryTest:2 + OpcHrNotificationGatewayFactoryTest:2(fallback 验证)
+
+合计 **58 @Test**(原报告 §3.1 写 66 存在算术差,本次核验修正)
 
 ```
-$ mvn -pl ruoyi-modules/opc-hr test -Drat.skip=true
-[INFO] Tests run: 66, Failures: 0, Errors: 0, Skipped: 0
+$ mvn -pl ruoyi-modules/opc-hr test
+[INFO] Tests run: 58, Failures: 0, Errors: 0, Skipped: 0
 [INFO] BUILD SUCCESS
 ```
 
@@ -202,4 +204,34 @@ d10b783 fix(hr): add @EnableCustomConfig + ComponentScan system per spec reviewe
 aafbdd6 feat(hr): Task 1 - 模块骨架 + Application + 6 表 SQL
 ```
 
-**14 commits / 12 Tasks / 66 单测 / 27 endpoints / 5 Vue 页 / 8 health-check / 31 helm resources**。
+**14 commits / 12 Tasks / 58 单测(2026-09-14 实测) / 27 endpoints / 5 Vue 页 / 8 health-check / 31 helm resources**。
+
+---
+
+## 8. 2026-09-14 W51 收尾核验 Addendum
+
+### 8.1 补交付的 initdb SQL
+- `springboot3/deploy/mysql-initdb.d/10-opc-hr-schema.sql`（镜像自 V20260911,IF NOT EXISTS 模式,6 表）
+- `springboot3/deploy/mysql-initdb.d/97-opc-hr-seed.sql`（6 JD + 5 候选人 + 5 投递 + 2 面试 + 1 offer + 3 match_score）
+
+### 8.2 复用现有部署工件（验证仍生效）
+- `springboot3/deploy/nacos/opc-hr-dev.yml` ✅
+- `springboot3/deploy/docker-compose.yml`（aiopc-hr 端口 9322）✅
+- `springboot3/ruoyi-gateway/src/main/resources/application.yml`(`/opc/hr/**` → `http://aiopc-hr:9322`)✅
+- `springboot3/deploy/scripts/health-check.sh` `check_hr()` 8 端点 ✅
+- `springboot3/deploy/helm/opc/templates/{deployment-hr,service-hr}.yaml` ✅
+
+### 8.3 实测结果（2026-09-14 09:48）
+| 验证项 | 结果 |
+|--------|------|
+| 后端编译 | BUILD SUCCESS |
+| 单元测试 | **58/58 PASS** |
+| `mvn -pl ruoyi-modules/opc-hr test` | BUILD SUCCESS |
+| 前端 5 Vue 页 + API + Router | 全部就位（dashboard.vue / job/{index,detail}.vue / candidate/{index,detail}.vue） |
+| `tmp_e2e/e2e_hr.py` 11 步脚本 | 就绪（live run 受 lumen-platform 占用 host:3307 阻塞,需停其栈或改 aiopc 端口映射） |
+| Helm chart | 0 errors, 31 resources（dev） |
+
+### 8.4 W51 收尾结论
+opc-hr (W71-W73 第一阶段) 已完成交付,代码 + 测试 + 前端 + 部署工件 + 验证脚本全栈就绪。
+本次补的仅是 initdb SQL（首次部署容器自动跑表的入口）,不改变功能。
+Live e2e + health-check 实跑需 aiopc 栈空闲（host:3307 未被 lumen-platform 占用）时由 `bash deploy/scripts/health-check.sh` + `python tmp_e2e/e2e_hr.py` 触发。
