@@ -8,10 +8,14 @@ import com.ruoyi.opc.hr.domain.OpcHrCandidate;
 import com.ruoyi.opc.hr.domain.OpcHrJob;
 import com.ruoyi.opc.hr.dto.OpcHrApplicationDto;
 import com.ruoyi.opc.hr.enums.HrApplicationStatus;
+import com.ruoyi.opc.hr.domain.OpcHrMatchScore;
+import com.ruoyi.opc.hr.dto.HrScoreResult;
 import com.ruoyi.opc.hr.mapper.OpcHrApplicationMapper;
 import com.ruoyi.opc.hr.mapper.OpcHrCandidateMapper;
 import com.ruoyi.opc.hr.mapper.OpcHrJobMapper;
 import com.ruoyi.opc.hr.service.IOpcHrApplicationService;
+import com.ruoyi.opc.hr.service.IOpcHrMatchScoreService;
+import com.ruoyi.opc.hr.service.llm.HrLlmClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,6 +32,10 @@ public class OpcHrApplicationServiceImpl implements IOpcHrApplicationService {
     private final OpcHrApplicationMapper applicationMapper;
     private final OpcHrJobMapper jobMapper;
     private final OpcHrCandidateMapper candidateMapper;
+    /** W73 Task 10: 真实接入 opc-ai-core,候选人评分 */
+    private final HrLlmClient hrLlmClient;
+    /** 评分结果同时写入 match_score 表(给 dashboard 漏斗用) */
+    private final IOpcHrMatchScoreService matchScoreService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -121,13 +129,49 @@ public class OpcHrApplicationServiceImpl implements IOpcHrApplicationService {
     @Transactional(rollbackFor = Exception.class)
     public void score(Long id, Long companyId) {
         OpcHrApplication app = validateAndGet(id, companyId);
-        // 占位实现:Task 8+ 实接 opc-ai-core HttpLlmClient 调用 hr_candidate_score prompt,
-        //   入参 full_jd + parsedJson,出参 score (0-100) + reason,落库 application.score/scoreReason,
-        //   并写入 opc_hr_match_score 表
-        app.setScore(50);
-        app.setScoreReason("待 LLM 评分(占位默认 50 分)");
+
+        // 取 JD 全文 + 候选人简历(parsedJson) 作为评分上下文
+        OpcHrJob job = jobMapper.selectById(app.getJobId(), companyId);
+        if (job == null) {
+            throw new ServiceException("岗位不存在或无权访问 id=" + app.getJobId());
+        }
+        OpcHrCandidate candidate = candidateMapper.selectById(app.getCandidateId(), companyId);
+        if (candidate == null) {
+            throw new ServiceException("候选人不存在或无权访问 id=" + app.getCandidateId());
+        }
+
+        // 优先使用 candidate.parsedJson;若尚未解析则降级用 resumeMd 兜底
+        String resumeContext = candidate.getParsedJson();
+        if (resumeContext == null || resumeContext.isBlank()) {
+            String md = candidate.getResumeMd();
+            if (md == null || md.isBlank()) {
+                throw new ServiceException("候选人简历为空,无法评分 (id=" + app.getCandidateId() + ")");
+            }
+            // 简单 JSON 包裹,作为兜底上下文
+            resumeContext = String.format("{\"resume_md\":\"%s\"}",
+                    md.replace("\\", "\\\\").replace("\"", "\\\""));
+        }
+
+        // W73 Task 10: 真实接入 opc-ai-core,场景 hr_candidate_score
+        log.info("投递评分调 LLM id={} jobId={} candidateId={}", id, app.getJobId(), app.getCandidateId());
+        HrScoreResult result = hrLlmClient.scoreCandidate(job.getFullJd(), resumeContext);
+        int safeScore = result.safeScore();
+        String reason = result.safeReason();
+
+        app.setScore(safeScore);
+        app.setScoreReason(reason);
         applicationMapper.updateById(app);
-        log.info("投递评分占位 id={} score=50 (待接 LLM)", id);
+
+        // 同步写入 match_score 表(供 dashboard 漏斗统计)
+        matchScoreService.upsert(OpcHrMatchScore.builder()
+                .companyId(companyId)
+                .jobId(app.getJobId())
+                .candidateId(app.getCandidateId())
+                .score(safeScore)
+                .reason(reason)
+                .build());
+
+        log.info("投递评分完成 id={} score={}", id, safeScore);
     }
 
     private OpcHrApplication validateAndGet(Long id, Long companyId) {

@@ -4,6 +4,7 @@ import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.opc.hr.domain.OpcHrJob;
 import com.ruoyi.opc.hr.dto.OpcHrJobDto;
 import com.ruoyi.opc.hr.mapper.OpcHrJobMapper;
+import com.ruoyi.opc.hr.service.llm.HrLlmClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,7 +33,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("OpcHrJobService 单测 (18 cases)")
+@DisplayName("OpcHrJobService 单测 (20 cases)")
 class OpcHrJobServiceImplTest {
 
     private static final Long COMPANY_ID = 1L;
@@ -40,6 +41,9 @@ class OpcHrJobServiceImplTest {
 
     @Mock
     private OpcHrJobMapper jobMapper;
+
+    @Mock
+    private HrLlmClient hrLlmClient;
 
     @InjectMocks
     private OpcHrJobServiceImpl jobService;
@@ -322,5 +326,26 @@ class OpcHrJobServiceImplTest {
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("title");
         verifyNoInteractions(jobMapper);
+    }
+
+    /** Test 19 — W73 Task 10: generateLlm 真实接入 */
+    @Test
+    @DisplayName("generateLlm - 调用 HrLlmClient.generateJd 返回 JD 全文")
+    void generateLlm_callsHrLlmClient() {
+        when(hrLlmClient.generateJd("高级 Java 开发", "TECH", "5 年 Java 经验"))
+                .thenReturn("【岗位概述】高级 Java 开发");
+
+        String jd = jobService.generateLlm(COMPANY_ID, "高级 Java 开发", "TECH", "5 年 Java 经验");
+
+        assertThat(jd).isEqualTo("【岗位概述】高级 Java 开发");
+    }
+
+    /** Test 20 — W73 Task 10: generateLlm 校验失败 */
+    @Test
+    @DisplayName("generateLlm - description 为空抛 ServiceException,不调 LLM")
+    void generateLlm_blankDescription() {
+        assertThatThrownBy(() -> jobService.generateLlm(COMPANY_ID, "title", "c", "  "))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("description");
     }
 }

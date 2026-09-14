@@ -4,6 +4,7 @@ import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.opc.hr.domain.OpcHrCandidate;
 import com.ruoyi.opc.hr.dto.OpcHrCandidateDto;
 import com.ruoyi.opc.hr.mapper.OpcHrCandidateMapper;
+import com.ruoyi.opc.hr.service.llm.HrLlmClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,7 +32,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("OpcHrCandidateService 单测 (10 cases)")
+@DisplayName("OpcHrCandidateService 单测 (12 cases)")
 class OpcHrCandidateServiceImplTest {
 
     private static final Long COMPANY_ID = 1L;
@@ -39,6 +40,9 @@ class OpcHrCandidateServiceImplTest {
 
     @Mock
     private OpcHrCandidateMapper candidateMapper;
+
+    @Mock
+    private HrLlmClient hrLlmClient;
 
     @InjectMocks
     private OpcHrCandidateServiceImpl candidateService;
@@ -221,5 +225,38 @@ class OpcHrCandidateServiceImplTest {
         List<OpcHrCandidate> page = candidateService.list(COMPANY_ID, 10, 50);
         assertThat(page).hasSize(2);
         verify(candidateMapper).selectList(COMPANY_ID, 10, 50);
+    }
+
+    /** Test 11 — W73 Task 10: parse 真实接入 LLM */
+    @Test
+    @DisplayName("parse - 调用 HrLlmClient.parseResume 把 JSON 写入 parsedJson")
+    void parse_callsHrLlmClient_writesJson() {
+        OpcHrCandidate existing = OpcHrCandidate.builder()
+                .id(CANDIDATE_ID).companyId(COMPANY_ID).name("张三")
+                .resumeMd("# 张三\nJava 5 年").build();
+        when(candidateMapper.selectById(CANDIDATE_ID, COMPANY_ID)).thenReturn(existing);
+        when(candidateMapper.updateById(any(OpcHrCandidate.class))).thenReturn(1);
+        String llmJson = "{\"name\":\"张三\",\"skills\":[\"Java\"]}";
+        when(hrLlmClient.parseResume("# 张三\nJava 5 年")).thenReturn(llmJson);
+
+        candidateService.parse(CANDIDATE_ID, COMPANY_ID);
+
+        ArgumentCaptor<OpcHrCandidate> captor = ArgumentCaptor.forClass(OpcHrCandidate.class);
+        verify(candidateMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getParsedJson()).isEqualTo(llmJson);
+    }
+
+    /** Test 12 — W73 Task 10: parse 简历为空 */
+    @Test
+    @DisplayName("parse - 简历为空抛 ServiceException,不调 LLM")
+    void parse_blankResume_throws() {
+        OpcHrCandidate existing = OpcHrCandidate.builder()
+                .id(CANDIDATE_ID).companyId(COMPANY_ID).name("张三")
+                .resumeMd("  ").build();
+        when(candidateMapper.selectById(CANDIDATE_ID, COMPANY_ID)).thenReturn(existing);
+
+        assertThatThrownBy(() -> candidateService.parse(CANDIDATE_ID, COMPANY_ID))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("候选人简历为空");
     }
 }

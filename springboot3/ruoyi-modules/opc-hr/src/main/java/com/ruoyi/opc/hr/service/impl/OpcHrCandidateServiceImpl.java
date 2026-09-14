@@ -9,6 +9,7 @@ import com.ruoyi.opc.hr.dto.HrSearchResult;
 import com.ruoyi.opc.hr.dto.OpcHrCandidateDto;
 import com.ruoyi.opc.hr.mapper.OpcHrCandidateMapper;
 import com.ruoyi.opc.hr.service.IOpcHrCandidateService;
+import com.ruoyi.opc.hr.service.llm.HrLlmClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,8 @@ import java.util.List;
 public class OpcHrCandidateServiceImpl implements IOpcHrCandidateService {
 
     private final OpcHrCandidateMapper candidateMapper;
+    /** W73 Task 10: 真实接入 opc-ai-core,解析简历 */
+    private final HrLlmClient hrLlmClient;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -104,15 +107,12 @@ public class OpcHrCandidateServiceImpl implements IOpcHrCandidateService {
         if (existing.getResumeMd() == null || existing.getResumeMd().isBlank()) {
             throw new ServiceException("候选人简历为空,无法解析");
         }
-        // 占位实现:Task 8+ 实接 opc-ai-core HttpLlmClient 调用 hr_resume_parse prompt
-        //   输出 parsedJson (结构化画像) + embedding (Qdrant 向量) 落库
-        String rawResume = existing.getResumeMd().replace("\\", "\\\\").replace("\"", "\\\"");
-        String parsedJson = String.format(
-                "{\"raw_resume_md\":\"%s\",\"parsed_at\":\"%s\",\"status\":\"pending_llm\"}",
-                rawResume, LocalDateTime.now());
+        // W73 Task 10: 真实接入 opc-ai-core,场景 hr_resume_parse
+        log.info("候选人简历调 LLM 解析 id={} resumeLen={}", id, existing.getResumeMd().length());
+        String parsedJson = hrLlmClient.parseResume(existing.getResumeMd());
         existing.setParsedJson(parsedJson);
         candidateMapper.updateById(existing);
-        log.info("候选人简历占位解析 id={} (待接 LLM)", id);
+        log.info("候选人简历解析完成 id={} parsedLen={}", id, parsedJson.length());
     }
 
     @Override

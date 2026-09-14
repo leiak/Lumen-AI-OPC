@@ -5,9 +5,12 @@ import com.ruoyi.opc.hr.domain.OpcHrApplication;
 import com.ruoyi.opc.hr.domain.OpcHrCandidate;
 import com.ruoyi.opc.hr.domain.OpcHrJob;
 import com.ruoyi.opc.hr.dto.OpcHrApplicationDto;
+import com.ruoyi.opc.hr.dto.HrScoreResult;
 import com.ruoyi.opc.hr.mapper.OpcHrApplicationMapper;
 import com.ruoyi.opc.hr.mapper.OpcHrCandidateMapper;
 import com.ruoyi.opc.hr.mapper.OpcHrJobMapper;
+import com.ruoyi.opc.hr.service.IOpcHrMatchScoreService;
+import com.ruoyi.opc.hr.service.llm.HrLlmClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,7 +38,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("OpcHrApplicationService 单测 (10 cases) — 状态机 + W50 score 兜底")
+@DisplayName("OpcHrApplicationService 单测 (12 cases) — 状态机 + W50 score 兜底 + W73 LLM 接入")
 class OpcHrApplicationServiceImplTest {
 
     private static final Long COMPANY_ID = 1L;
@@ -51,6 +54,12 @@ class OpcHrApplicationServiceImplTest {
 
     @Mock
     private OpcHrCandidateMapper candidateMapper;
+
+    @Mock
+    private HrLlmClient hrLlmClient;
+
+    @Mock
+    private IOpcHrMatchScoreService matchScoreService;
 
     @InjectMocks
     private OpcHrApplicationServiceImpl applicationService;
@@ -237,5 +246,69 @@ class OpcHrApplicationServiceImplTest {
         assertThat(rows.get(0).getStatus()).isEqualTo("NEW");
         verify(applicationMapper).selectList(eq(COMPANY_ID), eq(JOB_ID), eq(null), eq(null), anyInt(), anyInt());
         verifyNoInteractions(jobMapper, candidateMapper);
+    }
+
+    /** Test 11 — W73 Task 10: score 真实接入 LLM */
+    @Test
+    @DisplayName("score - 调用 HrLlmClient.scoreCandidate 写 application.score + match_score")
+    void score_callsHrLlmClient_writesBoth() {
+        OpcHrJob jobWithJd = OpcHrJob.builder()
+                .id(JOB_ID).companyId(COMPANY_ID).title("Java 开发").status("OPEN")
+                .fullJd("5年Java/Spring Cloud").build();
+        OpcHrCandidate candWithParsed = OpcHrCandidate.builder()
+                .id(CANDIDATE_ID).companyId(COMPANY_ID).name("张三")
+                .parsedJson("{\"name\":\"张三\",\"skills\":[\"Java\"]}").build();
+        OpcHrApplication existing = OpcHrApplication.builder()
+                .id(APPLICATION_ID).companyId(COMPANY_ID).jobId(JOB_ID)
+                .candidateId(CANDIDATE_ID).status("NEW").score(0).build();
+
+        when(applicationMapper.selectById(APPLICATION_ID, COMPANY_ID)).thenReturn(existing);
+        when(jobMapper.selectById(JOB_ID, COMPANY_ID)).thenReturn(jobWithJd);
+        when(candidateMapper.selectById(CANDIDATE_ID, COMPANY_ID)).thenReturn(candWithParsed);
+        when(applicationMapper.updateById(any(OpcHrApplication.class))).thenReturn(1);
+        when(hrLlmClient.scoreCandidate("5年Java/Spring Cloud",
+                "{\"name\":\"张三\",\"skills\":[\"Java\"]}"))
+                .thenReturn(HrScoreResult.builder()
+                        .score(85)
+                        .reason("Java经验匹配")
+                        .highlights(List.of("5年Java"))
+                        .gaps(List.of())
+                        .build());
+
+        applicationService.score(APPLICATION_ID, COMPANY_ID);
+
+        ArgumentCaptor<OpcHrApplication> appCaptor = ArgumentCaptor.forClass(OpcHrApplication.class);
+        verify(applicationMapper).updateById(appCaptor.capture());
+        assertThat(appCaptor.getValue().getScore()).isEqualTo(85);
+        assertThat(appCaptor.getValue().getScoreReason()).contains("Java");
+
+        // 同步写入 match_score 表
+        ArgumentCaptor<com.ruoyi.opc.hr.domain.OpcHrMatchScore> msCaptor =
+                ArgumentCaptor.forClass(com.ruoyi.opc.hr.domain.OpcHrMatchScore.class);
+        verify(matchScoreService).upsert(msCaptor.capture());
+        assertThat(msCaptor.getValue().getScore()).isEqualTo(85);
+        assertThat(msCaptor.getValue().getJobId()).isEqualTo(JOB_ID);
+        assertThat(msCaptor.getValue().getCandidateId()).isEqualTo(CANDIDATE_ID);
+    }
+
+    /** Test 12 — W73 Task 10: score 候选人简历为空 */
+    @Test
+    @DisplayName("score - 候选人简历为空抛 ServiceException,不调 LLM")
+    void score_blankResume_throws() {
+        OpcHrApplication existing = OpcHrApplication.builder()
+                .id(APPLICATION_ID).companyId(COMPANY_ID).jobId(JOB_ID)
+                .candidateId(CANDIDATE_ID).status("NEW").build();
+        OpcHrJob jobWithJd = OpcHrJob.builder()
+                .id(JOB_ID).companyId(COMPANY_ID).title("Java 开发").fullJd("JD").build();
+        OpcHrCandidate blankCand = OpcHrCandidate.builder()
+                .id(CANDIDATE_ID).companyId(COMPANY_ID).name("张三").build();
+
+        when(applicationMapper.selectById(APPLICATION_ID, COMPANY_ID)).thenReturn(existing);
+        when(jobMapper.selectById(JOB_ID, COMPANY_ID)).thenReturn(jobWithJd);
+        when(candidateMapper.selectById(CANDIDATE_ID, COMPANY_ID)).thenReturn(blankCand);
+
+        assertThatThrownBy(() -> applicationService.score(APPLICATION_ID, COMPANY_ID))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("候选人简历为空");
     }
 }
