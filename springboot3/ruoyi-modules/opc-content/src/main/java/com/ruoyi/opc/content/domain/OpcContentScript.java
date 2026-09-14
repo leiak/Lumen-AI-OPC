@@ -26,7 +26,7 @@ public class OpcContentScript {
     @JsonProperty("user_id")
     private Long userId;
 
-    /** 脚本类型: DRAMA/VIDEO/ARTICLE/ADAPTER */
+    /** 脚本类型: {@link com.ruoyi.opc.content.enums.ContentScriptType} */
     private String type;
 
     /** 脚本标题 */
@@ -48,7 +48,7 @@ public class OpcContentScript {
     @JsonProperty("word_count")
     private Integer wordCount;
 
-    /** 状态: DRAFT/READY/PUBLISHED/FAILED/DELETED */
+    /** 状态: {@link com.ruoyi.opc.content.enums.ContentScriptStatus} */
     private String status;
 
     /** ADAPTER 关联的原文脚本 ID */

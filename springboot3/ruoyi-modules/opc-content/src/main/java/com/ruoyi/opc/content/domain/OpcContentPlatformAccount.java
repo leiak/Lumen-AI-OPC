@@ -26,10 +26,10 @@ public class OpcContentPlatformAccount {
     /** 平台代码: DOUYIN */
     private String platform;
 
-    /** 抖音昵称 */
+    /** 抖音昵称,DB 列 account_name */
     private String nickname;
 
-    /** 抖音 open_id */
+    /** 抖音 open_id,DB 列 account_id */
     @JsonProperty("open_id")
     private String openId;
 
@@ -45,11 +45,11 @@ public class OpcContentPlatformAccount {
     @JsonProperty("refresh_token_enc")
     private String refreshTokenEnc;
 
-    /** access_token 过期时间 (epoch seconds) */
+    /** access_token 过期时间 (epoch seconds),DB 列 expires_at */
     @JsonProperty("access_token_expires_at")
     private Long accessTokenExpiresAt;
 
-    /** refresh_token 过期时间 (epoch seconds) */
+    /** refresh_token 过期时间 (epoch seconds),DB 列 refresh_at */
     @JsonProperty("refresh_token_expires_at")
     private Long refreshTokenExpiresAt;
 
@@ -62,6 +62,11 @@ public class OpcContentPlatformAccount {
 
     /** 状态: ACTIVE/EXPIRED/REVOKED */
     private String status;
+
+    /** 创建时间 */
+    @JsonProperty("created_at")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime createdAt;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @JsonProperty("bound_at")

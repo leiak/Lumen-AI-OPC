@@ -6,13 +6,13 @@ import lombok.Getter;
 import java.util.Set;
 
 /**
- * 脚本状态机 — DRAFT → READY → PUBLISHED/FAILED → 回滚 DRAFT
+ * 脚本状态机 — DRAFT → READY → PUBLISHED/FAILED → 回滚 DRAFT / 重试 READY
  *
  * 允许转换:
  * - DRAFT    → READY / DELETED
  * - READY    → PUBLISHED / FAILED / DRAFT (回滚)
  * - PUBLISHED → DRAFT (重新编辑)
- * - FAILED   → DRAFT (重新编辑)
+ * - FAILED   → DRAFT (重新编辑) / READY (重试直接回到就绪,见 spec §3.5)
  * - DELETED  → 终态
  */
 @Getter
@@ -31,7 +31,7 @@ public enum ContentScriptStatus {
     private static final Set<ContentScriptStatus> FROM_DRAFT     = Set.of(READY, DELETED);
     private static final Set<ContentScriptStatus> FROM_READY     = Set.of(PUBLISHED, FAILED, DRAFT);
     private static final Set<ContentScriptStatus> FROM_PUBLISHED = Set.of(DRAFT);
-    private static final Set<ContentScriptStatus> FROM_FAILED    = Set.of(DRAFT);
+    private static final Set<ContentScriptStatus> FROM_FAILED    = Set.of(DRAFT, READY);
     private static final Set<ContentScriptStatus> FROM_DELETED   = Set.of();
 
     /**

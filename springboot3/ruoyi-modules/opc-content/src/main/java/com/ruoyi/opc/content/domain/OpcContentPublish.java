@@ -64,6 +64,11 @@ public class OpcContentPublish {
     @JsonProperty("published_at")
     private LocalDateTime publishedAt;
 
+    /** 更新时间 */
+    @JsonProperty("updated_at")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime updatedAt;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @JsonProperty("created_at")
     private LocalDateTime createdAt;
