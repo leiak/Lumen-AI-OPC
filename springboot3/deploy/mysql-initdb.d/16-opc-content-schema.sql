@@ -9,8 +9,8 @@
 -- IF NOT EXISTS 幂等,适配 MySQL init 容器 (W48.2 教训)
 -- ============================================================
 
-CREATE DATABASE IF NOT EXISTS `ry-cloud` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE `ry-cloud`;
+CREATE DATABASE IF NOT EXISTS `ry-vue-opc` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE `ry-vue-opc`;
 
 -- -----------------------------------------------------------------------------
 -- 1) 脚本主表 (含 LLM 生成内容)

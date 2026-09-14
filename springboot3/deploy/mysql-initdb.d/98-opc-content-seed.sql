@@ -5,7 +5,7 @@
 -- id 固定 1-6, 用 INSERT IGNORE 幂等,后续 dev 重置时不会冲突
 -- ============================================================
 
-USE `ry-cloud`;
+USE `ry-vue-opc`;
 
 -- 3 个示例脚本 (DRAMA/VIDEO/ARTICLE 各 1)
 INSERT IGNORE INTO `opc_content_script`

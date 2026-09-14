@@ -34,6 +34,7 @@ NAMES=(
   "opc-community-dev.yml"
   "opc-hr-dev.yml"
   "opc-erp-dev.yml"
+  "opc-content-dev.yml"
 )
 
 # ---------- 单文件推送（Python urllib + content 走 stdin）----------

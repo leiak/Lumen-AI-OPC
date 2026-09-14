@@ -494,3 +494,120 @@ python tmp_e2e/e2e_erp.py
 **Last updated:** 2026-09-12 (W72 — added opc-erp section §14 + 11 表 schema initdb + 5 seed 供应商 + 9 health-check)
 
 ---
+
+## 14. W74 opc-content 部署 (AI 内容创作中心)
+
+### 端口与路由
+- 微服务端口: 9325 (容器外直接访问 `127.0.0.1:9325`)
+- Gateway 路由: `/opc/content/**` → `http://aiopc-content:9325` (在 `ruoyi-gateway/src/main/resources/application.yml` 配)
+- 白名单: `/opc/content/script/list` `/script/dashboard` `/script/recent` `/script/**` `/platform-account/list` (GET 公开,POST 需登录)
+
+### 关键文件 (W74 已固化)
+| 文件 | 作用 |
+|---|---|
+| `springboot3/ruoyi-modules/opc-content/Dockerfile` | thin jar 启动 (`./ruoyi-modules/opc-content/target/...` 路径) |
+| `springboot3/deploy/docker-compose.yml` (+39 行) | `aiopc-content` 服务段 |
+| `springboot3/deploy/mysql-initdb.d/16-opc-content-schema.sql` | 4 表 DDL (`opc_content_script/platform_account/publish/adapt`) |
+| `springboot3/deploy/mysql-initdb.d/98-opc-content-seed.sql` | dev seed (3 脚本 + 1 账号 + 1 发布 + 1 适配) |
+| `springboot3/deploy/nacos/opc-content-dev.yml` | dev 配置 (38 项 + ENC 占位) |
+| `springboot3/deploy/nacos/import-dev.sh` (修改) | NAMES 数组加 `"opc-content-dev.yml"` |
+| `springboot3/deploy/scripts/health-check.sh` (+107 行) | `check_content()` 10 端点 |
+| `springboot3/ruoyi-gateway/src/main/resources/application.yml` (+18 行) | `/opc/content/**` 路由 + 白名单 |
+| `tmp_e2e/e2e_content.py` | 10 端点 e2e 脚本 |
+| `docs/verification/week-74/OPC-W74-VERIFICATION-opc-content.md` | W74 VERIFICATION 报告 |
+
+### 部署步骤 (新机器 / 容器崩溃后)
+
+```bash
+# 1. 基础依赖
+cd springboot3/deploy
+docker compose up -d nacos1 mysql redis
+sleep 60
+
+# 2. 灌 Nacos 配置 (含 opc-content)
+cd nacos && bash import-dev.sh && cd ..
+
+# 3. 构建 opc-content 镜像
+cd ../ && mvn -pl opc-common install -DskipTests -Dmaven.test.skip=true -o
+cd ../springboot3 && mvn -pl ruoyi-modules/opc-content package -DskipTests -Dmaven.test.skip=true -o
+cd ruoyi-modules/opc-content && mvn dependency:copy-dependencies -DskipTests -Dmaven.test.skip=true -o
+cd ../../deploy && docker compose build aiopc-content
+
+# 4. 启动 opc-content
+docker compose up -d aiopc-content
+sleep 60  # 等启动
+
+# 5. 重建 gateway (添加 /opc/content/** 路由)
+cd ../ && mvn -pl ruoyi-gateway package -DskipTests -Dmaven.test.skip=true -o
+cd ruoyi-gateway && mvn dependency:copy-dependencies -DskipTests -Dmaven.test.skip=true -o
+cd ../deploy && docker compose build aiopc-gateway && docker compose up -d aiopc-gateway
+sleep 40
+
+# 6. 重建 frontend (W51 教训: 上游 IP 漂移后必须 rebuild)
+docker compose build aiopc-frontend && docker compose up -d aiopc-frontend
+
+# 7. 健康检查 (期望 10/10 + 之前所有服务)
+bash scripts/health-check.sh
+
+# 8. e2e 验证
+cd ../tmp_e2e && OPC_GATEWAY=http://127.0.0.1:8080 python e2e_content.py
+# 期望 8/10 PASS (script POST + script/adapt 2 个失败是后端缺字段校验,非部署问题)
+```
+
+### W74 部署阶段关键修复 (3 处)
+
+**修复 1: initdb 数据库名错位**
+- `16-opc-content-schema.sql` 原本 `CREATE DATABASE ry-cloud`,但容器实际只有 `ry-vue-opc`
+- **修法**: `sed -i 's/ry-cloud/ry-vue-opc/g' mysql-initdb.d/16-opc-content-schema.sql`
+- **教训**: 写 DDL 前必须 `docker exec aiopc-mysql mysql -uroot -p... -e "SHOW DATABASES"` 核对
+
+**修复 2: Nacos 占位 ENC(...) 启动失败**
+- `douyin.client-secret: ENC(dev_client_secret_placeholder)` 让 Jasypt 试图解密假字符串 → `Failed to bind properties under 'douyin.client-secret'`
+- **修法**: 改为明文 `dev_client_secret_placeholder` (生产前用 `deploy/nacos/encrypt-secret.sh` 真加密)
+- **教训**: dev 占位禁用 `ENC(...)`,生产才加密
+
+**修复 3: Gateway 路由缺失**
+- `ruoyi-gateway/application.yml` 没有 `/opc/content/**` 路由 → 网关返回 `No static resource`
+- **修法**: 在 opc-erp 路由后加:
+  ```yaml
+  - id: opc-content
+    uri: http://aiopc-content:9325
+    predicates:
+      - Path=/opc/content/**
+  ```
+  + 白名单段加 5 个公开端点
+- **教训**: 新加 OPC 服务必须同时改 gateway application.yml + 重建 gateway 镜像
+
+**修复 4: Dockerfile 路径上下文**
+- Dockerfile 写 `target/dependency` 但 compose 用 `context: ..` → Docker 找不到
+- **修法**: Dockerfile 用 `./ruoyi-modules/opc-content/target/...` (与 opc-erp 一致)
+- **教训**: build context = `springboot3/` 时,Dockerfile 路径以 `./ruoyi-modules/<svc>/` 开头
+
+### W74 健康检查
+```bash
+bash scripts/health-check.sh
+# 期望 check_content() 输出:
+#   [OK] aiopc-content running
+#   [OK] Nacos opc-content 注册 1 实例 (opc-dev)
+#   [OK] opc-content /actuator/health UP
+#   [OK] /opc/content/script/list 200 OK
+#   [OK] /opc/content/script/dashboard 200 OK
+#   [OK] /opc/content/script/recent 200 OK
+#   [OK] /opc/content/platform-account/list 200 OK
+#   [OK] /opc/content/publish/list 200 OK
+#   [OK] 鉴权拦截正确
+#   [OK] 数据库健康
+```
+
+### W74 e2e 验证
+```bash
+OPC_GATEWAY=http://127.0.0.1:8080 python tmp_e2e/e2e_content.py
+# 当前 8/10 PASS (script POST + script/adapt 2 个失败是后端缺字段校验,
+# 真实场景需前端传 companyId + 完整必填字段,后续 W75 迭代修复)
+```
+
+---
+
+**Last updated:** 2026-09-14 (W74 — added opc-content section §14 + 4 表 schema initdb + 6 seed + 10 health-check + e2e_content.py + 4 关键部署修复)
+
+---

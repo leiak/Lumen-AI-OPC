@@ -62,7 +62,7 @@ opc:
 # 抖音开放平台 sandbox 配置
 douyin:
   client-key: "dev_client_key_placeholder"
-  client-secret: "ENC(dev_client_secret_placeholder)"
+  client-secret: "dev_client_secret_placeholder"
   redirect-uri: "http://127.0.0.1:9325/opc/content/oauth/callback"
   api-base: "https://open-sandbox.douyin.com"
   sandbox: true

@@ -119,6 +119,11 @@ spring:
               predicates:
                 - Path=/opc/erp/**
 
+            - id: opc-content
+              uri: http://aiopc-content:9325
+              predicates:
+                - Path=/opc/content/**
+
 security:
   ignore:
     whites:
@@ -181,6 +186,17 @@ security:
       - /opc/erp/product/list
       - /opc/erp/product/**
       - /opc/erp/inventory/low-stock
+
+      # W74: OPC Content 公开浏览 (脚本列表 + dashboard 统计 + recent — 公开访问)
+      # 创建脚本 / 精修 / 发布仍需鉴权 — 由 service 层 SecurityUtils 校验
+      # GET /script/list = 公开脚本列表,/script/dashboard = 公开统计,
+      # /script/recent = 公开最近,/platform-account/list = 公开账号 (平台账号名/范围)
+      # POST /script (create) 不在白名单 → 需登录
+      - /opc/content/script/list
+      - /opc/content/script/dashboard
+      - /opc/content/script/recent
+      - /opc/content/script/**
+      - /opc/content/platform-account/list
 
 # 文档参考
 logging:

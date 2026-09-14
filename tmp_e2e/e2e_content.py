@@ -63,7 +63,7 @@ def _request(opener: "urllib.request.OpenerDirector", method: str, url: str,
         return -1, {"error": str(e)}
 
 
-def login(opener: "urllib.request.OpenerDirector") -> str:
+def login(opener: "urllib.request.OpenerDirector", cookies: CookieJar) -> str:
     """登录拿 access_token (RuoYi 用 access_token 不是 token, W48.7 教训)"""
     code, body = _request(opener, "POST", LOGIN_URL,
                           data={"username": USERNAME, "password": PASSWORD})
@@ -82,7 +82,7 @@ def login(opener: "urllib.request.OpenerDirector") -> str:
                secure=False, expires=None,
                discard=True, comment=None, comment_url=None,
                rest={}, rfc2109=False)
-    opener.handlers[0].cookiejar.set_cookie(c)  # type: ignore[attr-defined]
+    cookies.set_cookie(c)  # 直接用闭包变量 cookies (而非 opener.handlers[0])
     return token
 
 
@@ -149,7 +149,7 @@ def main():
     # Step 1: 登录
     step(1, "登录拿 access_token")
     try:
-        TOKEN = login(opener)
+        TOKEN = login(opener, cookies)
         print(f"  token 长度: {len(TOKEN)}  prefix: {TOKEN[:20]}...")
     except Exception as e:
         print(f"FATAL: 登录失败: {e}", file=sys.stderr)
