@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.content.mapper.OpcContentPlatformAccountMapper">
+
+    <resultMap id="AccountResultMap" type="com.ruoyi.opc.content.domain.OpcContentPlatformAccount">
+        <id property="id" column="id" />
+        <result property="companyId" column="company_id" />
+        <result property="platform" column="platform" />
+        <result property="nickname" column="account_name" />
+        <result property="openId" column="account_id" />
+        <result property="unionId" column="union_id" />
+        <result property="accessTokenEnc" column="access_token_enc" />
+        <result property="refreshTokenEnc" column="refresh_token_enc" />
+        <result property="accessTokenExpiresAt" column="expires_at" />
+        <result property="refreshTokenExpiresAt" column="refresh_at" />
+        <result property="scope" column="scope" />
+        <result property="avatarUrl" column="avatar_url" />
+        <result property="status" column="status" />
+        <result property="createdAt" column="created_at" />
+        <result property="boundAt" column="bound_at" />
+        <result property="updatedAt" column="updated_at" />
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, company_id, platform, account_name, account_id, union_id,
+        access_token_enc, refresh_token_enc, expires_at, refresh_at,
+        scope, avatar_url, status, created_at, bound_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.content.domain.OpcContentPlatformAccount">
+        INSERT INTO opc_content_platform_account
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="id != null">id,</if>
+            <if test="companyId != null">company_id,</if>
+            <if test="platform != null">platform,</if>
+            <if test="nickname != null">account_name,</if>
+            <if test="openId != null">account_id,</if>
+            <if test="unionId != null">union_id,</if>
+            <if test="accessTokenEnc != null">access_token_enc,</if>
+            <if test="refreshTokenEnc != null">refresh_token_enc,</if>
+            <if test="accessTokenExpiresAt != null">expires_at,</if>
+            <if test="refreshTokenExpiresAt != null">refresh_at,</if>
+            <if test="scope != null">scope,</if>
+            <if test="avatarUrl != null">avatar_url,</if>
+            <if test="status != null">status,</if>
+            <if test="createdAt != null">created_at,</if>
+            <if test="boundAt != null">bound_at,</if>
+            <if test="updatedAt != null">updated_at,</if>
+        </trim>
+        <trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+            <if test="id != null">#{id},</if>
+            <if test="companyId != null">#{companyId},</if>
+            <if test="platform != null">#{platform},</if>
+            <if test="nickname != null">#{nickname},</if>
+            <if test="openId != null">#{openId},</if>
+            <if test="unionId != null">#{unionId},</if>
+            <if test="accessTokenEnc != null">#{accessTokenEnc},</if>
+            <if test="refreshTokenEnc != null">#{refreshTokenEnc},</if>
+            <if test="accessTokenExpiresAt != null">#{accessTokenExpiresAt},</if>
+            <if test="refreshTokenExpiresAt != null">#{refreshTokenExpiresAt},</if>
+            <if test="scope != null">#{scope},</if>
+            <if test="avatarUrl != null">#{avatarUrl},</if>
+            <if test="status != null">#{status},</if>
+            <if test="createdAt != null">#{createdAt},</if>
+            <if test="boundAt != null">#{boundAt},</if>
+            <if test="updatedAt != null">#{updatedAt},</if>
+        </trim>
+    </insert>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.content.domain.OpcContentPlatformAccount">
+        UPDATE opc_content_platform_account
+        <set>
+            <if test="nickname != null">account_name = #{nickname},</if>
+            <if test="unionId != null">union_id = #{unionId},</if>
+            <if test="accessTokenEnc != null">access_token_enc = #{accessTokenEnc},</if>
+            <if test="refreshTokenEnc != null">refresh_token_enc = #{refreshTokenEnc},</if>
+            <if test="accessTokenExpiresAt != null">expires_at = #{accessTokenExpiresAt},</if>
+            <if test="refreshTokenExpiresAt != null">refresh_at = #{refreshTokenExpiresAt},</if>
+            <if test="scope != null">scope = #{scope},</if>
+            <if test="avatarUrl != null">avatar_url = #{avatarUrl},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="boundAt != null">bound_at = #{boundAt},</if>
+            <if test="updatedAt != null">updated_at = #{updatedAt},</if>
+        </set>
+        WHERE id = #{id} AND company_id = #{companyId}
+    </update>
+
+    <update id="softDeleteById">
+        UPDATE opc_content_platform_account
+        SET status = 'REVOKED', updated_at = NOW()
+        WHERE id = #{id} AND company_id = #{companyId}
+    </update>
+
+    <select id="selectById" resultMap="AccountResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_content_platform_account
+        WHERE id = #{id} AND company_id = #{companyId} AND status != 'REVOKED'
+    </select>
+
+    <select id="selectByOpenId" resultMap="AccountResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_content_platform_account
+        WHERE account_id = #{openId} AND platform = #{platform} AND company_id = #{companyId} AND status != 'REVOKED'
+        ORDER BY bound_at DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectListByCompany" resultMap="AccountResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_content_platform_account
+        WHERE company_id = #{companyId} AND status != 'REVOKED'
+        ORDER BY bound_at DESC
+    </select>
+
+    <update id="updateTokens">
+        UPDATE opc_content_platform_account
+        <set>
+            <if test="accessTokenEnc != null">access_token_enc = #{accessTokenEnc},</if>
+            <if test="refreshTokenEnc != null">refresh_token_enc = #{refreshTokenEnc},</if>
+            <if test="accessTokenExpiresAt != null">expires_at = #{accessTokenExpiresAt},</if>
+            <if test="refreshTokenExpiresAt != null">refresh_at = #{refreshTokenExpiresAt},</if>
+            updated_at = NOW(),
+        </set>
+        WHERE id = #{id} AND company_id = #{companyId}
+    </update>
+
+</mapper>

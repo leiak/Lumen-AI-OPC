@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.content.mapper.OpcContentPublishMapper">
+
+    <resultMap id="PublishResultMap" type="com.ruoyi.opc.content.domain.OpcContentPublish">
+        <id property="id" column="id" />
+        <result property="companyId" column="company_id" />
+        <result property="scriptId" column="script_id" />
+        <result property="platformAccountId" column="platform_account_id" />
+        <result property="platform" column="platform" />
+        <result property="title" column="title" />
+        <result property="tags" column="tags" />
+        <result property="externalVideoId" column="external_video_id" />
+        <result property="externalPostId" column="external_post_id" />
+        <result property="externalUrl" column="external_url" />
+        <result property="status" column="status" />
+        <result property="errorCode" column="error_code" />
+        <result property="errorMessage" column="error_message" />
+        <result property="publishedAt" column="published_at" />
+        <result property="updatedAt" column="updated_at" />
+        <result property="createdAt" column="created_at" />
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, company_id, script_id, platform_account_id, platform, title, tags,
+        external_video_id, external_post_id, external_url, status,
+        error_code, error_message, published_at, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.content.domain.OpcContentPublish">
+        INSERT INTO opc_content_publish
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="id != null">id,</if>
+            <if test="companyId != null">company_id,</if>
+            <if test="scriptId != null">script_id,</if>
+            <if test="platformAccountId != null">platform_account_id,</if>
+            <if test="platform != null">platform,</if>
+            <if test="title != null">title,</if>
+            <if test="tags != null">tags,</if>
+            <if test="externalVideoId != null">external_video_id,</if>
+            <if test="externalPostId != null">external_post_id,</if>
+            <if test="externalUrl != null">external_url,</if>
+            <if test="status != null">status,</if>
+            <if test="errorCode != null">error_code,</if>
+            <if test="errorMessage != null">error_message,</if>
+            <if test="publishedAt != null">published_at,</if>
+            <if test="createdAt != null">created_at,</if>
+            <if test="updatedAt != null">updated_at,</if>
+        </trim>
+        <trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+            <if test="id != null">#{id},</if>
+            <if test="companyId != null">#{companyId},</if>
+            <if test="scriptId != null">#{scriptId},</if>
+            <if test="platformAccountId != null">#{platformAccountId},</if>
+            <if test="platform != null">#{platform},</if>
+            <if test="title != null">#{title},</if>
+            <if test="tags != null">#{tags},</if>
+            <if test="externalVideoId != null">#{externalVideoId},</if>
+            <if test="externalPostId != null">#{externalPostId},</if>
+            <if test="externalUrl != null">#{externalUrl},</if>
+            <if test="status != null">#{status},</if>
+            <if test="errorCode != null">#{errorCode},</if>
+            <if test="errorMessage != null">#{errorMessage},</if>
+            <if test="publishedAt != null">#{publishedAt},</if>
+            <if test="createdAt != null">#{createdAt},</if>
+            <if test="updatedAt != null">#{updatedAt},</if>
+        </trim>
+    </insert>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.content.domain.OpcContentPublish">
+        UPDATE opc_content_publish
+        <set>
+            <if test="title != null">title = #{title},</if>
+            <if test="tags != null">tags = #{tags},</if>
+            <if test="externalVideoId != null">external_video_id = #{externalVideoId},</if>
+            <if test="externalPostId != null">external_post_id = #{externalPostId},</if>
+            <if test="externalUrl != null">external_url = #{externalUrl},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="errorCode != null">error_code = #{errorCode},</if>
+            <if test="errorMessage != null">error_message = #{errorMessage},</if>
+            <if test="publishedAt != null">published_at = #{publishedAt},</if>
+            <if test="updatedAt != null">updated_at = #{updatedAt},</if>
+        </set>
+        WHERE id = #{id} AND company_id = #{companyId}
+    </update>
+
+    <select id="selectById" resultMap="PublishResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_content_publish
+        WHERE id = #{id} AND company_id = #{companyId}
+    </select>
+
+    <select id="selectByScript" resultMap="PublishResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_content_publish
+        WHERE script_id = #{scriptId} AND company_id = #{companyId}
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="selectList" resultMap="PublishResultMap">
+        SELECT <include refid="BaseColumns" />
+        FROM opc_content_publish
+        <where>
+            company_id = #{companyId}
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countList" resultType="int">
+        SELECT COUNT(1)
+        FROM opc_content_publish
+        <where>
+            company_id = #{companyId}
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+        </where>
+    </select>
+
+    <select id="countByStatus" resultType="int">
+        SELECT COUNT(1)
+        FROM opc_content_publish
+        WHERE company_id = #{companyId} AND status = #{status}
+    </select>
+
+</mapper>

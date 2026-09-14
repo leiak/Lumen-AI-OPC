@@ -1,0 +1,70 @@
+server:
+  port: ${SERVER_PORT:9325}
+
+spring:
+  application:
+    name: opc-content
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  cloud:
+    # Spring Cloud OpenFeign 的 FeignClient 注册跑在 bootstrap 阶段,优先于
+    # spring.main.allow-bean-definition-overriding 加载,所以这里必须独立声明。
+    allow-bean-definition-overriding: true
+  main:
+    allow-bean-definition-overriding: true
+  datasource:
+    dynamic:
+      primary: master
+      datasource:
+        master:
+          # Docker 容器里 127.0.0.1 是容器本身,必须用 Docker DNS 名 'aiopc-mysql'
+          url: jdbc:mysql://${MYSQL_HOST:aiopc-mysql}:${MYSQL_PORT:3306}/${MYSQL_DB:ry-vue-opc}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+          username: ${MYSQL_USER:root}
+          password: ${MYSQL_PASSWORD:root}
+  redis:
+    host: ${REDIS_HOST:aiopc-redis}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+  # Jackson 中文防御:null 字段不序列化(避免中文字段返回 null 时前端解析报错)
+  jackson:
+    default-property-inclusion: non_null
+
+jasypt:
+  encryptor:
+    password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
+    algorithm: PBEWithMD5AndDES
+
+# MyBatis XML 路径: @MapperScan 在 Application; mapper-locations 走 classpath*:mapper/**/*.xml
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.opc.content.domain
+  configuration:
+    map-underscore-to-camel-case: true
+
+# Content 业务配置
+# OpenFeign 下游服务地址 (容器内 Docker DNS 名)
+opc:
+  content:
+    notification:
+      base-url: http://aiopc-notification:9310
+    ai-core:
+      base-url: http://aiopc-ai-core:9301
+    user-center:
+      base-url: http://aiopc-user-center:9302
+    platform:
+      mock: true   # dev 默认 mock; prod 设 false 启用 DouyinClient
+    frontend-redirect-base: http://127.0.0.1:8079/opc/content/platform-account
+    token-encryption-key: b3BjLWNvbnRlbnQtYWVzMjU2LWtleS0zMmJ5dGVzISE=  # dev 32B; prod 必改 (W74 Task 12 fix)
+
+# 抖音开放平台 sandbox 配置 (W74 Task 7) — 占位段, 实际配置由 Nacos 推送
+douyin:
+  client-key: "dev_client_key_placeholder"
+  client-secret: "ENC(dev_client_secret_placeholder)"
+  redirect-uri: "http://127.0.0.1:9325/opc/content/oauth/callback"
+  api-base: "https://open-sandbox.douyin.com"
+  sandbox: true
+  scope: "video.create,video.upload,user_info"
+
+logging:
+  level:
+    com.ruoyi.opc.content: debug
