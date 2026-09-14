@@ -391,6 +391,35 @@ services:
         key: password
     hpa: { enabled: false }
 
+  # ----- 内容中心（Content W74）-----
+  content:
+    enabled: true
+    name: opc-content
+    port: 9325
+    replicaCount: 2
+    image:
+      repository: opc/opc-content
+    resources:
+      requests: { cpu: 300m, memory: 768Mi }
+      limits:   { cpu: 1500m, memory: 1.5Gi }
+    jvmOpts: "-Xms512m -Xmx1g -XX:+UseG1GC"
+    podAnnotations:
+      prometheus.io/scrape: "true"
+    probes:
+      liveness:
+        path: /actuator/health/liveness
+        initialDelaySeconds: 60
+        periodSeconds: 10
+      readiness:
+        path: /actuator/health/readiness
+        initialDelaySeconds: 30
+        periodSeconds: 5
+    secrets:
+      - name: JASYPT_PASSWORD
+        secret: opc-jasypt-secrets
+        key: password
+    hpa: { enabled: false }
+
   # ----- 系统服务 -----
   system:
     enabled: true
