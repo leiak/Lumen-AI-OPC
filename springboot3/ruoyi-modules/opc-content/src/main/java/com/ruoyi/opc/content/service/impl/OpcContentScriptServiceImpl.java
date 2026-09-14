@@ -9,6 +9,7 @@ import com.ruoyi.opc.content.dto.OpcContentDashboardDto;
 import com.ruoyi.opc.content.dto.OpcContentGenerateRequest;
 import com.ruoyi.opc.content.dto.OpcContentListResponse;
 import com.ruoyi.opc.content.dto.OpcContentScriptDto;
+import com.ruoyi.opc.content.enums.ContentPublishStatus;
 import com.ruoyi.opc.content.enums.ContentScriptStatus;
 import com.ruoyi.opc.content.enums.ContentScriptType;
 import com.ruoyi.opc.content.mapper.OpcContentPublishMapper;
@@ -178,38 +179,15 @@ public class OpcContentScriptServiceImpl implements IOpcContentScriptService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long regenerate(Long id, Long companyId, String promptInput) {
-        OpcContentScript existing = validateAndGet(id, companyId);
         if (promptInput == null || promptInput.isBlank()) {
             throw new ServiceException("promptInput 不能为空");
         }
+        OpcContentScript existing = validateAndGet(id, companyId);
         ContentScriptType type = ContentScriptType.of(existing.getType());
         if (type == ContentScriptType.ADAPTER) {
             throw new ServiceException("ADAPTER 类型不支持 regenerate,请走 /adapt 端点");
         }
-
-        String contentJson = "";
-        String contentMd = "";
-        switch (type) {
-            case DRAMA:
-                contentJson = contentLlmClient.generateDrama(promptInput);
-                break;
-            case VIDEO:
-                contentJson = contentLlmClient.generateVideo(promptInput);
-                break;
-            case ARTICLE:
-                contentMd = contentLlmClient.generateArticle(promptInput);
-                break;
-            default:
-                throw new ServiceException("不支持重新生成的类型: " + type);
-        }
-
-        existing.setPromptInput(promptInput);
-        existing.setContentJson(contentJson == null ? "" : contentJson);
-        existing.setContentMd(contentMd == null ? "" : contentMd);
-        existing.setWordCount(contentMd == null ? 0 : contentMd.length());
-        existing.setUpdatedAt(LocalDateTime.now());
-        scriptMapper.updateById(existing);
-        log.info("重新生成脚本 id={} type={} newPromptLen={}", id, type, promptInput.length());
+        doRegenerate(existing, promptInput, "regenerate");
         return id;
     }
 
@@ -226,8 +204,40 @@ public class OpcContentScriptServiceImpl implements IOpcContentScriptService {
         // 简化实现:把指令注入到 prompt,重新生成(精修功能是 LLM 后续增强项)
         String newPrompt = existing.getPromptInput()
                 + "\n\n[精修] 第 " + lineNo + " 行: " + instruction;
-        regenerate(id, companyId, newPrompt);
+        doRegenerate(existing, newPrompt, "refine lineNo=" + lineNo);
         log.info("精修脚本 id={} lineNo={} instructionLen={}", id, lineNo, instruction.length());
+    }
+
+    /**
+     * 私有生成逻辑:调 LLM + 持久化。无 @Transactional,由调用方(public regenerate/refine)的事务包裹。
+     * 这样 {@code refine() → regenerate()} 的自调用绕过 @Transactional 代理问题被规避,
+     * 所有调用都走同一个 transaction(由外层 public 方法启动)。
+     */
+    private void doRegenerate(OpcContentScript existing, String promptInput, String trigger) {
+        ContentScriptType type = ContentScriptType.of(existing.getType());
+        String contentJson = "";
+        String contentMd = "";
+        switch (type) {
+            case DRAMA:
+                contentJson = contentLlmClient.generateDrama(promptInput);
+                break;
+            case VIDEO:
+                contentJson = contentLlmClient.generateVideo(promptInput);
+                break;
+            case ARTICLE:
+                contentMd = contentLlmClient.generateArticle(promptInput);
+                break;
+            default:
+                throw new ServiceException("不支持重新生成的类型: " + type);
+        }
+        existing.setPromptInput(promptInput);
+        existing.setContentJson(contentJson == null ? "" : contentJson);
+        existing.setContentMd(contentMd == null ? "" : contentMd);
+        existing.setWordCount(contentMd == null ? 0 : contentMd.length());
+        existing.setUpdatedAt(LocalDateTime.now());
+        scriptMapper.updateById(existing);
+        log.info("重新生成脚本 id={} type={} trigger={} newPromptLen={}",
+                existing.getId(), type, trigger, promptInput.length());
     }
 
     @Override
@@ -268,14 +278,13 @@ public class OpcContentScriptServiceImpl implements IOpcContentScriptService {
         int pendingPublish = publishMapper.countByStatus(companyId, "PENDING");
         int published = publishMapper.countByStatus(companyId, "SUCCESS");
 
-        // 失败率 = 近 7 天失败数 / 总数 * 100
-        int failedLast7d = scriptMapper.countFailedLast7Days(companyId);
-        int totalAll = scriptMapper.countList(companyId, null, null);
-        BigDecimal failedRate = totalAll > 0
-                ? BigDecimal.valueOf(failedLast7d)
-                        .multiply(BigDecimal.valueOf(100))
-                        .divide(BigDecimal.valueOf(totalAll), 2, RoundingMode.HALF_UP)
-                : BigDecimal.ZERO;
+        // 失败率 = 发布失败数 / 发布总数 * 100 (口径对齐:分子分母都是 publish 记录)
+        long publishTotal = publishMapper.countList(companyId, null);
+        long publishFailed = publishMapper.countByStatus(companyId, ContentPublishStatus.FAILED.getCode());
+        BigDecimal failedRate = publishTotal == 0
+                ? BigDecimal.ZERO
+                : BigDecimal.valueOf(publishFailed * 10000L / publishTotal)
+                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
         // 7 天趋势(Task 9 后续迭代,目前占位 7 个 0)
         List<Integer> sevenDayTrend = List.of(0, 0, 0, 0, 0, 0, 0);

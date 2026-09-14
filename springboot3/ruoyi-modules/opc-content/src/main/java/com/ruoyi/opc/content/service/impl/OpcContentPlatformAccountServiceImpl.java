@@ -96,14 +96,14 @@ public class OpcContentPlatformAccountServiceImpl implements IOpcContentPlatform
         OpcContentPlatformAccount existing =
                 accountMapper.selectByOpenId(token.openId(), platformClient.platformName(), companyId);
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime accessExpiresAt = LocalDateTime.ofEpochSecond(token.expiresAt(), 0,
-                java.time.ZoneOffset.ofHours(8));
+        LocalDateTime accessExpiresAt = toLocalDateTime(token.expiresAt());
+        LocalDateTime refreshExpiresAt = toLocalDateTime(token.refreshExpiresAt());
         Long accountId;
         if (existing != null) {
             // 已有 → 刷新 token + 状态置 ACTIVE
             accountMapper.updateTokens(existing.getId(), companyId,
                     token.accessToken(), token.refreshToken(),
-                    accessExpiresAt, accessExpiresAt);
+                    accessExpiresAt, refreshExpiresAt);
             accountId = existing.getId();
             log.info("OAuth callback: 更新已有账号 id={} openId={}", accountId, token.openId());
         } else {
@@ -118,7 +118,7 @@ public class OpcContentPlatformAccountServiceImpl implements IOpcContentPlatform
                     .accessTokenEnc(token.accessToken())
                     .refreshTokenEnc(token.refreshToken())
                     .accessTokenExpiresAt(accessExpiresAt)
-                    .refreshTokenExpiresAt(accessExpiresAt)
+                    .refreshTokenExpiresAt(refreshExpiresAt)
                     .scope(token.scope())
                     .avatarUrl(null)
                     .status("ACTIVE")
@@ -187,11 +187,11 @@ public class OpcContentPlatformAccountServiceImpl implements IOpcContentPlatform
         if (newToken == null || newToken.accessToken() == null) {
             throw new ServiceException("refreshToken 失败: 返回为空");
         }
-        LocalDateTime accessExpiresAt = LocalDateTime.ofEpochSecond(newToken.expiresAt(), 0,
-                java.time.ZoneOffset.ofHours(8));
+        LocalDateTime accessExpiresAt = toLocalDateTime(newToken.expiresAt());
+        LocalDateTime refreshExpiresAt = toLocalDateTime(newToken.refreshExpiresAt());
         accountMapper.updateTokens(id, companyId,
                 newToken.accessToken(), newToken.refreshToken(),
-                accessExpiresAt, accessExpiresAt);
+                accessExpiresAt, refreshExpiresAt);
         log.info("刷新 token 成功 id={} openId={}", id, existing.getOpenId());
     }
 
@@ -215,5 +215,14 @@ public class OpcContentPlatformAccountServiceImpl implements IOpcContentPlatform
         } catch (IllegalArgumentException e) {
             throw new ServiceException("state 解码失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * unix epoch seconds → 系统时区 LocalDateTime。
+     * 平台返回的 expiresIn / refreshExpiresIn 通常是相对秒数,Server 层加 now().getEpochSecond() 转绝对秒。
+     */
+    private LocalDateTime toLocalDateTime(long epochSecond) {
+        return LocalDateTime.ofInstant(java.time.Instant.ofEpochSecond(epochSecond),
+                java.time.ZoneId.systemDefault());
     }
 }

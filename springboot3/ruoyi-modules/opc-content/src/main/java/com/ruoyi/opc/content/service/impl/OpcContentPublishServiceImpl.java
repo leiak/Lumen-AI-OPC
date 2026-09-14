@@ -9,7 +9,9 @@ import com.ruoyi.opc.content.dto.OpcContentListResponse;
 import com.ruoyi.opc.content.dto.OpcContentPublishRequest;
 import com.ruoyi.opc.content.enums.ContentPublishStatus;
 import com.ruoyi.opc.content.enums.ContentScriptStatus;
+import com.ruoyi.opc.content.domain.OpcContentPlatformAccount;
 import com.ruoyi.opc.content.mapper.OpcContentPublishMapper;
+import com.ruoyi.opc.content.mapper.OpcContentScriptMapper;
 import com.ruoyi.opc.content.service.IOpcContentPlatformAccountService;
 import com.ruoyi.opc.content.service.IOpcContentPublishService;
 import com.ruoyi.opc.content.service.IOpcContentScriptService;
@@ -45,6 +47,7 @@ import java.util.List;
 public class OpcContentPublishServiceImpl implements IOpcContentPublishService {
 
     private final OpcContentPublishMapper publishMapper;
+    private final OpcContentScriptMapper scriptMapper;
     /** 跨 Service 调用,用 @Lazy 避免循环依赖 */
     @Lazy
     private final IOpcContentScriptService scriptService;
@@ -81,8 +84,12 @@ public class OpcContentPublishServiceImpl implements IOpcContentPublishService {
                     "仅 READY 状态可发布 (当前: " + script.getStatus() + ")");
         }
 
-        // 3) 校验 platform account 存在 + 跨公司
-        accountService.detail(req.getPlatformAccountId(), req.getCompanyId());
+        // 3) 校验 platform account 存在 + 跨公司 + 平台匹配
+        OpcContentPlatformAccount account = accountService.detail(req.getPlatformAccountId(), req.getCompanyId());
+        if (!platformClient.platformName().equals(account.getPlatform())) {
+            throw new ServiceException("平台账号与发布渠道不匹配 (account=" + account.getPlatform()
+                    + ", channel=" + platformClient.platformName() + ")");
+        }
 
         // 4) 调 PlatformClient 上传 + 创建(Task 4 占位,Task 7 真实)
         //    Task 4 阶段: videoBytes 暂为空数组(占位),真实视频字节流由 Task 7/8 接入
@@ -117,9 +124,11 @@ public class OpcContentPublishServiceImpl implements IOpcContentPublishService {
                 .build();
         publishMapper.insert(publish);
 
-        // 6) 更新 script.status = PUBLISHED
+        // 6) 更新 script.status = PUBLISHED(持久化)
         script.setStatus(ContentScriptStatus.PUBLISHED.getCode());
         script.setUpdatedAt(now);
+        int scriptUpdated = scriptMapper.updateById(script);
+        log.debug("发布成功 → script 状态持久化 id={} affected={}", script.getId(), scriptUpdated);
 
         // 7) TODO Task 8: NotificationGateway.send(...) 发通知
         log.info("发布成功 publishId={} scriptId={} externalPostId={}",

@@ -15,7 +15,11 @@ import java.util.UUID;
  */
 @Slf4j
 @Component
+@org.springframework.context.annotation.Profile("!prod")
 public class StubPlatformClient implements PlatformClient {
+
+    /** refresh_token 有效期: access 过期后 + 30 天 */
+    private static final long REFRESH_VALID_SECONDS = 3600L * 24 * 30;
 
     @Override
     public String platformName() {
@@ -27,9 +31,11 @@ public class StubPlatformClient implements PlatformClient {
         log.warn("[opc-content] StubPlatformClient.exchangeCode 暂用占位 codeLen={} (Task 7 接入)",
                 code == null ? 0 : code.length());
         // TODO Task 7: DouyinClient.exchangeCode → POST /oauth/access_token/
+        long now = Instant.now().getEpochSecond();
         return new OAuthToken("stub_access_" + UUID.randomUUID(),
                               "stub_refresh_" + UUID.randomUUID(),
-                              Instant.now().getEpochSecond() + 3600 * 24 * 30,
+                              now + 3600L * 2,
+                              now + REFRESH_VALID_SECONDS,
                               "stub_open_id",
                               "video.create,video.upload");
     }
@@ -38,9 +44,11 @@ public class StubPlatformClient implements PlatformClient {
     public OAuthToken refreshToken(String refreshToken) {
         log.warn("[opc-content] StubPlatformClient.refreshToken 暂用占位 (Task 7 接入)");
         // TODO Task 7: DouyinClient.refreshToken
+        long now = Instant.now().getEpochSecond();
         return new OAuthToken("stub_access_" + UUID.randomUUID(),
                               refreshToken,
-                              Instant.now().getEpochSecond() + 3600 * 24 * 30,
+                              now + 3600L * 2,
+                              now + REFRESH_VALID_SECONDS,
                               "stub_open_id",
                               "video.create,video.upload");
     }

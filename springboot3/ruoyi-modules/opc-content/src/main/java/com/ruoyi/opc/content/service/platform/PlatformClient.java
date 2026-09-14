@@ -40,9 +40,15 @@ public interface PlatformClient {
 
     /**
      * OAuth token record
+     *
+     * <ul>
+     *   <li>{@code expiresAt} — access_token 过期时间(unix epoch seconds)</li>
+     *   <li>{@code refreshExpiresAt} — refresh_token 过期时间(unix epoch seconds,通常 access + 30 天)</li>
+     * </ul>
      */
     record OAuthToken(String accessToken, String refreshToken,
-                      long expiresAt, String openId, String scope) {}
+                      long expiresAt, long refreshExpiresAt,
+                      String openId, String scope) {}
 
     /**
      * 发布结果 record

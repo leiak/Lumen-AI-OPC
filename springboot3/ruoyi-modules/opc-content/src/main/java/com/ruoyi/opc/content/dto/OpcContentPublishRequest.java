@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 /**
@@ -32,6 +33,7 @@ public class OpcContentPublishRequest {
     private Long platformAccountId;
 
     /** 发布标题(可覆盖脚本 title) */
+    @NotBlank
     private String title;
 
     /** 标签数组(存 DB 为 JSON 字符串,VARCHAR(1024)) */
