@@ -36,7 +36,8 @@ public class PlatformConfig {
     @ConditionalOnProperty(prefix = "opc.content.platform", name = "mock", havingValue = "false")
     @ConditionalOnMissingBean(PlatformClient.class)
     public PlatformClient douyinClient(DouyinProperties props, ContentTokenEncryptor encryptor) {
-        log.info("[opc-content] 启用 DouyinClient 真实 HTTP, apiBase={} sandbox={}", props.getApiBase(), props.isSandbox());
-        return new DouyinClient(props, encryptor);
+        log.info("[opc-content] 启用 DouyinClient 真实 HTTP, apiBase={}", props.getApiBase());
+        // 传入 mock 实例作为降级目标 (即使 mock=false, 网络失败时仍降级)
+        return new DouyinClient(props, encryptor, new MockPlatformClient());
     }
 }

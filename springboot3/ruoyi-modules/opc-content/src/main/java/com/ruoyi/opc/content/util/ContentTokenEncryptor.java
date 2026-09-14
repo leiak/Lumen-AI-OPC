@@ -2,8 +2,10 @@ package com.ruoyi.opc.content.util;
 
 import com.ruoyi.common.core.exception.ServiceException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import jakarta.annotation.PostConstruct;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -25,13 +27,20 @@ public class ContentTokenEncryptor {
     private static final int IV_LEN = 12;
     private static final int TAG_BITS = 128;
 
-    private final SecretKeySpec keySpec;
+    @Value("${opc.content.token-encryption-key:b3BjLWNvbnRlbnQtZGV2LWtleS0zMmJ5dGVzISE=}")
+    private String keyBase64;
 
-    public ContentTokenEncryptor() {
-        // dev 默认 key (生产必须通过 @Value 注入)
-        // 32 字节 = 256 位 key, 这里用 base64("opc-content-dev-key-32bytes!!") = "b3BjLWNvbnRlbnQtZGV2LWtleS0zMmJ5dGVzISE="
-        byte[] keyBytes = Base64.getDecoder().decode("b3BjLWNvbnRlbnQtZGV2LWtleS0zMmJ5dGVzISE=");
+    private SecretKeySpec keySpec;
+
+    @PostConstruct
+    public void init() {
+        byte[] keyBytes = Base64.getDecoder().decode(keyBase64);
+        if (keyBytes.length != 32) {
+            throw new ServiceException("opc.content.token-encryption-key 必须是 32 字节 (AES-256), 当前长度=" + keyBytes.length);
+        }
         this.keySpec = new SecretKeySpec(keyBytes, "AES");
+        log.info("[opc-content] ContentTokenEncryptor 初始化完成, key 来源={}",
+                keyBase64.equals("b3BjLWNvbnRlbnQtZGV2LWtleS0zMmJ5dGVzISE=") ? "dev-default" : "config");
     }
 
     public String encrypt(String plain) {
