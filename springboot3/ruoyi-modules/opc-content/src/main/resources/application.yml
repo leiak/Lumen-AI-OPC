@@ -51,6 +51,10 @@ opc:
       base-url: http://aiopc-ai-core:9301
     user-center:
       base-url: http://aiopc-user-center:9302
+    platform:
+      mock: true   # dev 默认 mock; prod 设 false 启用 DouyinClient
+    frontend-redirect-base: http://127.0.0.1:8079/opc/content/platform-account
+    token-encryption-key: b3BjLWNvbnRlbnQtZGV2LWtleS0zMmJ5dGVzISE=  # dev only, prod 必改
 
 logging:
   level:

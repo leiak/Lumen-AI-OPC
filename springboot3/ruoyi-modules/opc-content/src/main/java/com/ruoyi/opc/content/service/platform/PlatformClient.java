@@ -44,11 +44,12 @@ public interface PlatformClient {
      * <ul>
      *   <li>{@code expiresAt} — access_token 过期时间(unix epoch seconds)</li>
      *   <li>{@code refreshExpiresAt} — refresh_token 过期时间(unix epoch seconds,通常 access + 30 天)</li>
+     *   <li>{@code displayName} — 抖音昵称 (Task 7 新增, 落 platform_account.nickname 用)</li>
      * </ul>
      */
     record OAuthToken(String accessToken, String refreshToken,
                       long expiresAt, long refreshExpiresAt,
-                      String openId, String scope) {}
+                      String openId, String scope, String displayName) {}
 
     /**
      * 发布结果 record
