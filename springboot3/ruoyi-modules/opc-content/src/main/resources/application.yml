@@ -1,11 +1,11 @@
 server:
-  port: 9325
+  port: ${SERVER_PORT:9325}
 
 spring:
   application:
     name: opc-content
   profiles:
-    active: dev
+    active: ${SPRING_PROFILES_ACTIVE:dev}
   cloud:
     # Spring Cloud OpenFeign 的 FeignClient 注册跑在 bootstrap 阶段,优先于
     # spring.main.allow-bean-definition-overriding 加载,所以这里必须独立声明。
@@ -25,13 +25,16 @@ spring:
     host: ${REDIS_HOST:aiopc-redis}
     port: ${REDIS_PORT:6379}
     password: ${REDIS_PASSWORD:}
+  # Jackson 中文防御:null 字段不序列化(避免中文字段返回 null 时前端解析报错)
+  jackson:
+    default-property-inclusion: non_null
 
 jasypt:
   encryptor:
     password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
     algorithm: PBEWithMD5AndDES
 
-# MyBatis (MybatisConfig 只做 @MapperScan, XML 位置由这里注入)
+# MyBatis XML 路径: @MapperScan 在 Application; mapper-locations 走 classpath*:mapper/**/*.xml
 mybatis:
   mapper-locations: classpath*:mapper/**/*.xml
   type-aliases-package: com.ruoyi.opc.content.domain

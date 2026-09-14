@@ -24,6 +24,8 @@ spring:
         namespace: ${NACOS_NAMESPACE:opc-dev}
         file-extension: yml
         fail-fast: true
+        # 连接被拒时立即失败(避免在 Nacos 未就绪时无限重试)
+        fail-fast-on-connection-refused: true
         refresh-enabled: true
         # 重试机制:解决 Nacos 短暂抖动
         retry-time: 3000

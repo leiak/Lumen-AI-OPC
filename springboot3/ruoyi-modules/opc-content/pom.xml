@@ -10,7 +10,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>opc-content</artifactId>
-    <description>OPC 内容创作中心</description>
+    <description>OPC AI 内容创作中心 (短剧/视频/图文/平台适配) - Iter1 骨架</description>
 
     <dependencies>
         <!-- 必加: 启动器 -->
@@ -118,6 +118,7 @@
                 </configuration>
                 <executions>
                     <execution>
+                        <id>default</id>
                         <phase>none</phase>  <!-- thin jar 模板,见 memory -->
                     </execution>
                 </executions>
