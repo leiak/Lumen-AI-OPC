@@ -54,7 +54,7 @@ opc:
     platform:
       mock: true   # dev 默认 mock; prod 设 false 启用 DouyinClient
     frontend-redirect-base: http://127.0.0.1:8079/opc/content/platform-account
-    token-encryption-key: b3BjLWNvbnRlbnQtZGV2LWtleS0zMmJ5dGVzISE=  # dev only, prod 必改
+    token-encryption-key: b3BjLWNvbnRlbnQtYWVzMjU2LWtleS0zMmJ5dGVzISE=  # dev 32B; prod 必改 (W74 Task 12 fix)
 
 # 抖音开放平台 sandbox 配置 (W74 Task 7) — 占位段, 实际配置由 Nacos 推送
 douyin:

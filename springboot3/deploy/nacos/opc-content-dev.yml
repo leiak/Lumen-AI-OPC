@@ -1,0 +1,83 @@
+# ============================================================
+# OPC Content Nacos dev 配置 (W74)
+# 端口: 9325
+# 命名空间: opc-dev (Spring Cloud 用 namespaceId=opc-dev)
+# ============================================================
+
+server:
+  port: 9325
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+  tomcat:
+    uri-encoding: UTF-8
+
+spring:
+  application:
+    name: opc-content
+  datasource:
+    dynamic:
+      primary: master
+      datasource:
+        master:
+          url: jdbc:mysql://${MYSQL_HOST:aiopc-mysql}:${MYSQL_PORT:3306}/${MYSQL_DB:ry-vue-opc}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+          username: ${MYSQL_USER:root}
+          password: ${MYSQL_PASSWORD:root}
+          driver-class-name: com.mysql.cj.jdbc.Driver
+  redis:
+    host: ${REDIS_HOST:aiopc-redis}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+  http:
+    encoding:
+      charset: UTF-8
+      force: true
+  jackson:
+    default-property-inclusion: non_null
+
+# OPC Content 业务配置 (W74)
+opc:
+  content:
+    notification:
+      base-url: http://aiopc-notification:9310
+    ai-core:
+      base-url: http://aiopc-ai-core:9301
+    user-center:
+      base-url: http://aiopc-user-center:9302
+    # AES-256-GCM token 加密密钥 (32 字节 base64 = "opc-content-aes256-key-32bytes!!")
+    token-encryption-key: "b3BjLWNvbnRlbnQtYWVzMjU2LWtleS0zMmJ5dGVzISE="
+    # 抖音 OAuth 回调基地址 (前端用于跳转到绑定页面)
+    frontend-redirect-base: "http://127.0.0.1:8079/opc/content/platform-account"
+    # 平台客户端模式 (dev 用 mock 避免真抖音 sandbox 调用)
+    platform:
+      mock: true
+  llm:
+    scene-mapping:
+      DRAMA: content_short_drama
+      VIDEO: content_video_script
+      ARTICLE: content_article
+      ADAPTER: content_platform_adapter
+
+# 抖音开放平台 sandbox 配置
+douyin:
+  client-key: "dev_client_key_placeholder"
+  client-secret: "ENC(dev_client_secret_placeholder)"
+  redirect-uri: "http://127.0.0.1:9325/opc/content/oauth/callback"
+  api-base: "https://open-sandbox.douyin.com"
+  sandbox: true
+  scope: "video.create,video.upload,user_info"
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*Mapper.xml
+  type-aliases-package: com.ruoyi.opc.content.domain
+  configuration:
+    map-underscore-to-camel-case: true
+
+jasypt:
+  encryptor:
+    password: "OpcEncrypt!2026"
+
+logging:
+  level:
+    com.ruoyi.opc.content: debug

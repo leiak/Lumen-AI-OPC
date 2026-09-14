@@ -27,7 +27,7 @@ public class ContentTokenEncryptor {
     private static final int IV_LEN = 12;
     private static final int TAG_BITS = 128;
 
-    @Value("${opc.content.token-encryption-key:b3BjLWNvbnRlbnQtZGV2LWtleS0zMmJ5dGVzISE=}")
+    @Value("${opc.content.token-encryption-key:b3BjLWNvbnRlbnQtYWVzMjU2LWtleS0zMmJ5dGVzISE=}")
     private String keyBase64;
 
     private SecretKeySpec keySpec;
@@ -40,7 +40,7 @@ public class ContentTokenEncryptor {
         }
         this.keySpec = new SecretKeySpec(keyBytes, "AES");
         log.info("[opc-content] ContentTokenEncryptor 初始化完成, key 来源={}",
-                keyBase64.equals("b3BjLWNvbnRlbnQtZGV2LWtleS0zMmJ5dGVzISE=") ? "dev-default" : "config");
+                keyBase64.equals("b3BjLWNvbnRlbnQtYWVzMjU2LWtleS0zMmJ5dGVzISE=") ? "dev-default" : "config");
     }
 
     public String encrypt(String plain) {
