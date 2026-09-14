@@ -19,6 +19,7 @@ import jakarta.validation.constraints.NotNull;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class OpcContentPublishRequest {
 
+    @NotNull
     @JsonProperty("company_id")
     private Long companyId;
 

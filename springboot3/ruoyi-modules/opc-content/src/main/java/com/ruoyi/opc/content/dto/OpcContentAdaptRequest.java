@@ -20,6 +20,7 @@ import jakarta.validation.constraints.NotNull;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class OpcContentAdaptRequest {
 
+    @NotNull
     @JsonProperty("company_id")
     private Long companyId;
 

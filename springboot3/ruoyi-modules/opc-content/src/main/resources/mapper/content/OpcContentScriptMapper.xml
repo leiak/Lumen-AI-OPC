@@ -82,7 +82,7 @@
     <select id="selectById" resultMap="ScriptResultMap">
         SELECT <include refid="BaseColumns" />
         FROM opc_content_script
-        WHERE id = #{id} AND company_id = #{companyId}
+        WHERE id = #{id} AND company_id = #{companyId} AND status != 'DELETED'
     </select>
 
     <select id="selectList" resultMap="ScriptResultMap">
@@ -121,7 +121,8 @@
         SELECT COUNT(1)
         FROM opc_content_script
         WHERE company_id = #{companyId}
-          AND DATE(created_at) = CURDATE()
+          AND created_at &gt;= CURDATE()
+          AND created_at &lt; DATE_ADD(CURDATE(), INTERVAL 1 DAY)
           AND status != 'DELETED'
     </select>
 

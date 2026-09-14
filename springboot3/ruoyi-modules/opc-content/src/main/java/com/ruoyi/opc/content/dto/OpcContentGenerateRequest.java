@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 /**
  * 内容生成请求 DTO — 创建脚本 + 触发 LLM 生成。
@@ -20,6 +21,7 @@ import jakarta.validation.constraints.NotBlank;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class OpcContentGenerateRequest {
 
+    @NotNull
     @JsonProperty("company_id")
     private Long companyId;
 

@@ -45,13 +45,15 @@ public class OpcContentPlatformAccount {
     @JsonProperty("refresh_token_enc")
     private String refreshTokenEnc;
 
-    /** access_token 过期时间 (epoch seconds),DB 列 expires_at */
+    /** token 过期时间 (DB DATETIME, spec §3.2),DB 列 expires_at */
     @JsonProperty("access_token_expires_at")
-    private Long accessTokenExpiresAt;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime accessTokenExpiresAt;
 
-    /** refresh_token 过期时间 (epoch seconds),DB 列 refresh_at */
+    /** refresh_token 过期时间 (DB DATETIME),DB 列 refresh_at */
     @JsonProperty("refresh_token_expires_at")
-    private Long refreshTokenExpiresAt;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private LocalDateTime refreshTokenExpiresAt;
 
     /** OAuth scope */
     private String scope;

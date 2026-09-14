@@ -3,6 +3,7 @@ package com.ruoyi.opc.content.mapper;
 import com.ruoyi.opc.content.domain.OpcContentPlatformAccount;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -32,6 +33,6 @@ public interface OpcContentPlatformAccountMapper {
                      @Param("companyId") Long companyId,
                      @Param("accessTokenEnc") String accessTokenEnc,
                      @Param("refreshTokenEnc") String refreshTokenEnc,
-                     @Param("accessTokenExpiresAt") Long accessTokenExpiresAt,
-                     @Param("refreshTokenExpiresAt") Long refreshTokenExpiresAt);
+                     @Param("accessTokenExpiresAt") LocalDateTime accessTokenExpiresAt,
+                     @Param("refreshTokenExpiresAt") LocalDateTime refreshTokenExpiresAt);
 }

@@ -35,8 +35,8 @@ public class OpcContentPublish {
     /** 发布标题 */
     private String title;
 
-    /** 标签数组 */
-    private String[] tags;
+    /** 标签 JSON 字符串,VARCHAR(1024);Service 层在 insert 前将 String[] 序列化为 JSON */
+    private String tags;
 
     /** 抖音 video_id (可空) */
     @JsonProperty("external_video_id")

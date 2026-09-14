@@ -38,8 +38,8 @@ public class OpcContentAdapt {
     /** 适配语气/风格描述 */
     private String tone;
 
-    /** 推荐 hashtags */
-    private String[] hashtags;
+    /** 推荐 hashtags JSON 字符串;Service 层在 insert 前将 String[] 序列化为 JSON */
+    private String hashtags;
 
     /** 备注 */
     private String note;
