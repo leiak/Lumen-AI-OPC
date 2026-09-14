@@ -25,6 +25,12 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- 必加: actuator (健康检查 + Liveness/Readiness) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- 必加: Spring Cloud 客户端 -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
@@ -57,13 +63,15 @@
             <artifactId>ruoyi-api-system</artifactId>
         </dependency>
 
-        <!-- Task 8: NotificationGateway 依赖 (plan Step 1 显式要求) -->
+        <!-- Dynamic DataSource (ruoyi-common-datasource 包含 dynamic-datasource-spring-boot-starter) -->
         <dependency>
             <groupId>com.ruoyi</groupId>
-            <artifactId>opc-notification</artifactId>
-            <version>3.6.8</version>
-            <scope>compile</scope>
+            <artifactId>ruoyi-common-datasource</artifactId>
         </dependency>
+
+        <!-- Task 8: NotificationGateway 通过 FeignClient 调用,不需要 opc-notification jar (W71 Task 12 教训)
+             否则 opc-notification-3.6.8.jar 会被 copy 到 lib/,触发 EmailController / MailConfig 启动失败
+             (mail.host placeholder 缺失),opc-hr 也无需发送邮件。 -->
 
         <!-- Jasypt 加密 -->
         <dependency>
