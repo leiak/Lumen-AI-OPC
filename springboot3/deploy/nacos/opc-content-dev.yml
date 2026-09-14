@@ -25,16 +25,6 @@ spring:
           username: ${MYSQL_USER:root}
           password: ${MYSQL_PASSWORD:root}
           driver-class-name: com.mysql.cj.jdbc.Driver
-  redis:
-    host: ${REDIS_HOST:aiopc-redis}
-    port: ${REDIS_PORT:6379}
-    password: ${REDIS_PASSWORD:}
-  http:
-    encoding:
-      charset: UTF-8
-      force: true
-  jackson:
-    default-property-inclusion: non_null
 
 # OPC Content 业务配置 (W74)
 opc:

@@ -26,6 +26,14 @@ spring:
     port: ${REDIS_PORT:6379}
     password: ${REDIS_PASSWORD:}
 
+  # Spring Boot 3.5: Lettuce 只读 spring.data.redis.* (旧 spring.redis.* 已废弃)
+  data:
+    redis:
+      host: ${REDIS_HOST:aiopc-redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:Opc@2026!}
+      timeout: 10s
+
 jasypt:
   encryptor:
     password: ${JASYPT_PASSWORD:OpcEncrypt!2026}

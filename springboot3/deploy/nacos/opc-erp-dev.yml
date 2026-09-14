@@ -16,10 +16,6 @@ spring:
     username: ${MYSQL_USER:root}
     password: ${MYSQL_PASSWORD:Opc@2026!}
     driver-class-name: com.mysql.cj.jdbc.Driver
-  redis:
-    host: ${REDIS_HOST:aiopc-redis}
-    port: ${REDIS_PORT:6379}
-    password: ${REDIS_PASSWORD:Opc@2026!}
 
 jasypt:
   encryptor:

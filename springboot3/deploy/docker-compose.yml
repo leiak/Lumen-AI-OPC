@@ -573,7 +573,7 @@ services:
       MYSQL_DB: ry-vue-opc
       MYSQL_USER: root
       MYSQL_PASSWORD: Opc@2026!
-      REDIS_HOST: redis
+      REDIS_HOST: aiopc-redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: Opc@2026!
       SERVER_PORT: "9316"

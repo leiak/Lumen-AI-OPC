@@ -34,6 +34,14 @@ spring:
 # 校验失败把整个 context 都拉爆。即使 ai-core 实际用 opc-common 自定义 HTTP 客户端
 # 调 DeepSeek/Zhipu,不依赖 Spring AI 的 OpenAiChatModel,这个 Bean 也会被 Spring 加载。
 # 所以这里给个 dummy placeholder 让 Bean 装配过。真实 key 通过 OPENAI_API_KEY env 注入。
+
+  # Spring Boot 3.5: Lettuce 只读 spring.data.redis.* (旧 spring.redis.* 已废弃)
+  data:
+    redis:
+      host: ${REDIS_HOST:aiopc-redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:Opc@2026!}
+      timeout: 10s
 ai:
   openai:
     api-key: ${OPENAI_API_KEY:sk-placeholder-deepseek}

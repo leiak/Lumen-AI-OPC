@@ -213,6 +213,7 @@ CREATE TABLE IF NOT EXISTS `opc_erp_return` (
   `confirmed_at`  DATETIME                                                  COMMENT '确认时间',
   `completed_at`  DATETIME                                                  COMMENT '退货完成时间',
   `reason`        VARCHAR(256)                                             COMMENT '退货原因',
+  `remark`        VARCHAR(512)                                             COMMENT '备注 (W74 部署后补加)',
   `created_by`    BIGINT        NOT NULL                                COMMENT '创建人',
   `create_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP       COMMENT '创建时间',
   `update_time`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',

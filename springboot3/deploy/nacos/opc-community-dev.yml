@@ -23,17 +23,6 @@ spring:
           url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/${MYSQL_DB:ry-vue-opc}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
           username: ${MYSQL_USER:root}
           password: ${MYSQL_PASSWORD:Opc@2026!}
-  redis:
-    host: ${REDIS_HOST:redis}
-    port: ${REDIS_PORT:6379}
-    password: ${REDIS_PASSWORD:}
-  # W52 修复中文 mojibake: 响应编码 UTF-8
-  http:
-    encoding:
-      charset: UTF-8
-      force: true
-  jackson:
-    default-property-inclusion: non_null
 
 # OPC Community 业务配置
 opc:
