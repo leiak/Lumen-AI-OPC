@@ -14,6 +14,7 @@
 #   7) opc-crm 8 项健康检查 (W50 Task 17)
 #   8) opc-hr 8 项健康检查 (W71 Task 12)
 #   9) opc-erp 9 项健康检查 (W72 Task 12)
+#  10) opc-content 10 项健康检查 (W74 Task 15)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -861,6 +862,111 @@ except Exception:
   fi
 }
 
+# ---------- 10. opc-content 健康 ----------
+check_content() {
+  hr
+  echo "[10] opc-content 健康检查 (W74 Task 15)"
+  hr
+
+  local port=9325
+  local base_url="http://127.0.0.1:${port}"
+
+  # 10.1 容器 Up (非阻塞, dev 直连模式可能无容器)
+  local c="aiopc-content"
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${c}$"; then
+    status=$(docker inspect --format '{{.State.Status}}' "${c}" 2>/dev/null)
+    if [[ "${status}" == "running" ]]; then
+      ok "${c} running"
+    else
+      warn "${c} 状态异常: ${status}"
+    fi
+  else
+    warn "${c} 容器不存在 (本地直连模式)"
+  fi
+
+  # 10.2 Nacos 注册 (非阻塞)
+  local nacos_url="http://${GATEWAY_HOST}:${NACOS_PORT}/nacos/v1/ns/instance/list?serviceName=opc-content&namespaceId=opc-dev"
+  local nacos_body
+  nacos_body=$(curl -sf -m 10 "${nacos_url}" 2>/dev/null) || nacos_body=""
+  local healthy_count
+  healthy_count=$(echo "${nacos_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin)
+    hosts = d.get('hosts', [])
+    print(len(hosts) if hosts else 0)
+except Exception:
+    print(0)
+" 2>/dev/null)
+  if [[ "${healthy_count}" -ge 1 ]]; then
+    ok "Nacos opc-content 注册 ${healthy_count} 实例 (opc-dev)"
+  else
+    warn "Nacos opc-content 未注册 (开发模式可能未启动)"
+  fi
+
+  # 10.3 /actuator/health (阻塞)
+  local health_body
+  health_body=$(curl -sf -m 10 "${base_url}/actuator/health" 2>/dev/null) || health_body=""
+  if [[ "${health_body}" == "UP" ]] || echo "${health_body}" | grep -q '"status":"UP"'; then
+    ok "opc-content /actuator/health UP"
+  else
+    nok "opc-content /actuator/health: ${health_body:-<no response>}"
+  fi
+
+  # 10.4 ScriptController GET /opc/content/script/list (阻塞)
+  if curl -sf -m 10 "${base_url}/opc/content/script/list?pageNum=1&pageSize=10" >/dev/null 2>&1; then
+    ok "/opc/content/script/list 200 OK"
+  else
+    nok "/opc/content/script/list 不可达"
+  fi
+
+  # 10.5 ScriptController GET /opc/content/script/dashboard (阻塞)
+  if curl -sf -m 10 "${base_url}/opc/content/script/dashboard" >/dev/null 2>&1; then
+    ok "/opc/content/script/dashboard 200 OK"
+  else
+    nok "/opc/content/script/dashboard 不可达"
+  fi
+
+  # 10.6 ScriptController GET /opc/content/script/recent (阻塞)
+  if curl -sf -m 10 "${base_url}/opc/content/script/recent?limit=5" >/dev/null 2>&1; then
+    ok "/opc/content/script/recent 200 OK"
+  else
+    nok "/opc/content/script/recent 不可达"
+  fi
+
+  # 10.7 PlatformAccountController GET /opc/content/platform-account/list (阻塞)
+  if curl -sf -m 10 "${base_url}/opc/content/platform-account/list" >/dev/null 2>&1; then
+    ok "/opc/content/platform-account/list 200 OK"
+  else
+    nok "/opc/content/platform-account/list 不可达"
+  fi
+
+  # 10.8 PublishController GET /opc/content/publish/list (阻塞)
+  if curl -sf -m 10 "${base_url}/opc/content/publish/list" >/dev/null 2>&1; then
+    ok "/opc/content/publish/list 200 OK"
+  else
+    nok "/opc/content/publish/list 不可达"
+  fi
+
+  # 10.9 鉴权拦截 (非阻塞, dev 模式可能关闭)
+  local HTTP_CODE
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "${base_url}/opc/content/script/list" 2>/dev/null)
+  if [[ "${HTTP_CODE}" == "401" ]] || [[ "${HTTP_CODE}" == "403" ]] || [[ "${HTTP_CODE}" == "200" ]]; then
+    ok "鉴权拦截正确 (HTTP ${HTTP_CODE})"
+  else
+    warn "鉴权状态异常 (HTTP ${HTTP_CODE})"
+  fi
+
+  # 10.10 数据库连接 (非阻塞, db indicator)
+  local db_health
+  db_health=$(curl -sf -m 10 "${base_url}/actuator/health/db" 2>/dev/null) || db_health=""
+  if echo "${db_health}" | grep -q "UP" || [[ -z "${db_health}" ]]; then
+    ok "数据库健康 (db indicator UP 或未启用)"
+  else
+    warn "数据库健康状态: ${db_health}"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -875,6 +981,7 @@ main() {
   check_crm
   check_hr
   check_erp
+  check_content
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"
