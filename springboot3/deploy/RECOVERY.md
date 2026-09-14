@@ -546,6 +546,13 @@ sleep 40
 # 6. 重建 frontend (W51 教训: 上游 IP 漂移后必须 rebuild)
 docker compose build aiopc-frontend && docker compose up -d aiopc-frontend
 
+# 6b. (Fallback) Docker.io 不可达时 (W74 实战) — 用 Python proxy 替代 nginx
+# 当 nginx:1.27-alpine + node:20-alpine 基础镜像无法 pull 时,
+# 本地 dist/ 已存在,可用 Python http.server + 反向代理脚本跑 8079 端口
+python C:/Users/wma19/AppData/Local/Temp/frontend_proxy.py
+# 等价 nginx.conf: /prod-api/* → http://127.0.0.1:8080 (gateway)
+#                   / → vue3-typescript/dist/index.html (SPA fallback)
+
 # 7. 健康检查 (期望 10/10 + 之前所有服务)
 bash scripts/health-check.sh
 

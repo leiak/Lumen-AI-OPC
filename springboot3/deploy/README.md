@@ -27,6 +27,10 @@ docker compose up -d aiopc-gateway aiopc-auth aiopc-system \
 # 5. 启动前端 (W51 教训: 上游 IP 漂移后必须显式 rebuild)
 docker compose build aiopc-frontend && docker compose up -d aiopc-frontend
 
+# 5b. (可选) Docker.io 不可达 fallback — 用 Python proxy 直接 serve
+# W74 实践: 本地 dist/ 已存在时, 用 Python proxy 替代 nginx 容器
+python C:/Users/wma19/AppData/Local/Temp/frontend_proxy.py  # 后台跑, 端口 8079
+
 # 6. 健康检查 (W48.7 风格 22+ 项 + W74 opc-content 10 项)
 bash scripts/health-check.sh
 
