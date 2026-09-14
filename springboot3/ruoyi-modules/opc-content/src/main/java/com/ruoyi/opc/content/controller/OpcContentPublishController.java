@@ -8,7 +8,11 @@ import com.ruoyi.opc.content.service.IOpcContentPublishService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,6 +36,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/opc/content/publish")
 @RequiredArgsConstructor
+@Slf4j
+@Validated
 public class OpcContentPublishController {
 
     private final IOpcContentPublishService publishService;
@@ -40,8 +46,10 @@ public class OpcContentPublishController {
      * 发布脚本到指定平台账号(脚本 status 必须为 READY)。
      */
     @Operation(summary = "发布脚本到指定平台账号(仅 READY)")
-    @PostMapping("/")
+    @PostMapping
     public R<Long> publish(@RequestBody @Valid OpcContentPublishRequest req) {
+        log.info("[opc-content] action=publish scriptId={} platformAccountId={}",
+                req.getScriptId(), req.getPlatformAccountId());
         return R.ok(publishService.publish(req));
     }
 
@@ -53,8 +61,8 @@ public class OpcContentPublishController {
     public R<OpcContentListResponse<OpcContentPublish>> list(
             @RequestParam Long companyId,
             @RequestParam(required = false) String status,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "1") @Min(value = 1, message = "page 必须 >= 1") int page,
+            @RequestParam(defaultValue = "20") @Min(value = 1, message = "size 必须 >= 1") @Max(value = 100, message = "size 必须 <= 100") int size) {
         return R.ok(publishService.listByCompany(companyId, status, page, size));
     }
 

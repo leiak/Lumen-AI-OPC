@@ -14,7 +14,11 @@ import com.ruoyi.opc.content.service.IOpcContentScriptService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -49,6 +53,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/opc/content/script")
 @RequiredArgsConstructor
+@Slf4j
+@Validated
 public class OpcContentScriptController {
 
     private final IOpcContentScriptService scriptService;
@@ -58,8 +64,10 @@ public class OpcContentScriptController {
      * 创建脚本并触发 LLM 生成(DRAMA/VIDEO/ARTICLE)。
      */
     @Operation(summary = "创建脚本 + 触发 LLM 生成")
-    @PostMapping("/")
+    @PostMapping
     public R<Long> create(@RequestBody @Valid OpcContentGenerateRequest req) {
+        log.info("[opc-content] action=create script type={} promptLen={}",
+                req.getType(), req.getPromptInput() == null ? 0 : req.getPromptInput().length());
         return R.ok(scriptService.create(req));
     }
 
@@ -72,8 +80,8 @@ public class OpcContentScriptController {
             @RequestParam Long companyId,
             @RequestParam(required = false) String type,
             @RequestParam(required = false) String status,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "1") @Min(value = 1, message = "page 必须 >= 1") int page,
+            @RequestParam(defaultValue = "20") @Min(value = 1, message = "size 必须 >= 1") @Max(value = 100, message = "size 必须 <= 100") int size) {
         OpcContentListResponse<OpcContentScript> resp =
                 scriptService.list(companyId, type, status, page, size);
         return R.ok(OpcContentListResponse.<OpcContentScriptDto>builder()

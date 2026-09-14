@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -38,8 +39,9 @@ import java.util.List;
 @Slf4j
 public class OpcContentPlatformController {
 
-    /** 前端回调落地地址(本地 aiopc-frontend:8079,生产替换为公网域名) */
-    private static final String FRONTEND_REDIRECT_BASE = "http://127.0.0.1:8079/opc/content/platform-account";
+    /** 前端回调落地地址(默认本地 aiopc-frontend:8079,生产替换为公网域名) */
+    @Value("${opc.content.frontend-redirect-base:http://127.0.0.1:8079/opc/content/platform-account}")
+    private String frontendRedirectBase;
 
     private final IOpcContentPlatformAccountService accountService;
 
@@ -65,7 +67,7 @@ public class OpcContentPlatformController {
                          HttpServletResponse response) throws IOException {
         Long accountId = accountService.handleCallback(code, state);
         log.info("OAuth 回调成功 → accountId={}, 重定向前端", accountId);
-        response.sendRedirect(FRONTEND_REDIRECT_BASE + "?bound=" + accountId);
+        response.sendRedirect(frontendRedirectBase + "?bound=" + accountId);
     }
 
     /**
