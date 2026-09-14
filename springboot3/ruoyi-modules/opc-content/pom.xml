@@ -94,6 +94,12 @@
             <artifactId>mysql-connector-j</artifactId>
         </dependency>
 
+        <!-- Swagger (提供 io.swagger.v3.oas.annotations @Tag/@Operation) -->
+        <dependency>
+            <groupId>com.ruoyi</groupId>
+            <artifactId>ruoyi-common-swagger</artifactId>
+        </dependency>
+
         <!-- 单测 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
