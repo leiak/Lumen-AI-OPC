@@ -48,7 +48,7 @@ public class ContentLlmClient {
     /** Jackson 单例: reusedFeatures 避免每次构建 mapper 时初始化 feature。 */
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-            .setSerializationInclusion(JsonInclude.Include.NON_NULL);
+            .setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL);
 
     // ============================================================
     // 1. content_short_drama — 短剧剧本生成
