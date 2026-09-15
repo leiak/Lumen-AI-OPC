@@ -187,8 +187,16 @@ public class ContentLlmClient {
     // 内部: 统一 chat 调用
     // ============================================================
 
+    /** W75-C: 重试次数。EOF/超时类瞬时错误重试可显著提升成功率。 */
+    private static final int LLM_MAX_RETRY = 3;
+    /** 两次重试之间的 base 间隔 (ms),指数退避 500ms / 1000ms / 2000ms。 */
+    private static final long LLM_RETRY_BASE_MS = 500L;
+
     /**
-     * 构造 payload + 调用网关 + 提取 content。
+     * 构造 payload + 调用网关 + 提取 content,带 retry。
+     *
+     * <p>W75-C: 处理 LLM HTTP 客户端不稳定 (EOF reached while reading / ConnectException /
+     * SocketTimeoutException),最多重试 {@link #LLM_MAX_RETRY} 次,指数退避。
      *
      * @return content 字符串 (不含 Markdown fence); 网关不可用 / 业务失败 / 响应缺失 content 时抛 {@link ServiceException}
      */
@@ -203,12 +211,44 @@ public class ContentLlmClient {
                 Map.of("role", "user", "content", userInput)));
 
         log.info("[opc-content] LLM 调用 scene={} ctx={}", scene, contextTags);
+
+        ServiceException lastEx = null;
+        for (int attempt = 1; attempt <= LLM_MAX_RETRY; attempt++) {
+            try {
+                return doChatOnce(scene, payload);
+            } catch (ServiceException e) {
+                lastEx = e;
+                // 仅瞬时错误重试: 业务失败 (R.code != 200) / 响应缺失 不重试,直接抛
+                if (!isTransientError(e)) {
+                    throw e;
+                }
+                if (attempt < LLM_MAX_RETRY) {
+                    long backoff = LLM_RETRY_BASE_MS * (1L << (attempt - 1));
+                    log.warn("[opc-content] LLM 瞬时失败 scene={} attempt={}/{} backoff={}ms err={}",
+                            scene, attempt, LLM_MAX_RETRY, backoff, e.getMessage());
+                    try {
+                        Thread.sleep(backoff);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new ServiceException("LLM 调用被中断");
+                    }
+                }
+            }
+        }
+        log.error("[opc-content] LLM 重试 {} 次后仍失败 scene={}", LLM_MAX_RETRY, scene);
+        throw lastEx;
+    }
+
+    /**
+     * 单次 LLM 调用:网关 → R.SUCCESS → data.content。
+     * 网关层异常 (EOF/ConnectException/SocketTimeout) 经 Feign fallback 转 ServiceException("LLM 服务暂时不可用")。
+     */
+    private String doChatOnce(String scene, Map<String, Object> payload) {
         R<Map<String, Object>> resp = aiCoreGateway.chat(payload);
         if (resp == null) {
             log.warn("[opc-content] LLM 响应为 null scene={}", scene);
             throw new ServiceException("LLM 服务暂时不可用");
         }
-        // 直接判断 R.SUCCESS (200) 避免 R.isError 内部对 Boolean 自动拆箱时的潜在 NPE / 弃用警告
         if (resp.getCode() != R.SUCCESS) {
             log.warn("[opc-content] LLM 业务失败 scene={} code={} msg={}",
                     scene, resp.getCode(), resp.getMsg());
@@ -225,6 +265,23 @@ public class ContentLlmClient {
             throw new ServiceException("LLM 响应无 content 字段");
         }
         return content.toString();
+    }
+
+    /**
+     * W75-C: 判断是否为可重试的瞬时错误。
+     * 网关层 EOF / 连接拒绝 / 超时 / 服务不可用 都是瞬时;业务失败 (R.code != 200) 不是。
+     */
+    private boolean isTransientError(ServiceException e) {
+        String msg = e.getMessage();
+        if (msg == null) {
+            return false;
+        }
+        return msg.contains("LLM 服务暂时不可用")
+                || msg.contains("EOF reached while reading")
+                || msg.contains("Connection refused")
+                || msg.contains("ConnectException")
+                || msg.contains("SocketTimeout")
+                || msg.contains("Read timed out");
     }
 
     /** 去掉 LLM 偶尔返回的 Markdown ```json ... ``` 或 ```markdown ... ``` 包裹。 */

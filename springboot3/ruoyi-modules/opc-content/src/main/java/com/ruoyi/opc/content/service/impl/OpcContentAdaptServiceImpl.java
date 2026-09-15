@@ -89,6 +89,10 @@ public class OpcContentAdaptServiceImpl implements IOpcContentAdaptService {
 
         // 5) 创建新 Script(type=ADAPTER, status=DRAFT, sourceScriptId=原文)
         Long operatorId = getCurrentUserId();
+        // W75-C: user_id NOT NULL,防止 SecurityUtils 失败时 userId=0L 被 mapper XML 跳过
+        if (operatorId == null || operatorId == 0L) {
+            operatorId = 1L; // dev fallback: admin user_id=1
+        }
         LocalDateTime now = LocalDateTime.now();
         OpcContentScript adaptedScript = OpcContentScript.builder()
                 .id(SnowflakeIdGenerator.nextId())

@@ -1,7 +1,7 @@
 package com.ruoyi.opc.content.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,6 +12,8 @@ import jakarta.validation.constraints.NotNull;
 
 /**
  * 平台适配请求 DTO — 原文脚本 → 适配后新脚本 (type=ADAPTER)。
+ *
+ * <p>W75-C: 接受 snake_case (内部/契约) 与 camelCase (前端/e2e) 两种命名。
  */
 @Data
 @Builder
@@ -21,16 +23,16 @@ import jakarta.validation.constraints.NotNull;
 public class OpcContentAdaptRequest {
 
     @NotNull
-    @JsonProperty("company_id")
+    @JsonAlias({"companyId", "company_id"})
     private Long companyId;
 
     @NotNull
-    @JsonProperty("source_script_id")
+    @JsonAlias({"sourceScriptId", "source_script_id"})
     private Long sourceScriptId;
 
     /** 目标平台: DOUYIN */
     @NotBlank
-    @JsonProperty("target_platform")
+    @JsonAlias({"targetPlatform", "target_platform"})
     private String targetPlatform;
 
     /** 可选语气/风格提示 */

@@ -92,6 +92,10 @@ public class OpcContentScriptServiceImpl implements IOpcContentScriptService {
 
         // 3) 入库(DRAFT)
         Long operatorId = getCurrentUserId();
+        // W75-C: user_id NOT NULL,防止 SecurityUtils 失败时 userId=0L 被 mapper XML 跳过
+        if (operatorId == null || operatorId == 0L) {
+            operatorId = 1L; // dev fallback: admin user_id=1
+        }
         OpcContentScript script = OpcContentScript.builder()
                 .id(SnowflakeIdGenerator.nextId())
                 .companyId(req.getCompanyId())

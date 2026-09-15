@@ -18,6 +18,7 @@
 | [W10](#week-10) | all-remaining (其余单元测试补齐) | 1 |
 | [W11](#week-11) | 前端单测 (W11) | 1 |
 | [W12](#week-12) | 前端单测 (W12) | 1 |
+| [W75](#week-75) | opc-content e2e 修复 + LLM retry | 1 |
 | [W49](#week-49) | opc-notification 服务全栈交付 | 7 |
 | [W50](#week-50) | opc-crm 客户关系管理服务全栈交付 | 20 |
 | [late/](#late) | W19-W22 api 契约 + SFC Logo | 1 |
@@ -130,6 +131,14 @@ mutation testing 三部曲。
 | 文件 | 主题 |
 |------|------|
 | [OPC-W12-VERIFICATION-frontend-tests.md](./week-12/OPC-W12-VERIFICATION-frontend-tests.md) | 前端单测 (W12) |
+
+## Week 75
+
+opc-content 服务 W74 交付后 e2e Step 4/6 持续失败的根因分析 + 修复 + LLM retry 包装。
+
+| 文件 | 主题 |
+|------|------|
+| [OPC-W75-VERIFICATION-opc-content-e2e.md](./week-14/OPC-W75-VERIFICATION-opc-content-e2e.md) | DTO @JsonAlias + SecurityUtils fallback + LLM 3 次指数退避 retry |
 
 ## Week 49
 
