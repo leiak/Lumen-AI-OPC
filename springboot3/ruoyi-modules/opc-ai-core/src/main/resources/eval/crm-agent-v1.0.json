@@ -1,0 +1,1006 @@
+[
+  {
+    "case_code": "eval-crm-score-001",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1001, \"opportunityName\": \"深圳科技公司 SaaS 平台采购\", \"amount\": 280000.0, \"stage\": \"NEGOTIATION\", \"customerId\": 501, \"customerName\": \"深圳科技有限公司\", \"customerLevel\": \"A\", \"industry\": \"科技/SaaS\", \"lastContactDays\": 3, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        70,
+        95
+      ],
+      "reasonContains": [
+        "金额",
+        "阶段",
+        "决策"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,NEGOTIATION"
+  },
+  {
+    "case_code": "eval-crm-score-002",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1002, \"opportunityName\": \"初创团队 CRM 试用\", \"amount\": 12000.0, \"stage\": \"LEAD\", \"customerId\": 502, \"customerName\": \"北京初创工作室\", \"customerLevel\": \"C\", \"industry\": \"咨询\", \"lastContactDays\": 21, \"budgetConfirmed\": false, \"decisionMakerEngaged\": false, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        10,
+        40
+      ],
+      "reasonContains": [
+        "预算",
+        "决策",
+        "金额"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,LEAD,弱信号"
+  },
+  {
+    "case_code": "eval-crm-score-003",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1003, \"opportunityName\": \"制造业 ERP 全模块采购\", \"amount\": 1500000.0, \"stage\": \"PROPOSAL\", \"customerId\": 503, \"customerName\": \"广州制造集团\", \"customerLevel\": \"A\", \"industry\": \"制造\", \"lastContactDays\": 5, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": true}",
+    "expected": {
+      "scoreRange": [
+        55,
+        80
+      ],
+      "reasonContains": [
+        "竞品",
+        "金额",
+        "决策"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,PROPOSAL,竞品"
+  },
+  {
+    "case_code": "eval-crm-score-004",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1004, \"opportunityName\": \"教培机构单点试用\", \"amount\": 3000.0, \"stage\": \"QUALIFIED\", \"customerId\": 504, \"customerName\": \"上海教培公司\", \"customerLevel\": \"C\", \"industry\": \"教育\", \"lastContactDays\": 10, \"budgetConfirmed\": true, \"decisionMakerEngaged\": false, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        25,
+        55
+      ],
+      "reasonContains": [
+        "金额",
+        "决策"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,QUALIFIED,小额"
+  },
+  {
+    "case_code": "eval-crm-score-005",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1005, \"opportunityName\": \"金融行业数据中台\", \"amount\": 3000000.0, \"stage\": \"NEGOTIATION\", \"customerId\": 505, \"customerName\": \"上海金融科技公司\", \"customerLevel\": \"A\", \"industry\": \"金融\", \"lastContactDays\": 1, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": true}",
+    "expected": {
+      "scoreRange": [
+        70,
+        95
+      ],
+      "reasonContains": [
+        "金额",
+        "决策",
+        "金融"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,NEGOTIATION,大额"
+  },
+  {
+    "case_code": "eval-crm-score-006",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1006, \"opportunityName\": \"跨境电商系统集成\", \"amount\": 450000.0, \"stage\": \"PROPOSAL\", \"customerId\": 506, \"customerName\": \"深圳跨境电商公司\", \"customerLevel\": \"B\", \"industry\": \"电商\", \"lastContactDays\": 7, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        60,
+        85
+      ],
+      "reasonContains": [
+        "阶段",
+        "决策",
+        "金额"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,PROPOSAL,B级"
+  },
+  {
+    "case_code": "eval-crm-score-007",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1007, \"opportunityName\": \"三个月未跟进的潜在客户\", \"amount\": 50000.0, \"stage\": \"LEAD\", \"customerId\": 507, \"customerName\": \"苏州贸易公司\", \"customerLevel\": \"C\", \"industry\": \"贸易\", \"lastContactDays\": 90, \"budgetConfirmed\": false, \"decisionMakerEngaged\": false, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        5,
+        30
+      ],
+      "reasonContains": [
+        "跟进",
+        "预算"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,长未跟进"
+  },
+  {
+    "case_code": "eval-crm-score-008",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1008, \"opportunityName\": \"物流公司 SaaS 年付\", \"amount\": 96000.0, \"stage\": \"QUALIFIED\", \"customerId\": 508, \"customerName\": \"杭州物流公司\", \"customerLevel\": \"B\", \"industry\": \"物流\", \"lastContactDays\": 4, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        55,
+        80
+      ],
+      "reasonContains": [
+        "阶段",
+        "预算"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,QUALIFIED,B级"
+  },
+  {
+    "case_code": "eval-crm-score-009",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1009, \"opportunityName\": \"本地餐饮 SaaS 续约谈判\", \"amount\": 36000.0, \"stage\": \"NEGOTIATION\", \"customerId\": 509, \"customerName\": \"北京连锁餐饮\", \"customerLevel\": \"B\", \"industry\": \"餐饮\", \"lastContactDays\": 2, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": true}",
+    "expected": {
+      "scoreRange": [
+        55,
+        85
+      ],
+      "reasonContains": [
+        "续约",
+        "竞品"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,NEGOTIATION,续约"
+  },
+  {
+    "case_code": "eval-crm-score-010",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1010, \"opportunityName\": \"医疗系统定制开发\", \"amount\": 800000.0, \"stage\": \"PROPOSAL\", \"customerId\": 510, \"customerName\": \"北京医疗集团\", \"customerLevel\": \"A\", \"industry\": \"医疗\", \"lastContactDays\": 6, \"budgetConfirmed\": false, \"decisionMakerEngaged\": true, \"competitorMentioned\": true}",
+    "expected": {
+      "scoreRange": [
+        40,
+        70
+      ],
+      "reasonContains": [
+        "预算",
+        "金额"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,PROPOSAL,大额,预算未定"
+  },
+  {
+    "case_code": "eval-crm-score-011",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1011, \"opportunityName\": \"免费试用转化\", \"amount\": 0.0, \"stage\": \"LEAD\", \"customerId\": 511, \"customerName\": \"试用客户A\", \"customerLevel\": \"C\", \"industry\": \"通用\", \"lastContactDays\": 14, \"budgetConfirmed\": false, \"decisionMakerEngaged\": false, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        5,
+        25
+      ],
+      "reasonContains": [
+        "预算",
+        "金额"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,零金额"
+  },
+  {
+    "case_code": "eval-crm-score-012",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1012, \"opportunityName\": \"已签约项目交付\", \"amount\": 500000.0, \"stage\": \"WON\", \"customerId\": 512, \"customerName\": \"已成交客户\", \"customerLevel\": \"A\", \"industry\": \"通用\", \"lastContactDays\": 0, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        85,
+        100
+      ],
+      "reasonContains": [
+        "已成交",
+        "签约"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,WON"
+  },
+  {
+    "case_code": "eval-crm-score-013",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1013, \"opportunityName\": \"已流失客户重启\", \"amount\": 80000.0, \"stage\": \"LOST\", \"customerId\": 513, \"customerName\": \"原流失客户\", \"customerLevel\": \"B\", \"industry\": \"通用\", \"lastContactDays\": 180, \"budgetConfirmed\": false, \"decisionMakerEngaged\": false, \"competitorMentioned\": true}",
+    "expected": {
+      "scoreRange": [
+        5,
+        25
+      ],
+      "reasonContains": [
+        "流失",
+        "重启",
+        "竞品"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,LOST,重启"
+  },
+  {
+    "case_code": "eval-crm-score-014",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1014, \"opportunityName\": \"政企客户大单\", \"amount\": 5000000.0, \"stage\": \"NEGOTIATION\", \"customerId\": 514, \"customerName\": \"某省国资集团\", \"customerLevel\": \"A\", \"industry\": \"政企\", \"lastContactDays\": 3, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": true}",
+    "expected": {
+      "scoreRange": [
+        70,
+        90
+      ],
+      "reasonContains": [
+        "金额",
+        "政企",
+        "竞品"
+      ],
+      "difficulty": "HARD"
+    },
+    "tags": "评分,政企,超大单"
+  },
+  {
+    "case_code": "eval-crm-score-015",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1015, \"opportunityName\": \"渠道转介的成熟商机\", \"amount\": 200000.0, \"stage\": \"QUALIFIED\", \"customerId\": 515, \"customerName\": \"渠道客户\", \"customerLevel\": \"A\", \"industry\": \"通用\", \"lastContactDays\": 2, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        70,
+        95
+      ],
+      "reasonContains": [
+        "渠道",
+        "预算",
+        "决策"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,渠道转介"
+  },
+  {
+    "case_code": "eval-crm-score-016",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1016, \"opportunityName\": \"竞争对手主动放弃的客户\", \"amount\": 60000.0, \"stage\": \"LEAD\", \"customerId\": 516, \"customerName\": \"竞品弃单客户\", \"customerLevel\": \"B\", \"industry\": \"通用\", \"lastContactDays\": 5, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": true}",
+    "expected": {
+      "scoreRange": [
+        55,
+        80
+      ],
+      "reasonContains": [
+        "竞品",
+        "决策"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,竞品弃单"
+  },
+  {
+    "case_code": "eval-crm-score-017",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1017, \"opportunityName\": \"凌晨提交的非工作时段线索\", \"amount\": 8000.0, \"stage\": \"LEAD\", \"customerId\": 517, \"customerName\": \"夜间留资客户\", \"customerLevel\": \"C\", \"industry\": \"通用\", \"lastContactDays\": 0, \"budgetConfirmed\": false, \"decisionMakerEngaged\": false, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        10,
+        35
+      ],
+      "reasonContains": [
+        "线索",
+        "预算"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,夜间线索"
+  },
+  {
+    "case_code": "eval-crm-score-018",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1018, \"opportunityName\": \"客户反复对比友商报价\", \"amount\": 150000.0, \"stage\": \"PROPOSAL\", \"customerId\": 518, \"customerName\": \"对比型客户\", \"customerLevel\": \"B\", \"industry\": \"通用\", \"lastContactDays\": 4, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": true}",
+    "expected": {
+      "scoreRange": [
+        45,
+        70
+      ],
+      "reasonContains": [
+        "竞品",
+        "对比"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,反复对比"
+  },
+  {
+    "case_code": "eval-crm-score-019",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1019, \"opportunityName\": \"客户 CEO 直接拍板的百万订单\", \"amount\": 1200000.0, \"stage\": \"NEGOTIATION\", \"customerId\": 519, \"customerName\": \"CEO 拍板客户\", \"customerLevel\": \"A\", \"industry\": \"通用\", \"lastContactDays\": 1, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        80,
+        98
+      ],
+      "reasonContains": [
+        "决策",
+        "金额",
+        "CEO"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,CEO拍板"
+  },
+  {
+    "case_code": "eval-crm-score-020",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1020, \"opportunityName\": \"客户预算不足需要分期\", \"amount\": 100000.0, \"stage\": \"PROPOSAL\", \"customerId\": 520, \"customerName\": \"预算紧张客户\", \"customerLevel\": \"B\", \"industry\": \"通用\", \"lastContactDays\": 7, \"budgetConfirmed\": false, \"decisionMakerEngaged\": true, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        40,
+        65
+      ],
+      "reasonContains": [
+        "预算",
+        "分期"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,预算不足"
+  },
+  {
+    "case_code": "eval-crm-score-021",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1021, \"opportunityName\": \"续约谈判降价诉求\", \"amount\": 80000.0, \"stage\": \"NEGOTIATION\", \"customerId\": 521, \"customerName\": \"续约降价客户\", \"customerLevel\": \"B\", \"industry\": \"通用\", \"lastContactDays\": 3, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": true}",
+    "expected": {
+      "scoreRange": [
+        55,
+        80
+      ],
+      "reasonContains": [
+        "续约",
+        "价格"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,续约降价"
+  },
+  {
+    "case_code": "eval-crm-score-022",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1022, \"opportunityName\": \"客户内部推进人离职\", \"amount\": 50000.0, \"stage\": \"QUALIFIED\", \"customerId\": 522, \"customerName\": \"推进人变动客户\", \"customerLevel\": \"B\", \"industry\": \"通用\", \"lastContactDays\": 15, \"budgetConfirmed\": true, \"decisionMakerEngaged\": false, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        25,
+        50
+      ],
+      "reasonContains": [
+        "决策",
+        "变动"
+      ],
+      "difficulty": "HARD"
+    },
+    "tags": "评分,推进人离职"
+  },
+  {
+    "case_code": "eval-crm-score-023",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1023, \"opportunityName\": \"客户要求 POC 测试\", \"amount\": 300000.0, \"stage\": \"PROPOSAL\", \"customerId\": 523, \"customerName\": \"POC 测试客户\", \"customerLevel\": \"A\", \"industry\": \"通用\", \"lastContactDays\": 2, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": true}",
+    "expected": {
+      "scoreRange": [
+        60,
+        85
+      ],
+      "reasonContains": [
+        "POC",
+        "阶段"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,POC阶段"
+  },
+  {
+    "case_code": "eval-crm-score-024",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1024, \"opportunityName\": \"客户已采购多家供应商小份额\", \"amount\": 40000.0, \"stage\": \"QUALIFIED\", \"customerId\": 524, \"customerName\": \"分散采购客户\", \"customerLevel\": \"C\", \"industry\": \"通用\", \"lastContactDays\": 8, \"budgetConfirmed\": false, \"decisionMakerEngaged\": false, \"competitorMentioned\": true}",
+    "expected": {
+      "scoreRange": [
+        15,
+        40
+      ],
+      "reasonContains": [
+        "竞品",
+        "预算"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,分散采购"
+  },
+  {
+    "case_code": "eval-crm-score-025",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1025, \"opportunityName\": \"客户主动要求签订框架协议\", \"amount\": 500000.0, \"stage\": \"NEGOTIATION\", \"customerId\": 525, \"customerName\": \"框架协议客户\", \"customerLevel\": \"A\", \"industry\": \"通用\", \"lastContactDays\": 1, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        85,
+        98
+      ],
+      "reasonContains": [
+        "框架",
+        "签约"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,框架协议"
+  },
+  {
+    "case_code": "eval-crm-score-026",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1026, \"opportunityName\": \"客户项目暂停跟进\", \"amount\": 180000.0, \"stage\": \"QUALIFIED\", \"customerId\": 526, \"customerName\": \"项目暂停客户\", \"customerLevel\": \"B\", \"industry\": \"通用\", \"lastContactDays\": 30, \"budgetConfirmed\": true, \"decisionMakerEngaged\": false, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        20,
+        45
+      ],
+      "reasonContains": [
+        "暂停",
+        "跟进"
+      ],
+      "difficulty": "HARD"
+    },
+    "tags": "评分,项目暂停"
+  },
+  {
+    "case_code": "eval-crm-score-027",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1027, \"opportunityName\": \"客户要求免费试用延长\", \"amount\": 60000.0, \"stage\": \"PROPOSAL\", \"customerId\": 527, \"customerName\": \"延长试用客户\", \"customerLevel\": \"B\", \"industry\": \"通用\", \"lastContactDays\": 3, \"budgetConfirmed\": false, \"decisionMakerEngaged\": true, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        35,
+        60
+      ],
+      "reasonContains": [
+        "试用",
+        "预算"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,延长试用"
+  },
+  {
+    "case_code": "eval-crm-score-028",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1028, \"opportunityName\": \"客户决策层多部门分歧\", \"amount\": 220000.0, \"stage\": \"PROPOSAL\", \"customerId\": 528, \"customerName\": \"多部门分歧客户\", \"customerLevel\": \"A\", \"industry\": \"通用\", \"lastContactDays\": 5, \"budgetConfirmed\": true, \"decisionMakerEngaged\": false, \"competitorMentioned\": true}",
+    "expected": {
+      "scoreRange": [
+        35,
+        60
+      ],
+      "reasonContains": [
+        "决策",
+        "分歧"
+      ],
+      "difficulty": "HARD"
+    },
+    "tags": "评分,多部门分歧"
+  },
+  {
+    "case_code": "eval-crm-score-029",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1029, \"opportunityName\": \"客户预算只有报价一半\", \"amount\": 80000.0, \"stage\": \"PROPOSAL\", \"customerId\": 529, \"customerName\": \"预算不足客户\", \"customerLevel\": \"B\", \"industry\": \"通用\", \"lastContactDays\": 2, \"budgetConfirmed\": false, \"decisionMakerEngaged\": true, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        25,
+        50
+      ],
+      "reasonContains": [
+        "预算",
+        "金额"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,预算严重不足"
+  },
+  {
+    "case_code": "eval-crm-score-030",
+    "agent_code": "crm-agent",
+    "scene": "SCORE",
+    "input": "{\"opportunityId\": 1030, \"opportunityName\": \"客户已签合同待付款\", \"amount\": 350000.0, \"stage\": \"WON\", \"customerId\": 530, \"customerName\": \"待付款客户\", \"customerLevel\": \"A\", \"industry\": \"通用\", \"lastContactDays\": 0, \"budgetConfirmed\": true, \"decisionMakerEngaged\": true, \"competitorMentioned\": false}",
+    "expected": {
+      "scoreRange": [
+        90,
+        100
+      ],
+      "reasonContains": [
+        "签约",
+        "合同"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,WON,待付款"
+  },
+  {
+    "case_code": "eval-crm-followup-001",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 601, \"customerName\": \"深圳科技公司\", \"lastContactAt\": \"2026-09-10T10:00:00\", \"lastContactType\": \"VISIT\", \"opportunityStage\": \"NEGOTIATION\", \"customerLevel\": \"A\", \"nextActionDue\": true, \"daysSinceLastContact\": 3}",
+    "expected": {
+      "actionIn": [
+        "CALL",
+        "VISIT",
+        "EMAIL"
+      ],
+      "priorityIn": [
+        "HIGH",
+        "URGENT"
+      ],
+      "reasonContains": [
+        "跟进",
+        "阶段"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "建议,NEGOTIATION"
+  },
+  {
+    "case_code": "eval-crm-followup-002",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 602, \"customerName\": \"新签试用期客户\", \"lastContactAt\": \"2026-09-13T15:00:00\", \"lastContactType\": \"EMAIL\", \"opportunityStage\": \"QUALIFIED\", \"customerLevel\": \"B\", \"nextActionDue\": false, \"daysSinceLastContact\": 1}",
+    "expected": {
+      "actionIn": [
+        "EMAIL",
+        "WECHAT"
+      ],
+      "priorityIn": [
+        "NORMAL",
+        "LOW"
+      ],
+      "reasonContains": [
+        "试用",
+        "培训"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "建议,新签试用"
+  },
+  {
+    "case_code": "eval-crm-followup-003",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 603, \"customerName\": \"沉睡客户\", \"lastContactAt\": \"2026-06-01T10:00:00\", \"lastContactType\": \"PHONE\", \"opportunityStage\": \"LEAD\", \"customerLevel\": \"C\", \"nextActionDue\": true, \"daysSinceLastContact\": 90}",
+    "expected": {
+      "actionIn": [
+        "EMAIL",
+        "WECHAT",
+        "PHONE"
+      ],
+      "priorityIn": [
+        "LOW",
+        "NORMAL"
+      ],
+      "reasonContains": [
+        "激活",
+        "沉睡",
+        "重新"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "建议,沉睡客户"
+  },
+  {
+    "case_code": "eval-crm-followup-004",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 604, \"customerName\": \"已签约大客户\", \"lastContactAt\": \"2026-09-14T09:00:00\", \"lastContactType\": \"VISIT\", \"opportunityStage\": \"WON\", \"customerLevel\": \"A\", \"nextActionDue\": false, \"daysSinceLastContact\": 1}",
+    "expected": {
+      "actionIn": [
+        "VISIT",
+        "EMAIL"
+      ],
+      "priorityIn": [
+        "NORMAL",
+        "HIGH"
+      ],
+      "reasonContains": [
+        "交付",
+        "回访",
+        "满意度"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "建议,已成交回访"
+  },
+  {
+    "case_code": "eval-crm-followup-005",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 605, \"customerName\": \"续约谈判客户\", \"lastContactAt\": \"2026-09-08T11:00:00\", \"lastContactType\": \"PHONE\", \"opportunityStage\": \"NEGOTIATION\", \"customerLevel\": \"A\", \"nextActionDue\": true, \"daysSinceLastContact\": 5}",
+    "expected": {
+      "actionIn": [
+        "CALL",
+        "VISIT"
+      ],
+      "priorityIn": [
+        "HIGH",
+        "URGENT"
+      ],
+      "reasonContains": [
+        "续约",
+        "谈判"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "建议,续约谈判"
+  },
+  {
+    "case_code": "eval-crm-followup-006",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 606, \"customerName\": \"POC 阶段客户\", \"lastContactAt\": \"2026-09-12T14:00:00\", \"lastContactType\": \"EMAIL\", \"opportunityStage\": \"PROPOSAL\", \"customerLevel\": \"A\", \"nextActionDue\": true, \"daysSinceLastContact\": 2}",
+    "expected": {
+      "actionIn": [
+        "CALL",
+        "VISIT",
+        "EMAIL"
+      ],
+      "priorityIn": [
+        "HIGH"
+      ],
+      "reasonContains": [
+        "POC",
+        "测试",
+        "反馈"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "建议,POC反馈"
+  },
+  {
+    "case_code": "eval-crm-followup-007",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 607, \"customerName\": \"报价已发待回复\", \"lastContactAt\": \"2026-09-11T16:00:00\", \"lastContactType\": \"EMAIL\", \"opportunityStage\": \"PROPOSAL\", \"customerLevel\": \"B\", \"nextActionDue\": true, \"daysSinceLastContact\": 4}",
+    "expected": {
+      "actionIn": [
+        "CALL",
+        "PHONE",
+        "WECHAT"
+      ],
+      "priorityIn": [
+        "HIGH",
+        "URGENT"
+      ],
+      "reasonContains": [
+        "报价",
+        "催",
+        "确认"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "建议,报价催办"
+  },
+  {
+    "case_code": "eval-crm-followup-008",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 608, \"customerName\": \"客户投诉未解决\", \"lastContactAt\": \"2026-09-14T08:00:00\", \"lastContactType\": \"VISIT\", \"opportunityStage\": \"WON\", \"customerLevel\": \"A\", \"nextActionDue\": true, \"daysSinceLastContact\": 1}",
+    "expected": {
+      "actionIn": [
+        "VISIT",
+        "CALL"
+      ],
+      "priorityIn": [
+        "URGENT"
+      ],
+      "reasonContains": [
+        "投诉",
+        "解决",
+        "紧急"
+      ],
+      "difficulty": "HARD"
+    },
+    "tags": "建议,客诉紧急"
+  },
+  {
+    "case_code": "eval-crm-followup-009",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 609, \"customerName\": \"决策人变更\", \"lastContactAt\": \"2026-09-09T13:00:00\", \"lastContactType\": \"CALL\", \"opportunityStage\": \"QUALIFIED\", \"customerLevel\": \"B\", \"nextActionDue\": true, \"daysSinceLastContact\": 6}",
+    "expected": {
+      "actionIn": [
+        "CALL",
+        "VISIT"
+      ],
+      "priorityIn": [
+        "HIGH"
+      ],
+      "reasonContains": [
+        "决策",
+        "变更",
+        "重新"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "建议,决策人变更"
+  },
+  {
+    "case_code": "eval-crm-followup-010",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 610, \"customerName\": \"竞品对比中\", \"lastContactAt\": \"2026-09-12T10:00:00\", \"lastContactType\": \"VISIT\", \"opportunityStage\": \"PROPOSAL\", \"customerLevel\": \"A\", \"nextActionDue\": true, \"daysSinceLastContact\": 3}",
+    "expected": {
+      "actionIn": [
+        "VISIT",
+        "CALL"
+      ],
+      "priorityIn": [
+        "HIGH"
+      ],
+      "reasonContains": [
+        "竞品",
+        "对比",
+        "差异化"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "建议,竞品对比"
+  },
+  {
+    "case_code": "eval-crm-followup-011",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 611, \"customerName\": \"新线索首次接触\", \"lastContactAt\": null, \"lastContactType\": null, \"opportunityStage\": \"LEAD\", \"customerLevel\": \"C\", \"nextActionDue\": true, \"daysSinceLastContact\": 0}",
+    "expected": {
+      "actionIn": [
+        "CALL",
+        "EMAIL",
+        "WECHAT"
+      ],
+      "priorityIn": [
+        "HIGH",
+        "NORMAL"
+      ],
+      "reasonContains": [
+        "首次",
+        "破冰"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "建议,新线索"
+  },
+  {
+    "case_code": "eval-crm-followup-012",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 612, \"customerName\": \"周末提交的紧急需求\", \"lastContactAt\": \"2026-09-13T22:30:00\", \"lastContactType\": \"EMAIL\", \"opportunityStage\": \"LEAD\", \"customerLevel\": \"B\", \"nextActionDue\": true, \"daysSinceLastContact\": 1}",
+    "expected": {
+      "actionIn": [
+        "CALL",
+        "WECHAT",
+        "EMAIL"
+      ],
+      "priorityIn": [
+        "URGENT",
+        "HIGH"
+      ],
+      "reasonContains": [
+        "紧急",
+        "响应"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "建议,周末紧急"
+  },
+  {
+    "case_code": "eval-crm-followup-013",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 613, \"customerName\": \"长时间未联系 B 级\", \"lastContactAt\": \"2026-08-15T10:00:00\", \"lastContactType\": \"PHONE\", \"opportunityStage\": \"QUALIFIED\", \"customerLevel\": \"B\", \"nextActionDue\": true, \"daysSinceLastContact\": 30}",
+    "expected": {
+      "actionIn": [
+        "CALL",
+        "VISIT"
+      ],
+      "priorityIn": [
+        "HIGH",
+        "NORMAL"
+      ],
+      "reasonContains": [
+        "跟进",
+        "唤醒"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "建议,B级长未联系"
+  },
+  {
+    "case_code": "eval-crm-followup-014",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 614, \"customerName\": \"已成交客户季度回访\", \"lastContactAt\": \"2026-06-30T14:00:00\", \"lastContactType\": \"VISIT\", \"opportunityStage\": \"WON\", \"customerLevel\": \"A\", \"nextActionDue\": true, \"daysSinceLastContact\": 75}",
+    "expected": {
+      "actionIn": [
+        "VISIT",
+        "CALL"
+      ],
+      "priorityIn": [
+        "NORMAL",
+        "HIGH"
+      ],
+      "reasonContains": [
+        "季度",
+        "回访",
+        "续约",
+        "增购"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "建议,季度回访"
+  },
+  {
+    "case_code": "eval-crm-followup-015",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 615, \"customerName\": \"客户升级意向\", \"lastContactAt\": \"2026-09-13T11:00:00\", \"lastContactType\": \"EMAIL\", \"opportunityStage\": \"WON\", \"customerLevel\": \"A\", \"nextActionDue\": true, \"daysSinceLastContact\": 2}",
+    "expected": {
+      "actionIn": [
+        "VISIT",
+        "CALL"
+      ],
+      "priorityIn": [
+        "HIGH"
+      ],
+      "reasonContains": [
+        "升级",
+        "增购",
+        "扩展"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "建议,升级意向"
+  },
+  {
+    "case_code": "eval-crm-followup-016",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 616, \"customerName\": \"多次婉拒客户\", \"lastContactAt\": \"2026-09-01T15:00:00\", \"lastContactType\": \"PHONE\", \"opportunityStage\": \"LEAD\", \"customerLevel\": \"C\", \"nextActionDue\": false, \"daysSinceLastContact\": 14}",
+    "expected": {
+      "actionIn": [
+        "EMAIL",
+        "WECHAT"
+      ],
+      "priorityIn": [
+        "LOW"
+      ],
+      "reasonContains": [
+        "低优先",
+        "培育"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "建议,多次婉拒"
+  },
+  {
+    "case_code": "eval-crm-followup-017",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 617, \"customerName\": \"合同到期续约\", \"lastContactAt\": \"2026-08-20T10:00:00\", \"lastContactType\": \"EMAIL\", \"opportunityStage\": \"WON\", \"customerLevel\": \"A\", \"nextActionDue\": true, \"daysSinceLastContact\": 25}",
+    "expected": {
+      "actionIn": [
+        "VISIT",
+        "CALL"
+      ],
+      "priorityIn": [
+        "URGENT",
+        "HIGH"
+      ],
+      "reasonContains": [
+        "续约",
+        "到期",
+        "紧迫"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "建议,合同到期"
+  },
+  {
+    "case_code": "eval-crm-followup-018",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 618, \"customerName\": \"已报价 7 天无回复\", \"lastContactAt\": \"2026-09-07T11:00:00\", \"lastContactType\": \"EMAIL\", \"opportunityStage\": \"PROPOSAL\", \"customerLevel\": \"B\", \"nextActionDue\": true, \"daysSinceLastContact\": 8}",
+    "expected": {
+      "actionIn": [
+        "CALL",
+        "PHONE",
+        "WECHAT"
+      ],
+      "priorityIn": [
+        "URGENT",
+        "HIGH"
+      ],
+      "reasonContains": [
+        "报价",
+        "催",
+        "紧迫"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "建议,长未回复"
+  },
+  {
+    "case_code": "eval-crm-followup-019",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 619, \"customerName\": \"客户转介绍新机会\", \"lastContactAt\": \"2026-09-14T10:00:00\", \"lastContactType\": \"PHONE\", \"opportunityStage\": \"LEAD\", \"customerLevel\": \"A\", \"nextActionDue\": true, \"daysSinceLastContact\": 1}",
+    "expected": {
+      "actionIn": [
+        "VISIT",
+        "CALL"
+      ],
+      "priorityIn": [
+        "URGENT",
+        "HIGH"
+      ],
+      "reasonContains": [
+        "转介绍",
+        "机会",
+        "快速"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "建议,转介绍"
+  },
+  {
+    "case_code": "eval-crm-followup-020",
+    "agent_code": "crm-agent",
+    "scene": "FOLLOWUP_SUGGEST",
+    "input": "{\"customerId\": 620, \"customerName\": \"节日问候窗口\", \"lastContactAt\": \"2026-09-10T09:00:00\", \"lastContactType\": \"EMAIL\", \"opportunityStage\": \"WON\", \"customerLevel\": \"B\", \"nextActionDue\": false, \"daysSinceLastContact\": 5}",
+    "expected": {
+      "actionIn": [
+        "EMAIL",
+        "WECHAT"
+      ],
+      "priorityIn": [
+        "LOW",
+        "NORMAL"
+      ],
+      "reasonContains": [
+        "节日",
+        "问候",
+        "关系"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "建议,节日问候"
+  }
+]

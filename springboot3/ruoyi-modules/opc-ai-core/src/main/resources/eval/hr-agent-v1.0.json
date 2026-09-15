@@ -1,0 +1,1482 @@
+[
+  {
+    "case_code": "eval-hr-jd-001",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"Java 高级开发工程师\", \"category\": \"技术研发\", \"description\": \"负责公司核心业务系统后端开发，要求 5 年以上 Java 经验，熟悉 Spring Cloud、MyBatis、Redis，了解微服务架构设计。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "Java",
+        "Spring Cloud"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,技术"
+  },
+  {
+    "case_code": "eval-hr-jd-002",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"销售总监\", \"category\": \"销售\", \"description\": \"全面负责公司销售团队管理，制订年度销售计划，完成 5000 万销售目标。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "销售",
+        "团队"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,销售"
+  },
+  {
+    "case_code": "eval-hr-jd-003",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"财务专员\", \"category\": \"财务\", \"description\": \"负责公司日常账务处理、凭证录入、税务申报等。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "财务",
+        "凭证",
+        "税务"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,财务"
+  },
+  {
+    "case_code": "eval-hr-jd-004",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"数据分析师\", \"category\": \"数据分析\", \"description\": \"搭建公司业务数据看板，分析用户行为，输出运营建议。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "数据",
+        "分析"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,数据"
+  },
+  {
+    "case_code": "eval-hr-jd-005",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"前端开发工程师\", \"category\": \"技术研发\", \"description\": \"负责公司 SaaS 平台前端开发，使用 Vue3 + TypeScript，熟悉 Element Plus 组件库。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "Vue",
+        "前端"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,前端"
+  },
+  {
+    "case_code": "eval-hr-jd-006",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"HRBP\", \"category\": \"人力资源\", \"description\": \"对接业务部门，提供人力资源解决方案，推动组织发展。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "HR",
+        "业务"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,HR"
+  },
+  {
+    "case_code": "eval-hr-jd-007",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"产品经理\", \"category\": \"产品\", \"description\": \"负责公司核心产品规划，撰写 PRD，协调研发推动功能上线。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "产品",
+        "需求"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,产品"
+  },
+  {
+    "case_code": "eval-hr-jd-008",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"UI 设计师\", \"category\": \"设计\", \"description\": \"负责公司产品视觉设计，输出高保真原型，熟悉 Figma。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "设计",
+        "Figma"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,设计"
+  },
+  {
+    "case_code": "eval-hr-jd-009",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"运维工程师\", \"category\": \"技术研发\", \"description\": \"负责生产环境 K8s 集群维护，监控告警体系建设。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "K8s",
+        "运维"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,运维"
+  },
+  {
+    "case_code": "eval-hr-jd-010",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"算法工程师\", \"category\": \"技术研发\", \"description\": \"负责推荐系统模型优化，熟悉深度学习框架。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "算法",
+        "模型"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "JD,算法"
+  },
+  {
+    "case_code": "eval-hr-jd-011",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"客户成功经理\", \"category\": \"客户成功\", \"description\": \"负责大客户上线后的使用培训、健康度跟踪、续约。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "客户",
+        "续约"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "JD,客户成功"
+  },
+  {
+    "case_code": "eval-hr-jd-012",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"市场专员\", \"category\": \"市场\", \"description\": \"负责公司线上线下活动策划，社交媒体内容运营。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "市场",
+        "活动"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,市场"
+  },
+  {
+    "case_code": "eval-hr-jd-013",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"Java 实习生\", \"category\": \"技术研发\", \"description\": \"协助团队完成日常开发任务，每周至少到岗 4 天。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 200,
+      "contains": [
+        "实习",
+        "开发"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,实习"
+  },
+  {
+    "case_code": "eval-hr-jd-014",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"测试工程师\", \"category\": \"技术研发\", \"description\": \"负责公司 SaaS 平台自动化测试用例设计与执行。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "测试",
+        "自动化"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,测试"
+  },
+  {
+    "case_code": "eval-hr-jd-015",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"高级安全工程师\", \"category\": \"技术研发\", \"description\": \"负责公司安全体系规划，应急响应，红蓝对抗。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "安全",
+        "应急"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "JD,安全"
+  },
+  {
+    "case_code": "eval-hr-jd-016",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"总经理助理\", \"category\": \"管理\", \"description\": \"协助总经理处理日常事务、会议安排、外部接待。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "助理",
+        "总经理"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,管理"
+  },
+  {
+    "case_code": "eval-hr-jd-017",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"Java 资深架构师\", \"category\": \"技术研发\", \"description\": \"10 年以上经验，主导过亿级用户系统架构设计，熟悉 DDD 领域驱动设计。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 400,
+      "contains": [
+        "架构",
+        "DDD"
+      ],
+      "difficulty": "HARD"
+    },
+    "tags": "JD,架构师"
+  },
+  {
+    "case_code": "eval-hr-jd-018",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"海外销售\", \"category\": \"销售\", \"description\": \"负责北美市场开拓，英文流利，能适应出差。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "海外",
+        "英文"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "JD,海外"
+  },
+  {
+    "case_code": "eval-hr-jd-019",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"行政专员\", \"category\": \"行政\", \"description\": \"负责公司日常行政事务，办公用品采购，会议室管理。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 250,
+      "contains": [
+        "行政"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,行政"
+  },
+  {
+    "case_code": "eval-hr-jd-020",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"招聘官\", \"category\": \"人力资源\", \"description\": \"负责技术岗位全流程招聘，月均到面 30 人。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "招聘",
+        "面试"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "JD,招聘"
+  },
+  {
+    "case_code": "eval-hr-jd-021",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"移动端开发工程师\", \"category\": \"技术研发\", \"description\": \"负责公司 App 端开发，熟悉 Flutter 或 React Native。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "移动端",
+        "App"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "JD,移动端"
+  },
+  {
+    "case_code": "eval-hr-jd-022",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"高级 DBA\", \"category\": \"技术研发\", \"description\": \"10 年 MySQL 运维经验，主导过数据库性能优化。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 350,
+      "contains": [
+        "DBA",
+        "MySQL"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "JD,DBA"
+  },
+  {
+    "case_code": "eval-hr-jd-023",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"AI 产品经理\", \"category\": \"产品\", \"description\": \"负责公司 AI 产品规划，熟悉大模型应用场景。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "AI",
+        "大模型"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "JD,AI产品"
+  },
+  {
+    "case_code": "eval-hr-jd-024",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"出纳\", \"category\": \"财务\", \"description\": \"负责公司现金银行收支，支票管理。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 250,
+      "contains": [
+        "出纳",
+        "现金"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "JD,出纳"
+  },
+  {
+    "case_code": "eval-hr-jd-025",
+    "agent_code": "hr-agent",
+    "scene": "JD_GENERATE",
+    "input": "{\"title\": \"C++ 工程师\", \"category\": \"技术研发\", \"description\": \"参与客户端引擎开发，要求扎实 C++ 基础。\"}",
+    "expected": {
+      "sectionsContain": [
+        "岗位概述",
+        "岗位职责",
+        "任职要求",
+        "加分项",
+        "薪资与福利"
+      ],
+      "lengthMin": 300,
+      "contains": [
+        "C++",
+        "客户端"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "JD,C++"
+  },
+  {
+    "case_code": "eval-hr-resume-001",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "张三\n男 | 1990-05 | zhangsan@example.com | 13800001111\n教育经历\n2012-2016 北京邮电大学 计算机科学与技术 本科\n工作经历\n2016-2020 阿里巴巴 高级开发工程师 负责电商核心交易系统\n2020-至今 字节跳动 资深开发工程师 主导推荐系统重构\n技能\nJava、Spring Cloud、Redis、Kafka",
+    "expected": {
+      "name": "张三",
+      "email": "zhangsan@example.com",
+      "phone": "13800001111",
+      "educationCount": 1,
+      "experienceCount": 2,
+      "skillsMin": 3,
+      "difficulty": "EASY"
+    },
+    "tags": "解析,完整"
+  },
+  {
+    "case_code": "eval-hr-resume-002",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "李四\nlisi@163.com 13900002222\n硕士 2014-2018 清华大学 软件工程\n2018-2022 腾讯 后端开发\n技能：Python, Django",
+    "expected": {
+      "name": "李四",
+      "email": "lisi@163.com",
+      "phone": "13900002222",
+      "educationCount": 1,
+      "experienceCount": 1,
+      "skillsMin": 2,
+      "difficulty": "EASY"
+    },
+    "tags": "解析,硕士"
+  },
+  {
+    "case_code": "eval-hr-resume-003",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "王五 简历内容较少\nwangwu@gmail.com 13700003333\n2010-2014 武汉大学 本科\n2014-2018 华为 软件开发\n2018-2022 美团 技术经理",
+    "expected": {
+      "name": "王五",
+      "email": "wangwu@gmail.com",
+      "phone": "13700003333",
+      "educationCount": 1,
+      "experienceCount": 2,
+      "difficulty": "EASY"
+    },
+    "tags": "解析,工科"
+  },
+  {
+    "case_code": "eval-hr-resume-004",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "赵六\nzhaoliu@company.com | 13600004444 | 1988-12-10\n教育\n北京大学 计算机科学 2007-2011 本科\n卡内基梅隆大学 信息技术 2011-2013 硕士\n工作\nGoogle 高级工程师 2013-2017\nMicrosoft 资深工程师 2017-2020\nApple 首席工程师 2020-至今",
+    "expected": {
+      "name": "赵六",
+      "email": "zhaoliu@company.com",
+      "phone": "13600004444",
+      "educationCount": 2,
+      "experienceCount": 3,
+      "difficulty": "NORMAL"
+    },
+    "tags": "解析,海归"
+  },
+  {
+    "case_code": "eval-hr-resume-005",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "孙七\nsunqi@test.com 13500005555\n海外院校经历",
+    "expected": {
+      "name": "孙七",
+      "email": "sunqi@test.com",
+      "phone": "13500005555",
+      "educationCount": 1,
+      "experienceCount": 0,
+      "difficulty": "EASY"
+    },
+    "tags": "解析,无工作"
+  },
+  {
+    "case_code": "eval-hr-resume-006",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "周八\n邮箱：zhouba@hr.cn 电话：13400006666\n复旦大学 2015-2019 金融学 本科\n招商银行 2019-2021 客户经理\n蚂蚁集团 2021-至今 高级产品经理\n技能：SQL、Tableau、风控模型",
+    "expected": {
+      "name": "周八",
+      "email": "zhouba@hr.cn",
+      "phone": "13400006666",
+      "educationCount": 1,
+      "experienceCount": 2,
+      "skillsMin": 3,
+      "difficulty": "NORMAL"
+    },
+    "tags": "解析,金融"
+  },
+  {
+    "case_code": "eval-hr-resume-007",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "吴九 简历\n基本信息\n性别：男 出生：1995-08\n联系方式\n邮箱 wujiu@gmail.com\n手机 13300007777\n教育背景\n2013-2017 浙江大学 软件工程\n工作经历\n2017-2020 网易 后端开发\n2020-2023 滴滴 高级开发\n2023-至今 小米 技术 leader",
+    "expected": {
+      "name": "吴九",
+      "email": "wujiu@gmail.com",
+      "phone": "13300007777",
+      "educationCount": 1,
+      "experienceCount": 3,
+      "difficulty": "NORMAL"
+    },
+    "tags": "解析,格式自由"
+  },
+  {
+    "case_code": "eval-hr-resume-008",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "郑十\nzhengshi@example.com 13200008888\n个人信息缺失较多\n经历不完整",
+    "expected": {
+      "name": "郑十",
+      "email": "zhengshi@example.com",
+      "phone": "13200008888",
+      "educationCount": 1,
+      "experienceCount": 0,
+      "difficulty": "EASY"
+    },
+    "tags": "解析,信息残缺"
+  },
+  {
+    "case_code": "eval-hr-resume-009",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "冯十一 1992.03 男\nfengshiyi@163.com 13100009999\n教育\n2010-2014 上海交通大学 机械工程 本科\n2014-2017 中科院 计算数学 硕士\n2017-2020 国家电网 算法工程师\n2020-2024 华为云 高级算法工程师\n技能：Python, TensorFlow, PyTorch",
+    "expected": {
+      "name": "冯十一",
+      "email": "fengshiyi@163.com",
+      "phone": "13100009999",
+      "educationCount": 2,
+      "experienceCount": 2,
+      "skillsMin": 3,
+      "difficulty": "NORMAL"
+    },
+    "tags": "解析,算法"
+  },
+  {
+    "case_code": "eval-hr-resume-010",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "陈十二\nchen12@gmail.com 13000001010\n2016-2020 华中科技大学 计算机 硕士\n2020-2024 京东 后端开发",
+    "expected": {
+      "name": "陈十二",
+      "email": "chen12@gmail.com",
+      "phone": "13000001010",
+      "educationCount": 1,
+      "experienceCount": 1,
+      "difficulty": "EASY"
+    },
+    "tags": "解析,应届硕士"
+  },
+  {
+    "case_code": "eval-hr-resume-011",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "褚十三\nchushisan@163.com 13900001100\n工作\n2022-2024 字节跳动 客户端开发（实习）\n2024-至今 快手 客户端工程师",
+    "expected": {
+      "name": "褚十三",
+      "email": "chushisan@163.com",
+      "phone": "13900001100",
+      "educationCount": 1,
+      "experienceCount": 2,
+      "difficulty": "EASY"
+    },
+    "tags": "解析,实习经历"
+  },
+  {
+    "case_code": "eval-hr-resume-012",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "卫十四\n学历：博士\n邮箱 weishi14@gmail.com 电话 13800002200\n2010-2014 北京大学 数学本科\n2014-2019 中科院 博士\n2019-2023 DeepMind 研究员\n2023-至今 字节跳动 AI Lab 资深研究员",
+    "expected": {
+      "name": "卫十四",
+      "email": "weishi14@gmail.com",
+      "phone": "13800002200",
+      "educationCount": 2,
+      "experienceCount": 2,
+      "difficulty": "HARD"
+    },
+    "tags": "解析,博士"
+  },
+  {
+    "case_code": "eval-hr-resume-013",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "蒋十五 自由职业者\njiang15@outlook.com 13700003300\n2014-2018 厦门大学 软件工程 本科\n自由撰稿 2018-2021\n独立开发 2021-至今",
+    "expected": {
+      "name": "蒋十五",
+      "email": "jiang15@outlook.com",
+      "phone": "13700003300",
+      "educationCount": 1,
+      "experienceCount": 2,
+      "difficulty": "NORMAL"
+    },
+    "tags": "解析,自由职业"
+  },
+  {
+    "case_code": "eval-hr-resume-014",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "沈十六\n邮箱: shenshi16@163.com\n电话: 13600004400\nMBA\n2018-2020 中欧国际工商学院 MBA\n2008-2012 复旦大学 国际经济与贸易 本科\n工作\n2012-2018 宝洁 品牌经理\n2018-2020 在读\n2020-2024 联合利华 高级品牌经理\n2024-至今 字节跳动 品牌总监",
+    "expected": {
+      "name": "沈十六",
+      "email": "shenshi16@163.com",
+      "phone": "13600004400",
+      "educationCount": 2,
+      "experienceCount": 3,
+      "difficulty": "NORMAL"
+    },
+    "tags": "解析,MBA"
+  },
+  {
+    "case_code": "eval-hr-resume-015",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "韩十七 25岁 应届生\nhanshi17@gmail.com 13500005500\n2020-2024 北京航空航天大学 人工智能 本科\n实习\n2023.07-2023.09 腾讯 AI Lab\n2024.02-2024.06 美团 配送算法",
+    "expected": {
+      "name": "韩十七",
+      "email": "hanshi17@gmail.com",
+      "phone": "13500005500",
+      "educationCount": 1,
+      "experienceCount": 2,
+      "difficulty": "EASY"
+    },
+    "tags": "解析,应届实习"
+  },
+  {
+    "case_code": "eval-hr-resume-016",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "杨十八 yang18@test.com 13400006600 1980年出生\n教育经历\n1998-2002 武汉大学 计算机 本科\n工作经历\n2002-2010 微软中国 开发工程师\n2010-2018 谷歌上海 高级经理\n2018-至今 阿里云 CTO",
+    "expected": {
+      "name": "杨十八",
+      "email": "yang18@test.com",
+      "phone": "13400006600",
+      "educationCount": 1,
+      "experienceCount": 3,
+      "difficulty": "NORMAL"
+    },
+    "tags": "解析,资深"
+  },
+  {
+    "case_code": "eval-hr-resume-017",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "朱十九 技术栈全面\nzhushijiu@gmail.com 13300007700\n技能树：Java, Go, Python, Rust, Kafka, Redis, Docker, K8s, Istio\n2009-2013 浙江大学 软件工程\n2013-2018 阿里中间件\n2018-至今 蚂蚁集团 资深架构师",
+    "expected": {
+      "name": "朱十九",
+      "email": "zhushijiu@gmail.com",
+      "phone": "13300007700",
+      "educationCount": 1,
+      "experienceCount": 2,
+      "difficulty": "NORMAL"
+    },
+    "tags": "解析,资深架构"
+  },
+  {
+    "case_code": "eval-hr-resume-018",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "秦二十 qin20@163.com 13200008800\n简历正文过短\n2015-2019 中山大学 本科\n2019-至今 广州某公司 工作",
+    "expected": {
+      "name": "秦二十",
+      "email": "qin20@163.com",
+      "phone": "13200008800",
+      "educationCount": 1,
+      "experienceCount": 1,
+      "difficulty": "EASY"
+    },
+    "tags": "解析,信息简略"
+  },
+  {
+    "case_code": "eval-hr-resume-019",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "尤二十一 海外华人\n邮箱 you21@gmail.com 电话 13100009900\n教育\n2005-2009 Stanford University Computer Science BS\n2009-2011 UC Berkeley MS in CS\n工作\n2011-2015 Facebook Software Engineer\n2015-2020 Google Senior SWE\n2020-至今 Stripe Staff Engineer",
+    "expected": {
+      "name": "尤二十一",
+      "email": "you21@gmail.com",
+      "phone": "13100009900",
+      "educationCount": 2,
+      "experienceCount": 3,
+      "difficulty": "HARD"
+    },
+    "tags": "解析,海外名校"
+  },
+  {
+    "case_code": "eval-hr-resume-020",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "许二十二\nxushi22@126.com 13000001020\n性别 男 年龄 28\n教育\n2014-2018 兰州大学 软件工程 本科\n工作\n2018-2021 中软国际 后端开发\n2021-至今 平安科技 高级开发",
+    "expected": {
+      "name": "许二十二",
+      "email": "xushi22@126.com",
+      "phone": "13000001020",
+      "educationCount": 1,
+      "experienceCount": 2,
+      "difficulty": "EASY"
+    },
+    "tags": "解析,标准格式"
+  },
+  {
+    "case_code": "eval-hr-resume-021",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "何二十三 跨行业转型\nheshi23@gmail.com 13900001120\n2010-2014 西北工业大学 机械工程 本科\n2014-2020 三一重工 机械工程师\n2020-2022 培训班 全栈开发\n2022-至今 字节跳动 前端开发",
+    "expected": {
+      "name": "何二十三",
+      "email": "heshi23@gmail.com",
+      "phone": "13900001120",
+      "educationCount": 1,
+      "experienceCount": 3,
+      "difficulty": "HARD"
+    },
+    "tags": "解析,跨行业"
+  },
+  {
+    "case_code": "eval-hr-resume-022",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "吕二十四 高管简历\nlv24@163.com 13800002220\n1985年生 籍贯上海\n教育\n2003-2007 清华大学 经管学院 本科\n2007-2009 Harvard Business School MBA\n工作\n2009-2014 波士顿咨询 咨询经理\n2014-2019 美团 副总裁\n2019-至今 京东 高级副总裁",
+    "expected": {
+      "name": "吕二十四",
+      "email": "lv24@163.com",
+      "phone": "13800002220",
+      "educationCount": 2,
+      "experienceCount": 3,
+      "difficulty": "HARD"
+    },
+    "tags": "解析,高管"
+  },
+  {
+    "case_code": "eval-hr-resume-023",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "施二十五 简历空白\nshishi25@163.com 13700003320\n暂无更多信息",
+    "expected": {
+      "name": "施二十五",
+      "email": "shishi25@163.com",
+      "phone": "13700003320",
+      "educationCount": 0,
+      "experienceCount": 0,
+      "difficulty": "EASY"
+    },
+    "tags": "解析,极简"
+  },
+  {
+    "case_code": "eval-hr-resume-024",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "孔二十六 应届博士\nkong26@gmail.com 13600004420\n2015-2019 中国科学技术大学 计算机本科\n2019-2025 清华直博 计算机系统方向\n论文 3 篇 ACL/EMNLP 一作\n实习\n2022.07-2022.09 微软亚洲研究院\n2024.07-2024.12 阿里达摩院",
+    "expected": {
+      "name": "孔二十六",
+      "email": "kong26@gmail.com",
+      "phone": "13600004420",
+      "educationCount": 2,
+      "experienceCount": 2,
+      "difficulty": "HARD"
+    },
+    "tags": "解析,学术博士"
+  },
+  {
+    "case_code": "eval-hr-resume-025",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "曹二十七 海外回国\ncaoshi27@outlook.com 13500005520\n2010-2014 NUS 计算机本科\n2014-2016 NUS 硕士\n2016-2020 Google Singapore SWE\n2020-2023 Meta London Senior SWE\n2023-至今 回国 深圳某大厂 资深工程师",
+    "expected": {
+      "name": "曹二十七",
+      "email": "caoshi27@outlook.com",
+      "phone": "13500005520",
+      "educationCount": 2,
+      "experienceCount": 3,
+      "difficulty": "NORMAL"
+    },
+    "tags": "解析,海归资深"
+  },
+  {
+    "case_code": "eval-hr-resume-026",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "严二十八 工程师\nyanshi28@163.com 13400006620\n联系电话 13400006620\n邮箱 yanshi28@163.com\n教育\n2016-2020 电子科技大学 通信工程\n工作\n2020-2023 华为 通信开发\n2023-至今 中兴 高级开发",
+    "expected": {
+      "name": "严二十八",
+      "email": "yanshi28@163.com",
+      "phone": "13400006620",
+      "educationCount": 1,
+      "experienceCount": 2,
+      "difficulty": "EASY"
+    },
+    "tags": "解析,通信行业"
+  },
+  {
+    "case_code": "eval-hr-resume-027",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "华二十九 数据科学家\nhuashi29@gmail.com 13300007720\n2012-2016 上海财经大学 统计学本科\n2016-2018 哥伦比亚大学 统计硕士\n2018-2022 蚂蚁集团 数据分析师\n2022-至今 字节跳动 高级数据科学家",
+    "expected": {
+      "name": "华二十九",
+      "email": "huashi29@gmail.com",
+      "phone": "13300007720",
+      "educationCount": 2,
+      "experienceCount": 2,
+      "difficulty": "NORMAL"
+    },
+    "tags": "解析,数据科学"
+  },
+  {
+    "case_code": "eval-hr-resume-028",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "金三十 jinshi30@gmail.com 13200008820 1993年出生\n2011-2015 北京大学 物理本科\n2015-2020 中科院物理所 博士\n2020-2023 华为 2012 实验室\n2023-至今 字节跳动 抖音算法",
+    "expected": {
+      "name": "金三十",
+      "email": "jinshi30@gmail.com",
+      "phone": "13200008820",
+      "educationCount": 2,
+      "experienceCount": 2,
+      "difficulty": "NORMAL"
+    },
+    "tags": "解析,博士转型"
+  },
+  {
+    "case_code": "eval-hr-resume-029",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "魏三十一 营销背景\nweishi31@163.com 13100009920\n2015-2019 中国人民大学 市场营销 本科\n2019-2022 宝洁 品牌经理\n2022-至今 联合利华 数字营销经理",
+    "expected": {
+      "name": "魏三十一",
+      "email": "weishi31@163.com",
+      "phone": "13100009920",
+      "educationCount": 1,
+      "experienceCount": 2,
+      "difficulty": "EASY"
+    },
+    "tags": "解析,营销"
+  },
+  {
+    "case_code": "eval-hr-resume-030",
+    "agent_code": "hr-agent",
+    "scene": "RESUME_PARSE",
+    "input": "姜三十二 资深产品\njiang32@gmail.com 13000001030\n2008-2012 上海交通大学 工业设计本科\n2012-2015 腾讯 产品助理\n2015-2019 阿里巴巴 高级产品经理\n2019-2023 美团 产品总监\n2023-至今 拼多多 高级产品总监",
+    "expected": {
+      "name": "姜三十二",
+      "email": "jiang32@gmail.com",
+      "phone": "13000001030",
+      "educationCount": 1,
+      "experienceCount": 4,
+      "difficulty": "HARD"
+    },
+    "tags": "解析,产品总监"
+  },
+  {
+    "case_code": "eval-hr-score-001",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 1, \"jobTitle\": \"Java 高级开发工程师\", \"fullJd\": \"5 年 Java 经验，熟悉 Spring Cloud、微服务、Redis、Kafka，统招本科及以上\", \"candidate\": {\"name\": \"张三\", \"experience\": [{\"company\": \"阿里巴巴\", \"title\": \"高级开发\", \"start_year\": 2019, \"end_year\": 2024}], \"education\": [{\"school\": \"北京邮电大学\", \"degree\": \"本科\", \"major\": \"计算机\", \"start_year\": 2012, \"end_year\": 2016}], \"skills\": [\"Java\", \"Spring Cloud\", \"Redis\", \"Kafka\", \"MySQL\"]}}",
+    "expected": {
+      "scoreRange": [
+        75,
+        100
+      ],
+      "highlightsMin": 2,
+      "reasonContains": [
+        "Java",
+        "经验"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,Java,匹配"
+  },
+  {
+    "case_code": "eval-hr-score-002",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 1, \"jobTitle\": \"Java 高级开发工程师\", \"fullJd\": \"5 年 Java 经验，熟悉 Spring Cloud、微服务、Redis、Kafka，统招本科及以上\", \"candidate\": {\"name\": \"李四\", \"experience\": [{\"company\": \"某创业公司\", \"title\": \"Python 开发\", \"start_year\": 2020, \"end_year\": 2024}], \"education\": [{\"school\": \"普通一本\", \"degree\": \"本科\", \"major\": \"物理\", \"start_year\": 2016, \"end_year\": 2020}], \"skills\": [\"Python\", \"Django\"]}}",
+    "expected": {
+      "scoreRange": [
+        10,
+        40
+      ],
+      "gapsMin": 2,
+      "reasonContains": [
+        "Java",
+        "经验"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,Python,不匹配"
+  },
+  {
+    "case_code": "eval-hr-score-003",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 2, \"jobTitle\": \"数据分析师\", \"fullJd\": \"统计学或计算机背景，3 年以上数据分析经验，熟悉 SQL、Python、Tableau\", \"candidate\": {\"name\": \"王五\", \"experience\": [{\"company\": \"字节跳动\", \"title\": \"数据分析师\", \"start_year\": 2020, \"end_year\": 2024}], \"education\": [{\"school\": \"武汉大学\", \"degree\": \"硕士\", \"major\": \"统计学\", \"start_year\": 2018, \"end_year\": 2020}], \"skills\": [\"SQL\", \"Python\", \"Tableau\"]}}",
+    "expected": {
+      "scoreRange": [
+        80,
+        100
+      ],
+      "highlightsMin": 2,
+      "reasonContains": [
+        "数据",
+        "经验"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,数据,匹配"
+  },
+  {
+    "case_code": "eval-hr-score-004",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 3, \"jobTitle\": \"销售总监\", \"fullJd\": \"8 年以上销售经验，团队管理 50 人以上\", \"candidate\": {\"name\": \"赵六\", \"experience\": [{\"company\": \"阿里云\", \"title\": \"销售总监\", \"start_year\": 2018, \"end_year\": 2024}], \"education\": [{\"school\": \"北京大学\", \"degree\": \"本科\", \"major\": \"市场营销\", \"start_year\": 2008, \"end_year\": 2012}], \"skills\": [\"销售管理\", \"团队建设\"]}}",
+    "expected": {
+      "scoreRange": [
+        85,
+        100
+      ],
+      "highlightsMin": 2,
+      "reasonContains": [
+        "销售",
+        "团队"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,销售,资深"
+  },
+  {
+    "case_code": "eval-hr-score-005",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 3, \"jobTitle\": \"销售总监\", \"fullJd\": \"8 年以上销售经验，团队管理 50 人以上\", \"candidate\": {\"name\": \"孙七\", \"experience\": [{\"company\": \"初创公司\", \"title\": \"销售助理\", \"start_year\": 2023, \"end_year\": 2024}], \"education\": [{\"school\": \"普通本科\", \"degree\": \"本科\", \"major\": \"市场营销\", \"start_year\": 2020, \"end_year\": 2024}], \"skills\": [\"沟通\"]}}",
+    "expected": {
+      "scoreRange": [
+        5,
+        25
+      ],
+      "gapsMin": 2,
+      "reasonContains": [
+        "经验",
+        "团队"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,销售,应届"
+  },
+  {
+    "case_code": "eval-hr-score-006",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 4, \"jobTitle\": \"架构师\", \"fullJd\": \"10 年以上经验，主导过亿级系统架构设计\", \"candidate\": {\"name\": \"周八\", \"experience\": [{\"company\": \"Google\", \"title\": \"Principal Engineer\", \"start_year\": 2014, \"end_year\": 2024}], \"education\": [{\"school\": \"清华大学\", \"degree\": \"硕士\", \"major\": \"计算机\", \"start_year\": 2008, \"end_year\": 2010}], \"skills\": [\"Architecture\", \"Distributed Systems\", \"Go\"]}}",
+    "expected": {
+      "scoreRange": [
+        90,
+        100
+      ],
+      "highlightsMin": 3,
+      "reasonContains": [
+        "架构",
+        "经验"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,架构,顶级"
+  },
+  {
+    "case_code": "eval-hr-score-007",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 1, \"jobTitle\": \"Java 高级开发工程师\", \"fullJd\": \"5 年 Java 经验\", \"candidate\": {\"name\": \"吴九\", \"experience\": [{\"company\": \"美团\", \"title\": \"Java 开发\", \"start_year\": 2021, \"end_year\": 2024}], \"education\": [{\"school\": \"普通二本\", \"degree\": \"本科\", \"major\": \"软件工程\", \"start_year\": 2017, \"end_year\": 2021}], \"skills\": [\"Java\", \"Spring Boot\"]}}",
+    "expected": {
+      "scoreRange": [
+        40,
+        70
+      ],
+      "gapsMin": 1,
+      "reasonContains": [
+        "Java",
+        "经验"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,Java,中等"
+  },
+  {
+    "case_code": "eval-hr-score-008",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 5, \"jobTitle\": \"算法工程师\", \"fullJd\": \"机器学习/深度学习，熟悉 TensorFlow/PyTorch，3 年以上\", \"candidate\": {\"name\": \"郑十\", \"experience\": [{\"company\": \"华为\", \"title\": \"算法工程师\", \"start_year\": 2020, \"end_year\": 2024}], \"education\": [{\"school\": \"中科院\", \"degree\": \"博士\", \"major\": \"机器学习\", \"start_year\": 2015, \"end_year\": 2020}], \"skills\": [\"Python\", \"TensorFlow\", \"PyTorch\"]}}",
+    "expected": {
+      "scoreRange": [
+        85,
+        100
+      ],
+      "highlightsMin": 2,
+      "reasonContains": [
+        "算法",
+        "经验"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,算法,博士"
+  },
+  {
+    "case_code": "eval-hr-score-009",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 6, \"jobTitle\": \"前端开发工程师\", \"fullJd\": \"3 年 Vue/React 经验，熟悉 TypeScript\", \"candidate\": {\"name\": \"冯十一\", \"experience\": [{\"company\": \"字节跳动\", \"title\": \"前端开发\", \"start_year\": 2021, \"end_year\": 2024}], \"education\": [{\"school\": \"浙江大学\", \"degree\": \"本科\", \"major\": \"计算机\", \"start_year\": 2017, \"end_year\": 2021}], \"skills\": [\"Vue\", \"React\", \"TypeScript\", \"Webpack\"]}}",
+    "expected": {
+      "scoreRange": [
+        75,
+        95
+      ],
+      "highlightsMin": 2,
+      "reasonContains": [
+        "前端",
+        "Vue"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,前端,匹配"
+  },
+  {
+    "case_code": "eval-hr-score-010",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 6, \"jobTitle\": \"前端开发工程师\", \"fullJd\": \"3 年 Vue/React 经验\", \"candidate\": {\"name\": \"陈十二\", \"experience\": [{\"company\": \"某厂\", \"title\": \"后端开发\", \"start_year\": 2020, \"end_year\": 2024}], \"education\": [{\"school\": \"985\", \"degree\": \"本科\", \"major\": \"计算机\", \"start_year\": 2016, \"end_year\": 2020}], \"skills\": [\"Java\", \"MySQL\"]}}",
+    "expected": {
+      "scoreRange": [
+        10,
+        30
+      ],
+      "gapsMin": 2,
+      "reasonContains": [
+        "前端",
+        "经验"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,前端,后端转"
+  },
+  {
+    "case_code": "eval-hr-score-011",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 7, \"jobTitle\": \"DBA\", \"fullJd\": \"10 年 MySQL 运维经验\", \"candidate\": {\"name\": \"褚十三\", \"experience\": [{\"company\": \"蚂蚁集团\", \"title\": \"高级 DBA\", \"start_year\": 2014, \"end_year\": 2024}], \"education\": [{\"school\": \"上海交大\", \"degree\": \"本科\", \"major\": \"计算机\", \"start_year\": 2008, \"end_year\": 2012}], \"skills\": [\"MySQL\", \"Redis\", \"MongoDB\"]}}",
+    "expected": {
+      "scoreRange": [
+        85,
+        100
+      ],
+      "highlightsMin": 2,
+      "reasonContains": [
+        "DBA",
+        "经验"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,DBA,匹配"
+  },
+  {
+    "case_code": "eval-hr-score-012",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 8, \"jobTitle\": \"安全工程师\", \"fullJd\": \"5 年安全攻防经验，熟悉渗透测试、应急响应\", \"candidate\": {\"name\": \"卫十四\", \"experience\": [{\"company\": \"奇安信\", \"title\": \"安全研究员\", \"start_year\": 2019, \"end_year\": 2024}], \"education\": [{\"school\": \"中国科学技术大学\", \"degree\": \"硕士\", \"major\": \"信息安全\", \"start_year\": 2017, \"end_year\": 2019}], \"skills\": [\"渗透测试\", \"应急响应\", \"Python\"]}}",
+    "expected": {
+      "scoreRange": [
+        85,
+        100
+      ],
+      "highlightsMin": 2,
+      "reasonContains": [
+        "安全",
+        "经验"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,安全,匹配"
+  },
+  {
+    "case_code": "eval-hr-score-013",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 8, \"jobTitle\": \"安全工程师\", \"fullJd\": \"5 年安全攻防经验\", \"candidate\": {\"name\": \"蒋十五\", \"experience\": [{\"company\": \"某互联网公司\", \"title\": \"运维工程师\", \"start_year\": 2020, \"end_year\": 2024}], \"education\": [{\"school\": \"二本\", \"degree\": \"本科\", \"major\": \"计算机\", \"start_year\": 2016, \"end_year\": 2020}], \"skills\": [\"Linux\", \"Shell\"]}}",
+    "expected": {
+      "scoreRange": [
+        15,
+        40
+      ],
+      "gapsMin": 2,
+      "reasonContains": [
+        "安全",
+        "经验"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,安全,运维"
+  },
+  {
+    "case_code": "eval-hr-score-014",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 9, \"jobTitle\": \"HRBP\", \"fullJd\": \"5 年 HRBP 经验，熟悉组织发展\", \"candidate\": {\"name\": \"沈十六\", \"experience\": [{\"company\": \"字节跳动\", \"title\": \"HRBP\", \"start_year\": 2019, \"end_year\": 2024}], \"education\": [{\"school\": \"人民大学\", \"degree\": \"硕士\", \"major\": \"人力资源\", \"start_year\": 2017, \"end_year\": 2019}], \"skills\": [\"组织发展\", \"员工关系\"]}}",
+    "expected": {
+      "scoreRange": [
+        80,
+        100
+      ],
+      "highlightsMin": 2,
+      "reasonContains": [
+        "HRBP",
+        "经验"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,HRBP,匹配"
+  },
+  {
+    "case_code": "eval-hr-score-015",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 9, \"jobTitle\": \"HRBP\", \"fullJd\": \"5 年 HRBP 经验\", \"candidate\": {\"name\": \"韩十七\", \"experience\": [{\"company\": \"某创业公司\", \"title\": \"招聘专员\", \"start_year\": 2022, \"end_year\": 2024}], \"education\": [{\"school\": \"一本\", \"degree\": \"本科\", \"major\": \"心理学\", \"start_year\": 2018, \"end_year\": 2022}], \"skills\": [\"招聘\"]}}",
+    "expected": {
+      "scoreRange": [
+        20,
+        45
+      ],
+      "gapsMin": 1,
+      "reasonContains": [
+        "HRBP",
+        "经验"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,HRBP,招聘转"
+  },
+  {
+    "case_code": "eval-hr-score-016",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 1, \"jobTitle\": \"Java 高级开发工程师\", \"fullJd\": \"5 年 Java 经验\", \"candidate\": {\"name\": \"杨十八\", \"experience\": [{\"company\": \"阿里\", \"title\": \"Java 开发\", \"start_year\": 2018, \"end_year\": 2024}, {\"company\": \"腾讯\", \"title\": \"Java 开发\", \"start_year\": 2014, \"end_year\": 2018}], \"education\": [{\"school\": \"985\", \"degree\": \"本科\", \"major\": \"软件工程\", \"start_year\": 2010, \"end_year\": 2014}], \"skills\": [\"Java\", \"Spring\", \"Redis\", \"Kafka\"]}}",
+    "expected": {
+      "scoreRange": [
+        80,
+        100
+      ],
+      "highlightsMin": 2,
+      "reasonContains": [
+        "Java",
+        "经验"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,Java,资深"
+  },
+  {
+    "case_code": "eval-hr-score-017",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 1, \"jobTitle\": \"Java 高级开发工程师\", \"fullJd\": \"5 年 Java 经验\", \"candidate\": {\"name\": \"朱十九\", \"experience\": [{\"company\": \"某公司\", \"title\": \"Java 实习生\", \"start_year\": 2024, \"end_year\": 2024}], \"education\": [{\"school\": \"211\", \"degree\": \"本科\", \"major\": \"计算机\", \"start_year\": 2020, \"end_year\": 2024}], \"skills\": [\"Java基础\", \"Spring基础\"]}}",
+    "expected": {
+      "scoreRange": [
+        10,
+        30
+      ],
+      "gapsMin": 2,
+      "reasonContains": [
+        "经验",
+        "Java"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,Java,实习"
+  },
+  {
+    "case_code": "eval-hr-score-018",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 1, \"jobTitle\": \"Java 高级开发工程师\", \"fullJd\": \"5 年 Java 经验\", \"candidate\": {\"name\": \"秦二十\", \"experience\": [{\"company\": \"创业公司A\", \"title\": \"全栈开发\", \"start_year\": 2020, \"end_year\": 2024}], \"education\": [{\"school\": \"985\", \"degree\": \"本科\", \"major\": \"计算机\", \"start_year\": 2016, \"end_year\": 2020}], \"skills\": [\"Java\", \"Spring Cloud\", \"React\", \"Docker\"]}}",
+    "expected": {
+      "scoreRange": [
+        55,
+        80
+      ],
+      "highlightsMin": 2,
+      "gapsMin": 0,
+      "reasonContains": [
+        "Java",
+        "全栈"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,Java,全栈"
+  },
+  {
+    "case_code": "eval-hr-score-019",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 10, \"jobTitle\": \"产品经理\", \"fullJd\": \"5 年 B 端产品经验\", \"candidate\": {\"name\": \"尤二十一\", \"experience\": [{\"company\": \"钉钉\", \"title\": \"高级产品经理\", \"start_year\": 2019, \"end_year\": 2024}], \"education\": [{\"school\": \"985\", \"degree\": \"本科\", \"major\": \"工业设计\", \"start_year\": 2015, \"end_year\": 2019}], \"skills\": [\"Axure\", \"PRD\", \"用户研究\"]}}",
+    "expected": {
+      "scoreRange": [
+        80,
+        100
+      ],
+      "highlightsMin": 2,
+      "reasonContains": [
+        "产品",
+        "B端"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,产品,匹配"
+  },
+  {
+    "case_code": "eval-hr-score-020",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 10, \"jobTitle\": \"产品经理\", \"fullJd\": \"5 年 B 端产品经验\", \"candidate\": {\"name\": \"许二十二\", \"experience\": [{\"company\": \"小红书\", \"title\": \"内容运营\", \"start_year\": 2020, \"end_year\": 2024}], \"education\": [{\"school\": \"211\", \"degree\": \"本科\", \"major\": \"新闻\", \"start_year\": 2016, \"end_year\": 2020}], \"skills\": [\"文案\", \"活动策划\"]}}",
+    "expected": {
+      "scoreRange": [
+        15,
+        40
+      ],
+      "gapsMin": 2,
+      "reasonContains": [
+        "产品",
+        "B端"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,产品,运营转"
+  },
+  {
+    "case_code": "eval-hr-score-021",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 11, \"jobTitle\": \"财务总监\", \"fullJd\": \"10 年财务管理经验，CPA 优先\", \"candidate\": {\"name\": \"何二十三\", \"experience\": [{\"company\": \"京东\", \"title\": \"财务总监\", \"start_year\": 2014, \"end_year\": 2024}], \"education\": [{\"school\": \"央财\", \"degree\": \"本科\", \"major\": \"会计\", \"start_year\": 2006, \"end_year\": 2010}], \"skills\": [\"CPA\", \"财务管理\", \"税务筹划\"]}}",
+    "expected": {
+      "scoreRange": [
+        90,
+        100
+      ],
+      "highlightsMin": 3,
+      "reasonContains": [
+        "财务",
+        "CPA"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,财务,总监"
+  },
+  {
+    "case_code": "eval-hr-score-022",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 11, \"jobTitle\": \"财务总监\", \"fullJd\": \"10 年财务管理经验\", \"candidate\": {\"name\": \"吕二十四\", \"experience\": [{\"company\": \"某中型企业\", \"title\": \"财务经理\", \"start_year\": 2019, \"end_year\": 2024}], \"education\": [{\"school\": \"一本\", \"degree\": \"本科\", \"major\": \"财务管理\", \"start_year\": 2015, \"end_year\": 2019}], \"skills\": [\"财务软件\", \"Excel\"]}}",
+    "expected": {
+      "scoreRange": [
+        40,
+        65
+      ],
+      "gapsMin": 1,
+      "reasonContains": [
+        "财务",
+        "经验"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,财务,经理"
+  },
+  {
+    "case_code": "eval-hr-score-023",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 12, \"jobTitle\": \"UI 设计师\", \"fullJd\": \"3 年 UI 设计经验，熟悉 Figma\", \"candidate\": {\"name\": \"施二十五\", \"experience\": [{\"company\": \"字节跳动\", \"title\": \"UI 设计师\", \"start_year\": 2021, \"end_year\": 2024}], \"education\": [{\"school\": \"央美\", \"degree\": \"本科\", \"major\": \"视觉传达\", \"start_year\": 2017, \"end_year\": 2021}], \"skills\": [\"Figma\", \"Sketch\", \"Principle\"]}}",
+    "expected": {
+      "scoreRange": [
+        85,
+        100
+      ],
+      "highlightsMin": 2,
+      "reasonContains": [
+        "设计",
+        "UI"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,设计,匹配"
+  },
+  {
+    "case_code": "eval-hr-score-024",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 12, \"jobTitle\": \"UI 设计师\", \"fullJd\": \"3 年 UI 设计经验\", \"candidate\": {\"name\": \"孔二十六\", \"experience\": [{\"company\": \"某广告公司\", \"title\": \"平面设计\", \"start_year\": 2020, \"end_year\": 2024}], \"education\": [{\"school\": \"一本\", \"degree\": \"本科\", \"major\": \"设计学\", \"start_year\": 2016, \"end_year\": 2020}], \"skills\": [\"Photoshop\", \"Illustrator\"]}}",
+    "expected": {
+      "scoreRange": [
+        35,
+        60
+      ],
+      "gapsMin": 1,
+      "reasonContains": [
+        "UI",
+        "设计"
+      ],
+      "difficulty": "NORMAL"
+    },
+    "tags": "评分,设计,平转UI"
+  },
+  {
+    "case_code": "eval-hr-score-025",
+    "agent_code": "hr-agent",
+    "scene": "CANDIDATE_SCORE",
+    "input": "{\"jobId\": 1, \"jobTitle\": \"Java 高级开发工程师\", \"fullJd\": \"5 年 Java 经验\", \"candidate\": {\"name\": \"曹二十七\", \"experience\": [{\"company\": \"某大厂\", \"title\": \"Java 开发\", \"start_year\": 2019, \"end_year\": 2024}], \"education\": [{\"school\": \"985\", \"degree\": \"硕士\", \"major\": \"计算机\", \"start_year\": 2017, \"end_year\": 2019}], \"skills\": [\"Java\", \"Spring Cloud\", \"Kafka\", \"Docker\"]}}",
+    "expected": {
+      "scoreRange": [
+        80,
+        100
+      ],
+      "highlightsMin": 2,
+      "reasonContains": [
+        "Java",
+        "经验"
+      ],
+      "difficulty": "EASY"
+    },
+    "tags": "评分,Java,硕士"
+  }
+]
