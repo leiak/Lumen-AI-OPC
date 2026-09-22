@@ -47,7 +47,7 @@ require_mysql_container() {
 }
 
 require_nacos_dir() {
-  if [[ ! -d "${NACOS_DIR}" ]] || [[ -z "$(ls -A "${NACOS_DIR}/"*.yml 2>/dev/null)" ]]; then
+  if [[ ! -d "${NACOS_DIR}" ]] || [[ -z "$(ls -A "${NACOS_DIR}"/*.yml 2>/dev/null)" ]]; then
     fail "Nacos 配置目录为空: ${NACOS_DIR}"
   fi
 }
