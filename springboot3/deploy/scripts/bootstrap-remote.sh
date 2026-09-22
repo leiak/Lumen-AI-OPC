@@ -258,7 +258,35 @@ stage_0() {
 
   log "Stage 0 校验通过"
 }
-stage_1() { : "placeholder"; }
+stage_1() {
+  log "检查 Docker 是否已装..."
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    log "  ✓ Docker 已装: $(docker --version)"
+    return 0
+  fi
+
+  log "装 Docker CE (Rocky 8 + docker-ce repo)..."
+
+  # Rocky 8 默认源可能不带 docker-ce,加官方 repo
+  if [[ ! -f /etc/yum.repos.d/docker-ce.repo ]]; then
+    dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo \
+      || fail "加 docker-ce repo 失败 (国内云可换 mirrors.aliyun.com/docker-ce)"
+  fi
+
+  dnf install -y docker-ce docker-ce-cli containerd.io \
+    docker-buildx-plugin docker-compose-plugin \
+    || fail "dnf install docker-ce 失败"
+
+  systemctl enable --now docker
+  systemctl is-active --quiet docker || fail "docker daemon 没起来"
+
+  # 校验 compose plugin
+  if ! docker compose version >/dev/null 2>&1; then
+    fail "docker compose plugin 不可用"
+  fi
+
+  log "  ✓ Docker 装好: $(docker --version), $(docker compose version)"
+}
 stage_2() { : "placeholder"; }
 stage_3() { : "placeholder"; }
 stage_4() { : "placeholder"; }
