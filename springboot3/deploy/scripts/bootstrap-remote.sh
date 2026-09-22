@@ -36,15 +36,6 @@ DATA_ROOT="${DATA_ROOT:-/opt/aiopc-data}"
 STAGING="${STAGING:-/tmp/aiopc-staging}"
 LOG_FILE="${LOG_FILE:-${DATA_ROOT}/bootstrap-$(date +%Y%m%d-%H%M%S).log}"
 
-mkdir -p "${DATA_ROOT}" "${STAGING}"
-
-# 从 docker-compose.yml 提取 MYSQL_ROOT_PASSWORD
-COMPOSE_MYSQL_PWD="$(grep -E '^\s*MYSQL_ROOT_PASSWORD:' "${PROJECT_ROOT}/docker-compose.yml" | head -1 | sed -E 's/.*:\s*([^\s]+).*/\1/')"
-if [[ -z "${COMPOSE_MYSQL_PWD}" ]]; then
-  echo "[FAIL] 解析 docker-compose.yml 失败:找不到 MYSQL_ROOT_PASSWORD" >&2
-  exit 1
-fi
-
 log()  { echo "[INFO]  $*" | tee -a "${LOG_FILE}"; }
 warn() { echo "[WARN]  $*" | tee -a "${LOG_FILE}" >&2; }
 fail() { echo "[FAIL]  $*" | tee -a "${LOG_FILE}" >&2; exit 1; }
@@ -81,8 +72,14 @@ SINGLE_STAGE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --stage)  SINGLE_STAGE="$2"; shift 2 ;;
-    --from)   FROM_STAGE="$2";   shift 2 ;;
+    --stage)  [[ $# -ge 2 ]] || fail "--stage 缺值 (用法: --stage <0..5>)"
+              [[ "${2:-}" =~ ^[0-9]+$ ]] || fail "--stage 必须是整数: ${2}"
+              SINGLE_STAGE="$2"; shift 2
+              (( SINGLE_STAGE >= 0 && SINGLE_STAGE <= 5 )) || fail "--stage 必须在 0..5: ${SINGLE_STAGE}" ;;
+    --from)   [[ $# -ge 2 ]] || fail "--from 缺值 (用法: --from <n>)"
+              [[ "${2:-}" =~ ^[0-9]+$ ]] || fail "--from 必须是整数: ${2}"
+              FROM_STAGE="$2";   shift 2
+              (( FROM_STAGE >= 0 && FROM_STAGE <= 5 )) || fail "--from 必须在 0..5: ${FROM_STAGE}" ;;
     --status) CMD="status";      shift   ;;
     --abort)  CMD="abort";       shift   ;;
     --help|-h) CMD="help";       shift   ;;
@@ -91,7 +88,35 @@ while [[ $# -gt 0 ]]; do
 done
 
 cmd_help() {
-  sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'
+  cat <<USAGE
+AIOPC 远程 VM 一键引导 (W79)
+
+在 Rocky Linux 8.10 云 VM 上跑,把整套 OPC 全栈从零拉起并
+从用户 scp 过来的 aiopc-migrate-*.tar.gz 恢复数据。
+
+用法:
+  bash bootstrap-remote.sh                          # 默认 Stage 0 → 5 全跑
+  bash bootstrap-remote.sh --stage <0..5>           # 单跑一个阶段
+  bash bootstrap-remote.sh --from <n>               # 从 Stage n 开始续跑
+  bash bootstrap-remote.sh --status                 # 当前进度
+  bash bootstrap-remote.sh --abort                  # 停所有 aiopc-* 容器
+  bash bootstrap-remote.sh --help
+
+Exit codes:
+  0 = 全成功
+  1 = 前置依赖缺失
+  2 = 数据恢复失败 (已自动回滚)
+  3 = 镜像 build 失败
+  4 = 健康检查 < 30/50 PASS
+
+阶段说明:
+  0 = Pre-flight (校验 Rocky 8.10 / 磁盘 / .env / migrate 包)
+  1 = Install Docker (docker-ce repo + dnf install)
+  2 = Install deps + clone repo (git/python3/rsync + 关 SELinux/firewalld + git clone)
+  3 = 起基建 (nacos1/mysql/redis/rabbitmq/minio/qdrant)
+  4 = 数据迁移 + 推 Nacos + 起业务 (restore + import-dev + compose up)
+  5 = Verification (health-check.sh)
+USAGE
   exit 0
 }
 
@@ -152,8 +177,26 @@ cmd_abort() {
   exit 0
 }
 
+# Pre-flight 初始化 (status/abort 不需要,所以放在 dispatch 后面)
+preflight_init() {
+  mkdir -p "${DATA_ROOT}" "${STAGING}"
+
+  # 从 docker-compose.yml 提取 MYSQL_ROOT_PASSWORD
+  if [[ ! -f "${PROJECT_ROOT}/docker-compose.yml" ]]; then
+    echo "[FAIL] docker-compose.yml 不存在: ${PROJECT_ROOT}/docker-compose.yml" >&2
+    exit 1
+  fi
+  COMPOSE_MYSQL_PWD="$(grep -E '^[ \t]*MYSQL_ROOT_PASSWORD:' "${PROJECT_ROOT}/docker-compose.yml" | head -1 | sed -E 's/.*:\s*([^\s]+).*/\1/')"
+  if [[ -z "${COMPOSE_MYSQL_PWD}" ]]; then
+    echo "[FAIL] 解析 docker-compose.yml 失败:找不到 MYSQL_ROOT_PASSWORD" >&2
+    exit 1
+  fi
+}
+
 if [[ "${CMD}" == "status" ]]; then cmd_status; fi
 if [[ "${CMD}" == "abort"  ]]; then cmd_abort;  fi
+
+preflight_init
 
 # up / from / stage 共用入口
 log "============================================================"
