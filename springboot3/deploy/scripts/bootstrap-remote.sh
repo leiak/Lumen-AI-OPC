@@ -363,7 +363,7 @@ stage_3() {
     tries=$((tries - 1))
   done
   if (( tries == 0 )); then
-    warn "MySQL 60s 内未就绪,看下 docker logs aiopc-mysql"
+    warn "MySQL 120s 内未就绪,看下 docker logs aiopc-mysql"
     docker logs --tail 30 aiopc-mysql >&2
     fail "MySQL 启动超时"
   fi
