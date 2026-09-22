@@ -1,18 +1,34 @@
 # W79 — Remote SSH OPC Full Stack Deploy
 
 > **Status**: Draft (2026-09-22, brainstormed with user)
-> **Goal**: 把 OPC 全栈(16 OPC 微服务 + Auth/Gateway/Frontend + 5 基建)部署到一台远程 Rocky Linux 8.10 云 VM,SSH 端口转发访问,不套 HTTPS/域名。从用户本地导出的 MySQL dump 迁移过去。
+> **Goal**: 把 OPC 全栈(22 容器: 1 RuoYi + 12 OPC + 3 平台 + 6 基建)部署到一台远程 Rocky Linux 8.10 云 VM,SSH 端口转发访问,不套 HTTPS/域名。从用户本地导出的 MySQL dump 迁移过去。
 > **Scope**: 单 VM,2-4 vCPU / 4-8 GB RAM / 40-80 GB disk。不起 ES/Grafana/SkyWalking/Prometheus(省资源)。
 
 ---
 
 ## 0. Context & Background
 
-### 0.1 现状
+### 0.1 执行模型(协作分工)
+
+**用户执行 / Claude 不需要凭据**:
+- 用户自己 SSH 进 VM,用 root 跑 `bootstrap-remote.sh`
+- 用户在本机跑 `backup-mysql-local.sh`,把生成的 `aiopc-migrate-*.tar.gz` scp 到 VM
+- Claude **不需要** SSH 账号/密码/密钥 — 全程在本地仓库写脚本、看用户粘贴的输出、调 bug
+
+**Claude 产出**:
+- `bootstrap-remote.sh` 脚本本体
+- `backup-mysql-local.sh` 本机导出脚本
+- `RECOVERY.md §15` 文档
+- `.env.example` 注释更新
+- `W79-REMOTE-SSH-DEPLOY-VERIFICATION.md` 验证报告(基于用户粘贴的 `health-check.sh` 输出)
+
+**触发方式**: 用户粘贴任何阶段失败输出 → Claude 即时改脚本 → 用户重跑 `--from <n>` 续。
+
+### 0.2 现状
 
 仓库 `D:\work-ai\0401-lumen-opc\` 已有完整的本地 Docker Compose 全栈:
 
-- `springboot3/deploy/docker-compose.yml` — 20+ 容器(16 OPC + 3 RuoYi + Frontend + 7 基建)
+- `springboot3/deploy/docker-compose.yml` — 22 容器(13 OPC 业务 + 3 平台 + 6 基建;另 4 个 OPC/基建 ES/Prometheus/Grafana/SkyWalking/Insight 默认不起)
 - `springboot3/deploy/deploy.sh` — W50 固化的一键脚本(`up` / `status` / `stop` / `nuke` / `rebuild` / `health`)
 - `springboot3/deploy/RECOVERY.md` — 9 节恢复手册 + 7 业务服务章节
 - `springboot3/deploy/mysql-initdb.d/` — 16 个 schema + seed SQL
@@ -22,7 +38,7 @@
 
 但**所有这些脚本都默认 Windows git-bash + 本机 Docker Desktop**,没有为远程 Linux VM 优化。本设计新增 **bootstrap-remote.sh** 把整套流程打包成"SSH 进去跑一行命令"。
 
-### 0.2 已有相关设计
+### 0.3 已有相关设计
 
 - `docs/superpowers/specs/2026-09-14-opc-content-design.md` — W74 opc-content 设计,提到 4 部署修复
 - `docs/superpowers/specs/2026-09-12-opc-erp-design.md` — W72 opc-erp 设计,提到 11 表 schema
