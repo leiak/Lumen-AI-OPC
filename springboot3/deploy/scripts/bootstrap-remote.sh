@@ -218,7 +218,46 @@ run_stage() {
   mark_stage_done "${n}"
 }
 
-stage_0() { : "placeholder"; }
+stage_0() {
+  log "校验前置条件..."
+
+  require_rocky_8
+  require_disk
+
+  # .env 必须存在
+  if [[ ! -f "${PROJECT_ROOT}/.env" ]]; then
+    fail ".env 不存在:${PROJECT_ROOT}/.env。请先 cp .env.example .env 并填值"
+  fi
+  log "  ✓ .env 存在"
+
+  # aiopc-migrate-*.tar.gz 必须 scp 到 staging
+  local migrate_tar
+  migrate_tar="$(ls -t "${STAGING}"/aiopc-migrate-*.tar.gz 2>/dev/null | head -1 || true)"
+  if [[ -z "${migrate_tar}" ]]; then
+    fail "未找到 ${STAGING}/aiopc-migrate-*.tar.gz。请先把本机导出的迁移包 scp 过来"
+  fi
+  log "  ✓ 迁移包:${migrate_tar} ($(du -h "${migrate_tar}" | cut -f1))"
+
+  # 校验 sha256 (如果存在 .sha256 文件)
+  if [[ -f "${migrate_tar}.sha256" ]]; then
+    if ! sha256sum -c "${migrate_tar}.sha256" >/dev/null 2>&1; then
+      fail "迁移包 sha256 校验失败,可能传输损坏"
+    fi
+    log "  ✓ sha256 校验通过"
+  fi
+
+  # 校验 .env 必填项
+  for key in DEEPSEEK_API_KEY MINIMAX_API_KEY; do
+    local val
+    val="$(grep -E "^${key}=" "${PROJECT_ROOT}/.env" | cut -d= -f2- || true)"
+    if [[ -z "${val}" ]]; then
+      fail ".env 缺 ${key}"
+    fi
+  done
+  log "  ✓ .env 必填项齐全"
+
+  log "Stage 0 校验通过"
+}
 stage_1() { : "placeholder"; }
 stage_2() { : "placeholder"; }
 stage_3() { : "placeholder"; }
