@@ -465,6 +465,7 @@ stage_5() {
   cd /opt/aiopc/springboot3/deploy
 
   # 5.1 健康检查
+  [[ -f scripts/health-check.sh ]] || fail "scripts/health-check.sh 不存在,请检查 /opt/aiopc/springboot3/deploy/scripts/"
   log "跑健康检查 (36+ 项) ..."
   if ! bash scripts/health-check.sh; then
     warn "健康检查失败,查看上方日志"
@@ -473,15 +474,15 @@ stage_5() {
   log "  ✓ 健康检查通过"
 
   # 5.2 烟雾测试:登录
-  log "烟雾测试 1/5: /login ..."
-  if ! curl -sf -m 5 http://127.0.0.1:9200/login \
+  log "烟雾测试 1/5: 网关 /login ..."
+  if ! curl -sf -m 10 http://127.0.0.1:8080/login \
       -H 'Content-Type: application/json' \
       -d '{"username":"admin","password":"admin123"}' \
       | grep -q '"access_token"'; then
-    warn "/login 失败 (期望返回 access_token)"
+    warn "网关 /login 失败 (期望返回 access_token,走了 gateway→auth 路径)"
     exit 4
   fi
-  log "  ✓ /login OK"
+  log "  ✓ 网关 /login OK"
 
   # 5.3 烟雾测试:Nacos 健康
   log "烟雾测试 2/5: Nacos /v1/cs/health ..."
@@ -494,11 +495,12 @@ stage_5() {
 
   # 5.4 烟雾测试:MySQL 表数
   log "烟雾测试 3/5: MySQL opc_* 表数 ..."
-  local opc_table_count
+  local opc_table_count opc_min
+  opc_min="${OPC_TABLE_SKIP_MIN:-10}"
   opc_table_count=$(docker exec aiopc-mysql mysql -uroot -p"${COMPOSE_MYSQL_PWD}" \
     -N -B -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='ry-vue-opc' AND TABLE_NAME LIKE 'opc\_%'" 2>/dev/null || echo 0)
-  if (( opc_table_count < 10 )); then
-    warn "opc_* 表数 < 10 (实际 ${opc_table_count}),restore 可能失败"
+  if (( opc_table_count < opc_min )); then
+    warn "opc_* 表数 ${opc_table_count} < ${opc_min} (override: OPC_TABLE_SKIP_MIN=${opc_min}),restore 可能失败"
     exit 4
   fi
   log "  ✓ opc_* 表数 ${opc_table_count}"
