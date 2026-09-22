@@ -615,6 +615,126 @@ OPC_GATEWAY=http://127.0.0.1:8080 python tmp_e2e/e2e_content.py
 
 ---
 
-**Last updated:** 2026-09-14 (W74 — added opc-content section §14 + 4 表 schema initdb + 6 seed + 10 health-check + e2e_content.py + 4 关键部署修复)
+## 15. Remote SSH Bootstrap (W79)
+
+> 单脚本一键部署 OPC 全栈到远程 Rocky Linux 8.10 VM。**用户自己 SSH 进 VM 跑脚本**, Claude 不需要 SSH 凭据。
+
+### 15.1 前置
+
+- **VM**: Rocky Linux 8.10, 2-4 vCPU / 4-8 GB / 40-80 GB
+- **SSH 访问**: 用户有 root 账号(或 `sudo su -` 升 root)
+- **本机已装**: Docker Desktop 24+(用于 `backup-mysql-local.sh`)
+- **目标**: 22 个容器 (6 基建 + 3 平台 + 13 业务)
+
+### 15.2 流程
+
+#### 本机 (Windows / macOS / Linux)
+
+```bash
+cd springboot3/deploy
+bash scripts/backup-mysql-local.sh
+# → 生成 aiopc-migrate-YYYYMMDD-HHMMSS.tar.gz (含 mysql-dump.sql.gz + nacos/)
+# 校验:
+tar -tzf aiopc-migrate-*.tar.gz | head
+# 期望: mysql-dump.sql.gz  nacos/*.yml ...
+```
+
+把 `aiopc-migrate-*.tar.gz` 上传到 VM (scp / sftp / rsync 任一):
+
+```bash
+scp aiopc-migrate-*.tar.gz root@<vm-ip>:/tmp/
+```
+
+#### VM (root 跑)
+
+```bash
+# SSH 进 VM
+ssh root@<vm-ip>
+
+# 准备 .env (从仓库拉一份)
+cd /opt/aiopc/springboot3/deploy
+ls -la .env 2>/dev/null || cp .env.example .env
+# 编辑填真值:DEEPSEEK_API_KEY, MINIMAX_API_KEY, MYSQL_PWD 等
+
+# 拉迁移包到 staging
+mkdir -p /tmp/aiopc-staging
+mv /tmp/aiopc-migrate-*.tar.gz /tmp/aiopc-staging/
+
+# 一键拉起 (5 阶段)
+bash scripts/bootstrap-remote.sh
+# 期望: ~25-40 min 后 22 个容器全 UP, banner 打印 SSH 端口转发提示
+```
+
+### 15.3 5 阶段
+
+| # | 阶段 | 任务 | 失败退出码 |
+|---|---|---|---|
+| 0 | preflight | Rocky 8.10 / 40G disk / .env / migrate tar / sha256 / env keys | 1 |
+| 1 | install | dnf install docker-ce + systemctl enable --now | 1 |
+| 2 | deps | git/curl/python3 + SELinux/permissive + firewalld 关闭 + git clone 仓库 | 1 |
+| 3 | infra | 6 基建容器 (nacos1/mysql/redis/rabbitmq/minio/qdrant) + 等就绪 | 1 |
+| 4 | restore | 解压 migrate → restore MySQL → 推 Nacos → 起 13 业务容器 | 2 (restore) / 3 (compose) |
+| 5 | verify | health-check.sh + 5 smoke tests | 4 |
+
+### 15.4 失败恢复
+
+每个 stage 完成时会在 `${DATA_ROOT:-/opt/aiopc-data}/.bootstrap-stages-ok.N` 写 marker。
+重跑某个 stage: `rm /opt/aiopc-data/.bootstrap-stages-ok.N && bash scripts/bootstrap-remote.sh`
+完全重跑: `rm /opt/aiopc-data/.bootstrap-stages-ok.* && bash scripts/bootstrap-remote.sh`
+跳到指定 stage: `bash scripts/bootstrap-remote.sh --from 4` (会先跑 stage 0-3 的 marker 检查)
+
+### 15.5 关键文件位置
+
+| 文件 | 路径 | 用途 |
+|---|---|---|
+| bootstrap-remote.sh | `/opt/aiopc/springboot3/deploy/scripts/bootstrap-remote.sh` | 主脚本 |
+| backup-mysql-local.sh | 本机 `springboot3/deploy/scripts/backup-mysql-local.sh` | 本机导出 |
+| .env | `/opt/aiopc/springboot3/deploy/.env` | 密钥 (git ignored) |
+| DATA_ROOT | `/opt/aiopc-data/` | 容器数据卷 + 备份 + stage markers |
+| STAGING | `/tmp/aiopc-staging/` | migrate tar 解压目录 |
+| MySQL dump | `docker exec aiopc-mysql mysqldump ...` | 运行时备份 |
+| Pre-restore 备份 | `/opt/aiopc-data/backups/pre-restore-*.sql.gz` | stage 4 自动备份 |
+
+### 15.6 端口转发
+
+VM 上 22 容器只暴露 3 个端口给本机:
+
+```bash
+ssh -L 8079:127.0.0.1:8079 \
+    -L 8080:127.0.0.1:8080 \
+    -L 8848:127.0.0.1:8848 \
+    user@<vm-ip>
+```
+
+然后浏览器:
+- 前端: `http://localhost:8079`
+- 网关: `http://localhost:8080`
+- Nacos: `http://localhost:8848/nacos` (nacos/nacos)
+
+### 15.7 已知限制
+
+- LLM API key 必须从本机 .env 复制过去;**没填时 AI 接口返回 401**, 其他功能正常
+- ES/Grafana/SkyWalking/Prometheus 不在 W79 最小基建里,需要时单独加 compose service
+- 首次 build 镜像 ~25-40 min(2-4 vCPU 估算),后续增量 build < 5 min
+- VM disk 必须 ≥ 40 GB,推荐 80 GB 给增量备份留余地
+- 数据卷用 host bind mount (`/opt/aiopc-data/...`),VM 重启数据保留;`docker compose down -v` 才删
+
+### 15.8 常见错误
+
+| 错误 | 原因 | 修复 |
+|---|---|---|
+| `Rocky 8.10 required` | OS 不是 Rocky 8.10 | 用 Rocky 8.10 (CentOS 8 EOL) |
+| `Disk space < 40 GB` | VM disk 太小 | 加 disk 或选更大 VM |
+| `migrate tar missing` | 上传失败或忘放 staging | 检查 `/tmp/aiopc-staging/aiopc-migrate-*.tar.gz` |
+| `MySQL 120s 内未就绪` | initdb 首次跑 ~60s | 等久点,或 `docker logs aiopc-mysql` |
+| `restore failed` (exit 2) | dump 文件坏或权限问题 | `docker logs aiopc-mysql` + `${DATA_ROOT}/backups/pre-restore-*.sql.gz` 回滚 |
+| `compose up failed` (exit 3) | Dockerfile 错或端口占用 | `docker compose logs aiopc-<svc>` |
+| `health check failed` (exit 4) | 服务没全起 | `bash scripts/health-check.sh` 单独跑看哪项失败 |
+| `/login 失败` (smoke 1) | gateway 路由没配 / auth 没注册 Nacos | `curl http://127.0.0.1:8080/actuator/health` + `docker logs aiopc-gateway` |
+
+---
+
+**Last updated:** 2026-09-22 (W79 — added §15 Remote SSH Bootstrap 文档, 5 阶段 + 8 子节 + 端口转发 + 常见错误表)
+
 
 ---
