@@ -461,7 +461,78 @@ stage_4() {
 
   log "Stage 4 完成"
 }
-stage_5() { : "placeholder"; }
+stage_5() {
+  cd /opt/aiopc/springboot3/deploy
+
+  # 5.1 健康检查
+  log "跑健康检查 (36+ 项) ..."
+  if ! bash scripts/health-check.sh; then
+    warn "健康检查失败,查看上方日志"
+    exit 4
+  fi
+  log "  ✓ 健康检查通过"
+
+  # 5.2 烟雾测试:登录
+  log "烟雾测试 1/5: /login ..."
+  if ! curl -sf -m 5 http://127.0.0.1:9200/login \
+      -H 'Content-Type: application/json' \
+      -d '{"username":"admin","password":"admin123"}' \
+      | grep -q '"access_token"'; then
+    warn "/login 失败 (期望返回 access_token)"
+    exit 4
+  fi
+  log "  ✓ /login OK"
+
+  # 5.3 烟雾测试:Nacos 健康
+  log "烟雾测试 2/5: Nacos /v1/cs/health ..."
+  if ! curl -sf -m 3 http://127.0.0.1:8848/nacos/v1/cs/health \
+      | grep -q "UP"; then
+    warn "Nacos 未就绪"
+    exit 4
+  fi
+  log "  ✓ Nacos UP"
+
+  # 5.4 烟雾测试:MySQL 表数
+  log "烟雾测试 3/5: MySQL opc_* 表数 ..."
+  local opc_table_count
+  opc_table_count=$(docker exec aiopc-mysql mysql -uroot -p"${COMPOSE_MYSQL_PWD}" \
+    -N -B -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='ry-vue-opc' AND TABLE_NAME LIKE 'opc\_%'" 2>/dev/null || echo 0)
+  if (( opc_table_count < 10 )); then
+    warn "opc_* 表数 < 10 (实际 ${opc_table_count}),restore 可能失败"
+    exit 4
+  fi
+  log "  ✓ opc_* 表数 ${opc_table_count}"
+
+  # 5.5 烟雾测试:前端可访问
+  log "烟雾测试 4/5: 前端 / ..."
+  if ! curl -sf -m 5 http://127.0.0.1:8079/ | grep -q -i "lumen\|ruoyi"; then
+    warn "前端首页不可访问或不含期望标识"
+    exit 4
+  fi
+  log "  ✓ 前端 OK"
+
+  # 5.6 烟雾测试:网关路由一个业务接口
+  log "烟雾测试 5/5: 网关 /actuator/health ..."
+  if ! curl -sf -m 5 http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then
+    warn "网关 /actuator/health 未返回 UP"
+    exit 4
+  fi
+  log "  ✓ 网关 OK"
+
+  log ""
+  log "=================================================="
+  log " W79 Remote SSH OPC 全栈部署完成 ✅"
+  log "=================================================="
+  log "  - 前端:    http://<vm-ip>:8079"
+  log "  - 网关:    http://<vm-ip>:8080"
+  log "  - Nacos:   http://<vm-ip>:8848/nacos (nacos/nacos)"
+  log "  - 总容器: 22 个 (6 基建 + 3 平台 + 13 业务)"
+  log "  - 数据库:  ${opc_table_count} 张 opc_* 表"
+  log ""
+  log " SSH 端口转发:"
+  log "   ssh -L 8079:127.0.0.1:8079 -L 8080:127.0.0.1:8080 -L 8848:127.0.0.1:8848 user@<vm-ip>"
+  log "=================================================="
+}
 
 main() {
   require_root
