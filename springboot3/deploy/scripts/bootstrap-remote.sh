@@ -387,7 +387,70 @@ stage_3() {
 
   log "Stage 3 完成"
 }
-stage_4() { : "placeholder"; }
+stage_4() {
+  cd /opt/aiopc/springboot3/deploy
+
+  # 4.1 解压 migrate 包
+  log "解压迁移包到 ${STAGING}/ ..."
+  local migrate_tar
+  migrate_tar="$(ls -t "${STAGING}"/aiopc-migrate-*.tar.gz | head -1)"
+  tar -xzf "${migrate_tar}" -C "${STAGING}/"
+  log "  ✓ 解压完成"
+
+  # 4.2 校验 dump 文件
+  if [[ ! -f "${STAGING}/mysql-dump.sql.gz" ]]; then
+    fail "迁移包内缺 mysql-dump.sql.gz"
+  fi
+  log "  ✓ mysql-dump.sql.gz 存在 ($(du -h "${STAGING}/mysql-dump.sql.gz" | cut -f1))"
+
+  # 4.3 校验 opc_* 表是否已存在(幂等保护)
+  local existing_opc_tables
+  existing_opc_tables=$(docker exec aiopc-mysql mysql -uroot -p"${COMPOSE_MYSQL_PWD}" \
+    -N -B -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='ry-vue-opc' AND TABLE_NAME LIKE 'opc\_%'" 2>/dev/null || echo 0)
+
+  if (( existing_opc_tables >= 10 )); then
+    log "  ✓ 数据库已有 ${existing_opc_tables} 张 opc_* 表,跳过 restore (要重导:rm /opt/aiopc-data/.bootstrap-stages-ok.4)"
+  else
+    # 4.4 备份当前空库(给 restore 失败时回滚用)
+    log "备份当前空库 (pre-restore) ..."
+    mkdir -p "${DATA_ROOT}/backups"
+    docker exec aiopc-mysql mysqldump -uroot -p"${COMPOSE_MYSQL_PWD}" \
+      --all-databases --default-character-set=utf8mb4 --routines --triggers \
+      2>/dev/null | gzip > "${DATA_ROOT}/backups/pre-restore-$(date +%Y%m%d-%H%M%S).sql.gz"
+    log "  ✓ pre-restore 备份完成"
+
+    # 4.5 restore dump
+    log "restore MySQL dump ..."
+    if ! gunzip -c "${STAGING}/mysql-dump.sql.gz" \
+        | docker exec -i aiopc-mysql mysql -uroot -p"${COMPOSE_MYSQL_PWD}" \
+            --default-character-set=utf8mb4; then
+      warn "MySQL restore 失败,自动回滚到 pre-restore"
+      local pre_restore
+      pre_restore=$(ls -t "${DATA_ROOT}"/backups/pre-restore-*.sql.gz | head -1)
+      if [[ -n "${pre_restore}" ]]; then
+        gunzip -c "${pre_restore}" | docker exec -i aiopc-mysql \
+          mysql -uroot -p"${COMPOSE_MYSQL_PWD}" --default-character-set=utf8mb4 || true
+      fi
+      exit 2
+    fi
+    log "  ✓ MySQL restore 完成"
+  fi
+
+  # 4.6 推 Nacos 配置
+  log "推 Nacos 配置 ..."
+  cd /opt/aiopc/springboot3/deploy/nacos
+  bash import-dev.sh || fail "import-dev.sh 失败"
+  cd ..
+  log "  ✓ Nacos 配置推送完成"
+
+  # 4.7 起所有业务容器 (首次会 build 镜像,~25-40 min on 2-4 vCPU)
+  log "起业务容器 (22 个,首次 build 预计 25-40 min) ..."
+  docker compose up -d || { warn "docker compose up 业务容器失败"; exit 3; }
+  log "  ✓ 业务容器已拉起,等 60s 让服务注册 Nacos"
+  sleep 60
+
+  log "Stage 4 完成"
+}
 stage_5() { : "placeholder"; }
 
 main() {
