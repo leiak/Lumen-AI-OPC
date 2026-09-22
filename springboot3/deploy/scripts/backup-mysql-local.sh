@@ -75,6 +75,9 @@ export_nacos_configs() {
 }
 
 build_migrate_tar() {
+  if [[ -e "${OUT_FILE}" ]]; then
+    fail "目标迁移包已存在: ${OUT_FILE} (避免误覆盖,改个名或删了再跑)"
+  fi
   log "打包最终迁移包 -> ${OUT_FILE}"
   tar -czf "${OUT_FILE}" -C "${STAGE_DIR}" .
   sha256sum "${OUT_FILE}" > "${OUT_FILE}.sha256"
