@@ -393,7 +393,10 @@ stage_4() {
   # 4.1 解压 migrate 包
   log "解压迁移包到 ${STAGING}/ ..."
   local migrate_tar
-  migrate_tar="$(ls -t "${STAGING}"/aiopc-migrate-*.tar.gz | head -1)"
+  migrate_tar="$(ls -t "${STAGING}"/aiopc-migrate-*.tar.gz 2>/dev/null | head -1)"
+  if [[ -z "${migrate_tar}" || ! -f "${migrate_tar}" ]]; then
+    fail "${STAGING}/ 下找不到 aiopc-migrate-*.tar.gz"
+  fi
   tar -xzf "${migrate_tar}" -C "${STAGING}/"
   log "  ✓ 解压完成"
 
@@ -409,15 +412,22 @@ stage_4() {
     -N -B -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='ry-vue-opc' AND TABLE_NAME LIKE 'opc\_%'" 2>/dev/null || echo 0)
 
   if (( existing_opc_tables >= 10 )); then
-    log "  ✓ 数据库已有 ${existing_opc_tables} 张 opc_* 表,跳过 restore (要重导:rm /opt/aiopc-data/.bootstrap-stages-ok.4)"
+    log "  ✓ 数据库已有 ${existing_opc_tables} 张 opc_* 表,跳过 restore (要重导:rm ${STAGES_OK_FILE}.4)"
   else
     # 4.4 备份当前空库(给 restore 失败时回滚用)
     log "备份当前空库 (pre-restore) ..."
     mkdir -p "${DATA_ROOT}/backups"
-    docker exec aiopc-mysql mysqldump -uroot -p"${COMPOSE_MYSQL_PWD}" \
-      --all-databases --default-character-set=utf8mb4 --routines --triggers \
-      2>/dev/null | gzip > "${DATA_ROOT}/backups/pre-restore-$(date +%Y%m%d-%H%M%S).sql.gz"
-    log "  ✓ pre-restore 备份完成"
+    if ! docker exec aiopc-mysql mysqldump -uroot -p"${COMPOSE_MYSQL_PWD}" \
+        --all-databases --default-character-set=utf8mb4 --routines --triggers 2>/dev/null \
+        | gzip > "${DATA_ROOT}/backups/pre-restore-$(date +%Y%m%d-%H%M%S).sql.gz"; then
+      fail "pre-restore 备份失败,中止 restore 以保护数据"
+    fi
+    local pre_backup
+    pre_backup=$(ls -t "${DATA_ROOT}"/backups/pre-restore-*.sql.gz | head -1)
+    if [[ -z "${pre_backup}" || ! -s "${pre_backup}" ]]; then
+      fail "pre-restore 备份文件不存在或为空,中止 restore"
+    fi
+    log "  ✓ pre-restore 备份完成 ($(du -h "${pre_backup}" | cut -f1))"
 
     # 4.5 restore dump
     log "restore MySQL dump ..."
