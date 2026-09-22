@@ -335,7 +335,58 @@ stage_2() {
 
   log "Stage 2 完成"
 }
-stage_3() { : "placeholder"; }
+stage_3() {
+  log "起基建 (6 容器: nacos1/mysql/redis/rabbitmq/minio/qdrant)..."
+  cd /opt/aiopc/springboot3/deploy
+
+  # 已起则跳过
+  local running
+  running=$(docker compose ps --status running --services 2>/dev/null | wc -l)
+  if (( running >= 6 )); then
+    log "  ✓ 基建已起 (${running} 个 running),跳过"
+  else
+    docker compose up -d nacos1 mysql redis rabbitmq minio qdrant \
+      || fail "docker compose up 基建失败"
+    log "  ✓ 基建容器已拉起,等 MySQL initdb..."
+  fi
+
+  # 等 MySQL 就绪 (initdb 需 30-60s)
+  log "等 MySQL 就绪..."
+  local tries=60
+  while (( tries > 0 )); do
+    if docker exec aiopc-mysql mysql -uroot -p"${COMPOSE_MYSQL_PWD}" \
+        -e "SELECT 1" >/dev/null 2>&1; then
+      log "  ✓ MySQL OK"
+      break
+    fi
+    sleep 2
+    tries=$((tries - 1))
+  done
+  if (( tries == 0 )); then
+    warn "MySQL 60s 内未就绪,看下 docker logs aiopc-mysql"
+    docker logs --tail 30 aiopc-mysql >&2
+    fail "MySQL 启动超时"
+  fi
+
+  # 等 Nacos 就绪
+  log "等 Nacos 就绪..."
+  tries=30
+  while (( tries > 0 )); do
+    if curl -sf -m 3 http://127.0.0.1:8848/nacos/v1/cs/health >/dev/null 2>&1; then
+      log "  ✓ Nacos OK"
+      break
+    fi
+    sleep 2
+    tries=$((tries - 1))
+  done
+  if (( tries == 0 )); then
+    warn "Nacos 60s 内未就绪,看下 docker logs aiopc-nacos-1"
+    docker logs --tail 30 aiopc-nacos-1 >&2
+    fail "Nacos 启动超时"
+  fi
+
+  log "Stage 3 完成"
+}
 stage_4() { : "placeholder"; }
 stage_5() { : "placeholder"; }
 
