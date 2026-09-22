@@ -287,7 +287,54 @@ stage_1() {
 
   log "  ✓ Docker 装好: $(docker --version), $(docker compose version)"
 }
-stage_2() { : "placeholder"; }
+stage_2() {
+  log "装系统依赖 (git/python3/rsync)..."
+  dnf install -y git python3 rsync jq \
+    || fail "dnf install 失败"
+
+  # 关 SELinux (容器互访不需要)
+  if command -v setenforce >/dev/null 2>&1; then
+    setenforce 0 2>/dev/null || true
+    if [[ -f /etc/selinux/config ]]; then
+      sed -i 's/^SELINUX=enforcing/SELINUX=permissive/' /etc/selinux/config
+    fi
+    log "  ✓ SELinux 设为 permissive"
+  fi
+
+  # 关 firewalld (单 VM 内部通信不需要)
+  if systemctl is-active --quiet firewalld; then
+    systemctl stop firewalld
+    systemctl disable firewalld
+    log "  ✓ firewalld 已停"
+  fi
+
+  # clone 仓库
+  if [[ -d "/opt/aiopc/.git" ]]; then
+    log "  ✓ /opt/aiopc 已存在,跳过 clone"
+  else
+    log "clone 仓库到 /opt/aiopc ..."
+    local repo_url="${OPC_REPO_URL:-https://github.com/leiak/Lumen-AI-OPC.git}"
+    git clone --depth 1 "${repo_url}" /opt/aiopc \
+      || fail "git clone 失败 (检查 OPC_REPO_URL 环境变量或网络)"
+    log "  ✓ clone 完成"
+  fi
+
+  # 校验 clone 结果
+  [[ -f "/opt/aiopc/springboot3/deploy/docker-compose.yml" ]] \
+    || fail "clone 后找不到 docker-compose.yml,repo 结构异常"
+
+  # 同步 .env 到 clone 后的 deploy/ (用户在 Stage 0 之前手动 cp)
+  if [[ ! -f "/opt/aiopc/springboot3/deploy/.env" ]]; then
+    if [[ -f "${PROJECT_ROOT}/../.env" ]]; then
+      cp "${PROJECT_ROOT}/../.env" /opt/aiopc/springboot3/deploy/.env
+      log "  ✓ .env 已同步到 clone 路径"
+    else
+      fail "clone 后 .env 不存在,且 PROJECT_ROOT 上级目录也无 .env"
+    fi
+  fi
+
+  log "Stage 2 完成"
+}
 stage_3() { : "placeholder"; }
 stage_4() { : "placeholder"; }
 stage_5() { : "placeholder"; }
