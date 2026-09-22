@@ -45,15 +45,15 @@
 
 ### 1.2 容器清单(22 个)
 
-**基建 (5)**: `aiopc-nacos-1` `aiopc-mysql` `aiopc-redis` `aiopc-rabbitmq` `aiopc-minio` `aiopc-qdrant`
+**基建 (6)**: `aiopc-nacos-1` `aiopc-mysql` `aiopc-redis` `aiopc-rabbitmq` `aiopc-minio` `aiopc-qdrant`
 - **不起**: `elasticsearch` (2GB 堆太重)、`prometheus`/`grafana`/`skywalking-oap`/`skywalking-ui`(监控/APM)
 
 **平台 (3)**: `aiopc-gateway` (8080→host) `aiopc-auth` (19200→host) `aiopc-frontend` (8079→host)
 
-**业务 (14, 16 OPC - 2 监控用)**:
-`aiopc-system` `aiopc-ai-core` `aiopc-user-center` `aiopc-agent-hub` `aiopc-billing` `aiopc-finance`
-`aiopc-notification` `aiopc-crm` `aiopc-community` `aiopc-hr` `aiopc-erp` `aiopc-content`
-- 不起 `aiopc-insight` (依赖 Qdrant + ES 较多,单 demo 用不到)
+**业务 (13)**: 1 RuoYi built-in + 12 OPC
+- RuoYi: `aiopc-system` (9201)
+- OPC: `aiopc-ai-core` (9301) `aiopc-user-center` (9302) `aiopc-agent-hub` (9303) `aiopc-billing` (9304) `aiopc-finance` (9305) `aiopc-notification` (9310) `aiopc-erp` (9311) `aiopc-crm` (9312) `aiopc-community` (9316) `aiopc-hr` (9322) `aiopc-content` (9325)
+- 不起 `aiopc-insight` (9306,依赖 Qdrant + ES 较多,单 demo 用不到)
 
 ### 1.3 网络 & 端口
 
@@ -290,7 +290,7 @@ W79 验证报告模板,记录:服务器配置、容器清单、健康检查输�
 
 - `docker-compose.yml` — 当前 22 容器 + opc-content 配置已覆盖
 - `deploy.sh` — W50 固化,跨平台已验证
-- `mysql-initdb.d/` — 16 schema 已有,新加 W79 用 `99-opc-content-postdeploy.sql` 增量追加(若需要)
+- `mysql-initdb.d/` — 16 schema 已覆盖 W74 全部 OPC 服务;若实跑发现缺表再追加 `99-w79-postdeploy.sql`(目前判断不需要)
 
 ---
 
@@ -301,7 +301,7 @@ W79 验证报告模板,记录:服务器配置、容器清单、健康检查输�
 | 失败场景 | 检测点 | 恢复动作 |
 |---|---|---|
 | Docker 装不上 | `docker compose version` exit≠0 | 提示检查 `/var/log/messages`,失败 3 次退出 1 |
-| Rocky 8 dnf repo 失效 | `dnf install` 报 "Failed to download" | 提示换 `vault.centos.org` 或开 `dnf config-manager` |
+| Rocky 8 docker-ce repo 拉不动(国内云常见) | `dnf install` 报 "Failed to download" | 备选 `mirrors.aliyun.com/docker-ce` 镜像;或换 `--enablerepo` 走 powertools |
 | MySQL 60s 内未就绪 | `SELECT 1` 超时 | `docker logs aiopc-mysql` 输出末 30 行,提示检查 `/opt/aiopc-data/mysql/data/` 是否残留非空 |
 | Nacos 健康检查失败 | `/nacos/v1/cs/health` 60s 内不返回 UP | `docker logs aiopc-nacos-1`,检查 MySQL 是否在同 stack |
 | 镜像 build 失败 | `docker compose build` exit≠0 | 输出末 30 行 maven 错误,**不重试**(避免 mvn 缓存污染),退出 3 |
