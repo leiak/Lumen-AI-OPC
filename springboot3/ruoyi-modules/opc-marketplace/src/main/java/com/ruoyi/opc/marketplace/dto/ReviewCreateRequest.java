@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import lombok.Builder;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -14,6 +15,7 @@ import java.io.Serializable;
  * @author OAC
  */
 @Data
+@Builder
 public class ReviewCreateRequest implements Serializable {
     private static final long serialVersionUID = 1L;
 
