@@ -47,6 +47,6 @@ class MpMapperXmlParseTest {
                 assertTrue(cfg.hasStatement(id), "缺少 statement: " + id);
             }
         }
-        assertEquals(39, methods, "6 mapper 共 39 个方法");
+        assertEquals(40, methods, "6 mapper 共 40 个方法 (MpAuthorMapper 新增 selectByIds 用于列表页批量填充 authorName)");
     }
 }
