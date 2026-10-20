@@ -18,7 +18,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -33,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mockStatic;
@@ -275,5 +278,63 @@ class ReviewControllerTest {
 
         // service.create 永远不该被调到 —— 入参 companyId=null 必须被 controller 拦下
         verify(reviewService, never()).create(any(), any(), any());
+    }
+
+    // ==================== Task 7 P1: code-review 修补回归 ====================
+
+    /**
+     * I1 守卫的 HTTP 契约测试。service 是 mock,所以只校验 service 抛 OpcException(400,
+     * "商品未发布，无法评价") 时响应信封走的是 W7 后的 code=400 + 业务 msg(而不是 500)。
+     * 真正的 PUBLISHED 状态检查在 ReviewServiceImplTest(Task 8.5)。
+     */
+    @Test
+    @DisplayName("create — 商品未发布: service 抛 400 → HTTP 200 + JSON code=400 + 业务 msg")
+    void create_400_whenPublicationNotPublished() throws Exception {
+        loginAsReviewer();
+        when(reviewService.create(any(ReviewCreateRequest.class), anyLong(), anyLong()))
+                .thenThrow(new OpcException(400, "商品未发布，无法评价", "MARKETPLACE"));
+
+        mvc.perform(post("/opc/marketplace/review")
+                        .contentType("application/json").content(CREATE_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("商品未发布，无法评价"));
+    }
+
+    /**
+     * I2 clamp HTTP 契约测试。<b>声明职责</b>:controller 只做 HTTP → service 的参数转发,
+     * 实际 clamp(page=0→1, pageSize=99999→100)在 service 实现里。本测试在 controller
+     * slice 验证两条契约:
+     * <ol>
+     *   <li>controller 把 {@code ?page=0&pageSize=99999} 原样转发到 service(clamp 在 service
+     *       里,不在 controller)</li>
+     *   <li>service mock 返回的 envelope 能正确序列化回 JSON</li>
+     * </ol>
+     * 严格的「pageSize > 100 → 100」业务 clamp 由后续 ReviewServiceImplTest(Task 8.5)在
+     * service 单测中独立覆盖 —— controller 替身测试不可能校验 service 内部 clamp 逻辑。
+     */
+    @Test
+    @DisplayName("list — controller 透传 page/pageSize 到 service(clamp 在 service 实现层)")
+    void list_clampsPageSize() throws Exception {
+        when(reviewService.listByPublication(eq(5L), anyInt(), anyInt())).thenReturn(Map.of(
+                "rows", List.of(), "total", 0, "page", 1, "pageSize", 100));
+
+        mvc.perform(get("/opc/marketplace/review/list/5")
+                        .param("page", "0")
+                        .param("pageSize", "99999"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.pageSize").value(100));
+
+        // controller 不夹,原样转发 ——
+        // clamp(page=0→1, pageSize=99999→100) 由 ReviewServiceImpl.listByPublication 内部完成,
+        // 不在本 controller 测试职责内(业务单测 Task 8.5 覆盖)。
+        ArgumentCaptor<Integer> pageCaptor = ArgumentCaptor.forClass(Integer.class);
+        ArgumentCaptor<Integer> sizeCaptor = ArgumentCaptor.forClass(Integer.class);
+        Mockito.verify(reviewService).listByPublication(eq(5L), pageCaptor.capture(), sizeCaptor.capture());
+        org.junit.jupiter.api.Assertions.assertEquals(0, pageCaptor.getValue(),
+                "controller 原样转发 page=0 到 service —— clamp 由 service 实现(对账基线)");
+        org.junit.jupiter.api.Assertions.assertEquals(99999, sizeCaptor.getValue(),
+                "controller 原样转发 pageSize=99999 到 service —— clamp 由 service 实现(对账基线)");
     }
 }

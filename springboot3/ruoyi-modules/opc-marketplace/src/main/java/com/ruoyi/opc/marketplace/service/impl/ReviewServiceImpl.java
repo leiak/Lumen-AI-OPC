@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 评价 Service 实现 — P1
@@ -43,7 +44,11 @@ public class ReviewServiceImpl implements ReviewService {
     public MpReview create(ReviewCreateRequest req, Long userId, Long tenantCompanyId) {
         MpPublication p = publicationMapper.selectById(req.getPublicationId());
         if (p == null) {
-            throw new OpcException(404, "商品不存在", "MARKETPLACE");
+            throw new OpcException(404, "商品不存在: " + req.getPublicationId(), "MARKETPLACE");
+        }
+        // 与 InstallServiceImpl 同步:未发布商品不可评价 —— DRAFT/PENDING/SUSPENDED 上评价会污染 avg
+        if (!"PUBLISHED".equals(p.getStatus())) {
+            throw new OpcException(400, "商品未发布，无法评价", "MARKETPLACE");
         }
 
         // uk_review(publication_id, user_id) 不含 deleted —— 即便是 HIDDEN 行也占唯一键,
@@ -65,14 +70,9 @@ public class ReviewServiceImpl implements ReviewService {
         reviewMapper.insert(r);
 
         // 评分回写。count > 0 保证 avg 非 null,详见类注释
-        BigDecimal avg = reviewMapper.averageForPublication(req.getPublicationId());
-        int count = reviewMapper.countForPublication(req.getPublicationId());
-        if (count > 0) {
-            publicationMapper.updateRating(req.getPublicationId(),
-                    avg.setScale(2, RoundingMode.HALF_UP), count);
-        }
-        log.info("[Review] created publicationId={} userId={} rating={}",
-                req.getPublicationId(), userId, req.getRating());
+        refreshPublicationRating(req.getPublicationId());
+        log.info("[Review] created id={} publicationId={} userId={} rating={}",
+                r.getId(), req.getPublicationId(), userId, req.getRating());
         return r;
     }
 
@@ -82,8 +82,8 @@ public class ReviewServiceImpl implements ReviewService {
         if (r == null) {
             throw new OpcException(404, "评价不存在", "MARKETPLACE");
         }
-        // 归属:只有本人才可改
-        if (!r.getUserId().equals(userId)) {
+        // 归属:只有本人才可改。用 Objects.equals 避免 userId 为 null 时 NPE → 500(fail-closed → 403)
+        if (!Objects.equals(r.getUserId(), userId)) {
             throw new OpcException(403, "只有本人可修改", "MARKETPLACE");
         }
         // 局部更新:null = 不改
@@ -93,12 +93,7 @@ public class ReviewServiceImpl implements ReviewService {
         reviewMapper.updateById(r);
 
         // 修改后重新计算 avg —— 修改人改到自己那条的星级,AVG/COUNT 都可能变
-        BigDecimal avg = reviewMapper.averageForPublication(r.getPublicationId());
-        int count = reviewMapper.countForPublication(r.getPublicationId());
-        if (count > 0) {
-            publicationMapper.updateRating(r.getPublicationId(),
-                    avg.setScale(2, RoundingMode.HALF_UP), count);
-        }
+        refreshPublicationRating(r.getPublicationId());
         return r;
     }
 
@@ -109,30 +104,51 @@ public class ReviewServiceImpl implements ReviewService {
             throw new OpcException(404, "评价不存在", "MARKETPLACE");
         }
         // 归属:只有本人才可删
-        if (!r.getUserId().equals(userId)) {
+        if (!Objects.equals(r.getUserId(), userId)) {
             throw new OpcException(403, "只有本人可删除", "MARKETPLACE");
         }
         // 软删:status='HIDDEN',原评分行不再计入 avg/count(见 mapper XML 的 status 过滤),
         // 但保留审计链路 —— 不走 reviewMapper.delete(物理删会让 uk_review 释放,
         // 同一用户就能再次 create,绕过「每人每商品一条评价」的语义)
         reviewMapper.updateStatus(id, "HIDDEN");
+        // C1 修复:delete 后行已离开 VISIBLE 集,必须重算 avg/count,否则商品聚合永久陈旧
+        // 直至下一次 create/update 触发回写
+        refreshPublicationRating(r.getPublicationId());
     }
 
     @Override
     public Map<String, Object> listByPublication(Long publicationId, int page, int pageSize) {
+        // 与 PublicationServiceImpl 308-310 同步:?page=0/-1 让 MySQL LIMIT offset 为负直接报错;
+        // ?pageSize=99999 让单次返回巨大结果集 → DOS 兜底
+        int p = page > 0 ? page : 1;
+        int size = pageSize > 0 ? Math.min(pageSize, 100) : 10;
         Map<String, Object> params = new HashMap<>();
         params.put("publicationId", publicationId);
         // 公开列表恒定只返回 VISIBLE,不让 caller 传 status(否则能枚举 HIDDEN)
         params.put("status", "VISIBLE");
-        params.put("offset", (page - 1) * pageSize);
-        params.put("limit", pageSize);
+        params.put("offset", (p - 1) * size);
+        params.put("limit", size);
         var rows = reviewMapper.selectList(params);
         int total = reviewMapper.countList(params);
         Map<String, Object> data = new HashMap<>();
         data.put("rows", rows);
         data.put("total", total);
-        data.put("page", page);
-        data.put("pageSize", pageSize);
+        data.put("page", p);
+        data.put("pageSize", size);
         return data;
+    }
+
+    /**
+     * 重算并回写 {@code mp_publication.avg_rating / rating_count}。
+     * <p>从 VISIBLE 行集做 AVG + COUNT —— 与 mapper XML 一致。零行时保留现有值(由 DB
+     * COALESCE/默认值定义),不强行 null out —— 与 {@link InstallServiceImpl#install} 同
+     * SKU 的「从不显式回滚并发量」原则一致。</p>
+     */
+    private void refreshPublicationRating(Long publicationId) {
+        int count = reviewMapper.countForPublication(publicationId);
+        if (count <= 0) return;  // no VISIBLE rows — leave existing avg/count untouched
+        BigDecimal avg = reviewMapper.averageForPublication(publicationId);
+        publicationMapper.updateRating(publicationId,
+                avg.setScale(2, RoundingMode.HALF_UP), count);
     }
 }
