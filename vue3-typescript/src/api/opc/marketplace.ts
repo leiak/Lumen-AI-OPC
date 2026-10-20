@@ -191,7 +191,7 @@ export interface InstallVO {
   userId: number
   agentInstanceId?: number
   installSource?: string
-  /** INSTALLED / UNINSTALLED */
+  /** ACTIVE / UNINSTALLED（不是 INSTALLED —— MpInstall.status 的真实取值） */
   status?: string
   installedAt?: string
   uninstalledAt?: string

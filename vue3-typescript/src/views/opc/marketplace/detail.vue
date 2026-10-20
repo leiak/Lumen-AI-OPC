@@ -299,7 +299,9 @@ async function loadInstallStatus() {
   try {
     // 未安装时后端返回 R.ok(null)，data 为 null —— 不能当成错误
     const res = await installStatus(pubId.value)
-    installed.value = !!res.data && res.data.status === 'INSTALLED'
+    // 注意：MpInstall.status 的取值是 ACTIVE / UNINSTALLED（InstallServiceImpl 写入的也是
+    // "ACTIVE" / "UNINSTALLED"），没有 INSTALLED 这个值。比对错了会导致刷新后按钮永远退回「安装」。
+    installed.value = !!res.data && res.data.status === 'ACTIVE'
   } catch {
     // 未关联企业 / 未登录时后端 400，这里静默降级为「未安装」
     installed.value = false

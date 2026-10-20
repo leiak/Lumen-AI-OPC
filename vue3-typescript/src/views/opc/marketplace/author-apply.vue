@@ -19,18 +19,6 @@
         </template>
       </el-result>
 
-      <!-- 未关联企业 -->
-      <el-result
-        v-else-if="noTenant"
-        icon="warning"
-        title="当前账号未关联企业"
-        sub-title="作者身份绑定企业，需要先加入或创建企业才能提交入驻申请。"
-      >
-        <template #extra>
-          <el-button type="primary" @click="router.push('/opc/invite')">去加入企业</el-button>
-        </template>
-      </el-result>
-
       <!-- 申请表单 -->
       <el-form v-else ref="formRef" :model="form" :rules="rules" label-width="110px">
         <el-form-item label="企业 / 团队名称" prop="authorName">
@@ -60,14 +48,19 @@
           />
         </el-form-item>
 
+        <!-- 企业提示是常驻的，不是条件分支 —— 见下方 checkExisting 的注释。
+             未关联企业的用户本来就无法通过 /author/me 探测出来（它只区分「是不是作者」），
+             所以这里把「去加入企业」的入口直接摆在表单里，而不是提交失败后才显示。 -->
         <el-alert
           type="info"
           :closable="false"
           show-icon
           title="关于企业身份"
-          description="申请所绑定的企业取自当前登录账号，不接受手动指定 —— 这是后端的硬性设计，避免冒名申请占用别家企业的唯一键。"
+          description="作者身份绑定企业：企业取自当前登录账号，不接受手动指定（这是后端的硬性设计，避免冒名申请占用别家企业的唯一键）。如果你的账号还没加入或创建企业，请先完成这一步，否则提交会被后端拒绝。"
           class="tenant-hint"
-        />
+        >
+          <el-button size="small" @click="router.push('/opc/invite')">去加入企业</el-button>
+        </el-alert>
 
         <div class="form-footer">
           <el-button @click="router.back()">取消</el-button>
@@ -95,7 +88,6 @@ const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const checking = ref(true)
 const isAuthor = ref(false)
-const noTenant = ref(false)
 const author = ref<AuthorVO | null>(null)
 
 const form = reactive<AuthorApplyPayload>({
@@ -114,21 +106,36 @@ const rules: FormRules = {
   ]
 }
 
+/**
+ * 只判断「是不是作者」，不判断「有没有企业」。
+ *
+ * 为什么不分支处理「未关联企业」：`GET /author/me` 对「已登录但未入驻」返回 `R.ok(null)`，
+ * 对「未关联企业」返回 `AjaxResult.code=400`，但 `utils/request.ts` 在 code!==200 的分支里
+ * 只弹一个 ElNotification 然后 `Promise.reject('error')` —— reject 出去的是**裸字符串**，
+ * 没有 `.message`，业务码和文案都已经丢了。所以在 catch 里靠 `e?.message` 嗅探「未关联企业」
+ * 永远匹配不上，那样的分支是死代码（曾经就踩过这个坑）。
+ *
+ * 也不打算改 request.ts 来救它：那是全局拦截器，会影响全站所有视图的 reject 值，
+ * 为了一个页面的一个分支去动它不划算。真正需要的提示文案后端已经通过通知弹出来了
+ * （「当前账号未关联企业，请先加入或创建企业」），本页再用常驻 alert 提供「去加入企业」入口。
+ *
+ * 顺带说明另一个看似可行、实则会误伤的做法：不能用 `GET /opc/user/companies`
+ * （listMyCompanies）来判断有没有企业 —— 它按 `owner_user_id` 过滤，
+ * 而 `SecurityUtils.getCompanyId()` 是从 `opc_company_member`（M:N）里解析的，
+ * 只是「优先取 OWNER 的那家」，普通成员同样能拿到 companyId。
+ * 拿 owner 口径当租户口径，会把「别人公司的普通成员」误判成「没有企业」而挡掉申请。
+ */
 async function checkExisting() {
   checking.value = true
   try {
-    // GET /author/me 在「已登录但未入驻」时返回 R.ok(null)（data 为 null），不是 404。
-    // 未关联企业时后端返回 400「当前账号未关联企业」，据此引导去加入企业。
     const res = await getMyAuthor()
     author.value = res.data || null
     isAuthor.value = !!author.value
-    noTenant.value = false
-  } catch (e: any) {
+  } catch {
+    // 失败一律降级为「按未入驻处理」，展示表单。
+    // 失败原因（未关联企业 / 会话过期 / 后端异常）已由 request.ts 的通知或消息弹窗给出，这里不再重复报错。
     isAuthor.value = false
-    noTenant.value = /未关联企业/.test(e?.message || '')
-    if (!noTenant.value) {
-      ElMessage.error('查询作者状态失败: ' + (e?.message || 'unknown'))
-    }
+    author.value = null
   } finally {
     checking.value = false
   }
@@ -151,8 +158,10 @@ async function onSubmit() {
     isAuthor.value = true
     ElMessage.success('入驻申请已提交')
     router.push('/opc/marketplace/author-center')
-  } catch (e: any) {
-    ElMessage.error('提交失败: ' + (e?.message || 'unknown'))
+  } catch {
+    // 同上：request.ts 对 code!==200 只会 reject 一个裸字符串 'error'，
+    // 拿不到 msg（未关联企业 / 重复申请 409 等文案都已由它的通知弹窗展示），这里不重复报错。
+    ElMessage.error('提交失败，请留意页面上的错误提示')
   } finally {
     submitting.value = false
   }
