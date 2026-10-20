@@ -60,7 +60,7 @@ springboot3/ruoyi-modules/opc-marketplace/
             ├── MpReviewMapper.xml
             ├── MpCategoryMapper.xml
             └── MpTagMapper.xml
-└── src/test/java/com/ruoyi/opc/marketplace/           # Task 10 (8 test classes)
+└── src/test/java/com/ruoyi/opc/marketplace/           # Task 10 (9 test classes)
     ├── controller/
     │   ├── PublicationControllerTest.java            # 14 tests
     │   ├── InstallControllerTest.java                # 8 tests
@@ -68,8 +68,10 @@ springboot3/ruoyi-modules/opc-marketplace/
     │   ├── ReviewControllerTest.java                 # 8 tests
     │   ├── CategoryControllerTest.java               # 5 tests
     │   └── TagControllerTest.java                    # 4 tests
-    └── service/impl/
-        └── PublicationServiceTest.java                # 8 tests (核心)
+    ├── service/impl/
+    │   ├── PublicationServiceTest.java               # 8 tests (核心)
+    │   └── AuthorServiceRedactionTest.java           # 5 tests (公开端点脱敏;service 层,非 controller 层)
+    └── MpMapperXmlParseTest.java                     # 1 test (6 mapper XML 解析 + statement 齐全)
 
 springboot3/sql/migrations/
 └── V20261020__opc_marketplace_schema.sql             # Task 1 (6 tables + indices + seeds)
@@ -1257,7 +1259,20 @@ public interface AuthorService {
     MpAuthor apply(AuthorApplyRequest req, Long operatorId);
     MpAuthor getByCompanyId(Long companyId);
     MpAuthor getById(Long id);
+    /**
+     * 完整 VO —— 含 contactEmail / totalRevenue。
+     * 只允许本人(/me、/apply)或内部流程调用。任何公开端点必须用 toPublicVO。
+     */
     AuthorVO toVO(MpAuthor a);
+    /**
+     * 公开脱敏 VO —— 清空 contactEmail / contactPhone / totalRevenue。
+     *
+     * 脱敏放在 service 层而不是 controller 层:controller 里那行
+     * vo.setContactEmail(null) 一次重构就会被顺手删掉,而
+     * /opc/marketplace/author/{id:[0-9]+} 在 Task 10 会进网关白名单(公开),
+     * 删掉即等于全网泄露企业邮箱与营收。
+     */
+    AuthorVO toPublicVO(MpAuthor a);
     Map<String, Object> list(AuthorListQuery query);
     Map<String, Object> stats(Long id);
 }
@@ -1350,6 +1365,17 @@ public class AuthorServiceImpl implements AuthorService {
     }
 
     @Override
+    public AuthorVO toPublicVO(MpAuthor a) {
+        AuthorVO vo = toVO(a);
+        if (vo == null) return null;
+        // ⚠️ AuthorVO 当前没有 contactPhone 字段(domain 有),该字段不会进响应;
+        //    若日后给 VO 补 contactPhone,必须在此补一行 vo.setContactPhone(null)。
+        vo.setContactEmail(null);
+        vo.setTotalRevenue(null);
+        return vo;
+    }
+
+    @Override
     public Map<String, Object> list(AuthorListQuery query) {
         // P1: simple full list (no paging yet); filter in-memory by keyword/level
         List<MpAuthor> all = List.of();  // not implemented in mapper yet; return empty
@@ -1365,7 +1391,9 @@ public class AuthorServiceImpl implements AuthorService {
     public Map<String, Object> stats(Long id) {
         MpAuthor a = getById(id);
         Map<String, Object> data = new HashMap<>();
-        data.put("author", toVO(a));
+        // 嵌套的 author 同样脱敏 —— stats 的 id 由调用方任意指定,用 toVO 会让
+        // 任意登录用户读到别家企业的邮箱与营收
+        data.put("author", toPublicVO(a));
         data.put("publicationCount", publicationMapper.countList(Map.of("authorId", id)));
         return data;
     }
@@ -1413,9 +1441,15 @@ public class AuthorController {
         return R.ok(authorService.toVO(author));
     }
 
+    /**
+     * 公开资料 —— 走 toPublicVO 脱敏。
+     * Task 10 会把 /opc/marketplace/author/{id:[0-9]+} 放进网关白名单(允许匿名),
+     * 因此本端点绝不能返回 contactEmail / totalRevenue。
+     * "me" 不匹配 [0-9]+,所以白名单不会把 /me 一起放过。
+     */
     @GetMapping("/{id}")
     public R<AuthorVO> get(@PathVariable Long id) {
-        return R.ok(authorService.toVO(authorService.getById(id)));
+        return R.ok(authorService.toPublicVO(authorService.getById(id)));
     }
 
     @GetMapping("/list")
@@ -3100,9 +3134,40 @@ class ReviewServiceTest {
 Append to existing `AuthorControllerTest.java`:
 
 ```java
+    /**
+     * /me 的 companyId 一律取自登录态;请求里再带 ?companyId=999 也无效(IDOR 回归)。
+     * 同时证明「无公司上下文 → fail-closed 400」,而不是回落到 companyId=0。
+     */
+    @Test
+    void me_ignoresRequestParamCompanyId_usesLoginTenant() throws Exception {
+        securityUtils.when(SecurityUtils::getCompanyId).thenReturn(100L);
+        when(authorService.getByCompanyId(100L)).thenReturn(MpAuthor.builder().id(10L).build());
+        when(authorService.toVO(any())).thenReturn(new AuthorVO());
+
+        mvc.perform(get("/opc/marketplace/author/me").param("companyId", "999"))
+           .andExpect(status().isOk())
+           .andExpect(jsonPath("$.code").value(200));
+
+        verify(authorService).getByCompanyId(100L);
+        verify(authorService, never()).getByCompanyId(999L);
+    }
+
+    @Test
+    void me_failsClosed_whenNoCompany() throws Exception {
+        securityUtils.when(SecurityUtils::getCompanyId).thenReturn(null);
+
+        mvc.perform(get("/opc/marketplace/author/me"))
+           .andExpect(status().isOk())
+           .andExpect(jsonPath("$.code").value(400))
+           .andExpect(jsonPath("$.data").doesNotExist());
+
+        verify(authorService, never()).getByCompanyId(any());
+    }
+
     @Test
     void me_returnsNull_whenNotAuthor() throws Exception {
-        when(authorService.getByCompanyId(any())).thenReturn(null);
+        securityUtils.when(SecurityUtils::getCompanyId).thenReturn(100L);
+        when(authorService.getByCompanyId(100L)).thenReturn(null);
 
         mvc.perform(get("/opc/marketplace/author/me"))
            .andExpect(status().isOk())
@@ -3112,12 +3177,43 @@ Append to existing `AuthorControllerTest.java`:
 
     @Test
     void me_returnsAuthor_whenExists() throws Exception {
-        when(authorService.getByCompanyId(any())).thenReturn(MpAuthor.builder().id(10L).build());
+        securityUtils.when(SecurityUtils::getCompanyId).thenReturn(100L);
+        when(authorService.getByCompanyId(100L)).thenReturn(MpAuthor.builder().id(10L).build());
         when(authorService.toVO(any())).thenReturn(new AuthorVO());
 
         mvc.perform(get("/opc/marketplace/author/me"))
            .andExpect(status().isOk())
            .andExpect(jsonPath("$.code").value(200));
+    }
+
+    /**
+     * 公开资料脱敏。断言「泄露的值不出现在响应体」,而不是只断言
+     * $.data.authorName 存在 —— 后者在泄露发生时依然会通过。
+     * ⚠️ controller 测试把 service mock 掉了,证明不了 service 真的脱敏;
+     *    对应的真断言在 AuthorServiceRedactionTest。
+     */
+    @Test
+    void get_publicProfile_redactsContactFields() throws Exception {
+        MpAuthor a = MpAuthor.builder().id(10L).authorName("TestAuthor")
+            .contactEmail("secret-boss@example.com").contactPhone("13800001111")
+            .totalRevenue(new BigDecimal("9876543.21")).build();
+        AuthorVO redacted = new AuthorVO();
+        redacted.setId(10L);
+        redacted.setAuthorName("TestAuthor");
+        when(authorService.getById(10L)).thenReturn(a);
+        when(authorService.toPublicVO(a)).thenReturn(redacted);
+
+        String body = mvc.perform(get("/opc/marketplace/author/10"))
+           .andExpect(status().isOk())
+           .andExpect(jsonPath("$.data.authorName").value("TestAuthor"))
+           .andExpect(jsonPath("$.data.contactEmail").doesNotExist())
+           .andReturn().getResponse().getContentAsString();
+
+        assertThat(body)
+            .doesNotContain("secret-boss@example.com")
+            .doesNotContain("13800001111")
+            .doesNotContain("9876543.21");
+        verify(authorService, never()).toVO(a);
     }
 
     @Test
@@ -3253,9 +3349,15 @@ In `opc.security.whitelist` list, add public GET paths:
 # 匿名调用方遍历 id 只能看到 PUBLISHED 行,DRAFT/PENDING/SUSPENDED 一律 404
 /opc/marketplace/publication/{id:[0-9]+}
 /opc/marketplace/review/list/**
+# 公开作者资料 — service 层 toPublicVO 已清空 contactEmail / contactPhone / totalRevenue。
+# `[0-9]+` 是必须的: 它保证 "me" 不匹配, 于是 /me 仍需登录态。
+# ⚠️ 若该端点改回 toVO, 这条白名单 = 全网可读任意企业邮箱与营收。
 /opc/marketplace/author/{id:[0-9]+}
 /opc/marketplace/author/list
 # 注: /opc/marketplace/publication/my/{id} 与 /my/list 不加白名单 —— 需登录且校验 author 归属
+# 注: /opc/marketplace/author/{id}/stats 也不加白名单 —— 但 service 已对嵌套 author 脱敏
+# 注: /opc/marketplace/author/{id}/publications 与 /{id}/stats 是多段路径,
+#     `{id:[0-9]+}` 只匹配单段, 两者均不会被上面的白名单覆盖
 ```
 
 (POST/PUT/DELETE 不加白名单，需要 token)
@@ -3860,6 +3962,8 @@ metadata:
 - PublicationController 10: list/search/get/my/{id}/my/list/create/edit/submit-audit/online/offline
 - InstallController 5: install/uninstall/my/status/upgrade
 - AuthorController 6: apply/me/get/list/publications/stats
+  - `GET /me` — companyId 取自 `SecurityUtils.getCompanyId()`,**不接受入参**;无公司 → OpcException(400) fail-closed
+  - `GET /{id}` — 公开,走 `toPublicVO` 脱敏(contactEmail/contactPhone/totalRevenue → null)
 - ReviewController 4: create/list/update/delete
 - CategoryController 3: tree/list/get
 - TagController 1: list
