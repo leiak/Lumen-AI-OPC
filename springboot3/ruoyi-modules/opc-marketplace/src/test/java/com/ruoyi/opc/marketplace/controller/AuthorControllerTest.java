@@ -33,6 +33,7 @@ import java.math.BigDecimal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -45,9 +46,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * {@link AuthorController} 集成测试（{@code @WebMvcTest}）— P1 Task 4
  *
- * <p>覆盖 6 个场景：
+ * <p>覆盖 9 个场景：
  * <ul>
  *   <li>{@code apply_returnsAuthor} — POST /apply 正常路径（200 + JSON code=200）</li>
+ *   <li>{@code apply_ignoresBodyAuthorCompanyId_usesLoginTenant} — 越权回归：请求体冒名别家公司无效，只按登录态申请</li>
+ *   <li>{@code apply_failsClosed_whenNoCompany} — 无公司上下文 → code=400，且不写入任何公司</li>
  *   <li>{@code get_returnsAuthor}   — GET /{id} 正常路径，且必须走 {@code toPublicVO}</li>
  *   <li>{@code get_publicProfile_redactsContactFields} — 公开端点脱敏：邮箱/电话/营收的值不出现在响应体任意位置</li>
  *   <li>{@code me_ignoresRequestParamCompanyId_usesLoginTenant} — IDOR 回归：请求里带 {@code ?companyId=} 无效，只用登录态</li>
@@ -127,18 +130,18 @@ class AuthorControllerTest {
     @Test
     @DisplayName("apply — 正常路径: service.apply + toVO 都被调 → HTTP 200 + JSON code=200")
     void apply_returnsAuthor() throws Exception {
+        securityUtils.when(SecurityUtils::getCompanyId).thenReturn(100L);
         MpAuthor a = sampleAuthor();
         AuthorVO vo = new AuthorVO();
         vo.setId(10L);
         vo.setAuthorCompanyId(100L);
         vo.setAuthorName("TestAuthor");
 
-        when(authorService.apply(any(AuthorApplyRequest.class), anyLong())).thenReturn(a);
+        when(authorService.apply(any(AuthorApplyRequest.class), anyLong(), anyLong())).thenReturn(a);
         when(authorService.toVO(a)).thenReturn(vo);
 
         String body = """
             {
-              "authorCompanyId": 100,
               "authorName": "TestAuthor",
               "contactEmail": "a@b.com"
             }
@@ -152,6 +155,69 @@ class AuthorControllerTest {
                 .andExpect(jsonPath("$.data.id").value(10))
                 .andExpect(jsonPath("$.data.authorCompanyId").value(100))
                 .andExpect(jsonPath("$.data.authorName").value("TestAuthor"));
+
+        // companyId 来自登录态 100,operatorId 来自登录态 userId=1
+        verify(authorService).apply(any(AuthorApplyRequest.class), eq(100L), eq(1L));
+    }
+
+    // ==================== POST /apply — 越权回归(请求体不得指定入驻公司) ====================
+
+    @Test
+    @DisplayName("apply — 越权回归: 请求体带 authorCompanyId=999 也只按登录态那家(100)申请,DTO 已无该字段")
+    void apply_ignoresBodyAuthorCompanyId_usesLoginTenant() throws Exception {
+        securityUtils.when(SecurityUtils::getCompanyId).thenReturn(100L);
+        MpAuthor a = sampleAuthor();
+        AuthorVO vo = new AuthorVO();
+        vo.setId(10L);
+        vo.setAuthorCompanyId(100L);
+
+        when(authorService.apply(any(AuthorApplyRequest.class), anyLong(), anyLong())).thenReturn(a);
+        when(authorService.toVO(a)).thenReturn(vo);
+
+        // 请求体故意冒名别家公司(authorCompanyId=999)。AuthorApplyRequest 已删除该字段,
+        // Spring Boot 默认关闭 FAIL_ON_UNKNOWN_PROPERTIES → 该键被静默忽略,
+        // 若有人「顺手把字段加回去」,下面的 verify 会立刻红。
+        String body = """
+            {
+              "authorCompanyId": 999,
+              "authorName": "冒名申请",
+              "contactEmail": "attacker@evil.com"
+            }
+            """;
+
+        mvc.perform(post("/opc/marketplace/author/apply")
+                        .contentType("application/json").content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        // 直接证据:service 收到的 companyId 是登录态的 100,绝不是请求体里的 999
+        verify(authorService).apply(any(AuthorApplyRequest.class), eq(100L), eq(1L));
+        verify(authorService, never()).apply(any(AuthorApplyRequest.class), eq(999L), anyLong());
+
+        // 断言 DTO 上根本没有承载别家公司 id 的字段(编译期 + 反射双保险)
+        assertThat(AuthorApplyRequest.class.getDeclaredFields())
+                .as("AuthorApplyRequest 不得再有任何 companyId 类字段")
+                .noneMatch(f -> f.getName().toLowerCase().contains("company"));
+    }
+
+    @Test
+    @DisplayName("apply — 无公司上下文: fail-closed 返回 code=400,不落到任何公司名下")
+    void apply_failsClosed_whenNoCompany() throws Exception {
+        securityUtils.when(SecurityUtils::getCompanyId).thenReturn(null);
+
+        String body = """
+            {"authorName": "无租户用户", "contactEmail": "a@b.com"}
+            """;
+
+        mvc.perform(post("/opc/marketplace/author/apply")
+                        .contentType("application/json").content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("当前账号未关联企业，请先加入或创建企业"))
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        // 禁止用 companyId=0 兜底继续写入
+        verify(authorService, never()).apply(any(AuthorApplyRequest.class), any(), any());
     }
 
     // ==================== GET /{id} ====================
@@ -281,16 +347,15 @@ class AuthorControllerTest {
 
     // ==================== POST /apply — 409 异常路径 ====================
 
-    // ==================== POST /apply — 409 异常路径 ====================
-
     @Test
     @DisplayName("apply — service 抛 OpcException(409) → advice → HTTP 200 + JSON code=409 (W7 修复语义)")
     void apply_409_whenAlreadyAuthor() throws Exception {
-        when(authorService.apply(any(AuthorApplyRequest.class), anyLong()))
+        securityUtils.when(SecurityUtils::getCompanyId).thenReturn(100L);
+        when(authorService.apply(any(AuthorApplyRequest.class), anyLong(), anyLong()))
                 .thenThrow(new OpcException(409, "该企业已是作者，不可重复申请", "MARKETPLACE"));
 
         String body = """
-            {"authorCompanyId": 100, "authorName": "X", "contactEmail": "a@b.com"}
+            {"authorName": "X", "contactEmail": "a@b.com"}
             """;
 
         mvc.perform(post("/opc/marketplace/author/apply")

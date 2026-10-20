@@ -29,16 +29,23 @@ public interface AuthorService {
     /**
      * 入驻申请
      *
+     * <p><b>{@code companyId} 由 controller 从登录态
+     * {@code SecurityUtils.getCompanyId()} 解析后传入，调用方（DTO）无从指定</b> ——
+     * 入驻公司必须是申请人自己所属的那一家。历史版本把 {@code authorCompanyId} 放在
+     * 请求体里，任何已认证用户都能替别家公司占坑（{@code uk_author_company} 不含
+     * {@code deleted}，被占后别家公司永久申请不了）。
+     *
      * <p>前置检查：{@code mp_author.uk_author_company(author_company_id)} 是唯一键（不含 {@code deleted} 列），
      * 若同一公司已入驻（任何状态）重复申请 → {@code OpcException(409)}。Service 层先查一次，
      * mapper 层 INSERT 撞唯一键时由 SQL 兜底（{@code 1062 Duplicate entry}）。
      *
-     * @param req         入驻申请 DTO（带 JSR-303 校验）
+     * @param req         入驻申请 DTO（申请人自己的资料，带 JSR-303 校验；<b>不含公司 id</b>）
+     * @param companyId   申请方公司 id（来自 {@code SecurityUtils.getCompanyId()}，非 null 由 controller 保证）
      * @param operatorId  当前操作用户 id（来自 {@code SecurityUtils.getUserId()}），写入 {@code create_by/update_by}
      * @return 新作者档案（含自增 {@code id}）
      * @throws com.ruoyi.opc.common.exception.OpcException 409 已入驻 / 404 不存在
      */
-    MpAuthor apply(AuthorApplyRequest req, Long operatorId);
+    MpAuthor apply(AuthorApplyRequest req, Long companyId, Long operatorId);
 
     /**
      * 按入驻公司查作者；返回 {@code null} 表示该公司未入驻（不抛异常，供 {@code /me} 区分「未入驻」和「查询异常」）。

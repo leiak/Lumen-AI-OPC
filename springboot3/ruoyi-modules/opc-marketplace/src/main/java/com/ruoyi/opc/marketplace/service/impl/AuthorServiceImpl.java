@@ -36,14 +36,15 @@ public class AuthorServiceImpl implements AuthorService {
     private final MpPublicationMapper publicationMapper;
 
     @Override
-    public MpAuthor apply(AuthorApplyRequest req, Long operatorId) {
-        // 前置查重 — uk_author_company 不含 deleted 列,任何状态都已入驻
-        MpAuthor existing = authorMapper.selectByCompanyId(req.getAuthorCompanyId());
+    public MpAuthor apply(AuthorApplyRequest req, Long companyId, Long operatorId) {
+        // companyId 只认入参(来源:controller 的 SecurityUtils.getCompanyId()),DTO 里没有这个字段 ——
+        // 任何「指定替谁入驻」的入口都不存在。前置查重:uk_author_company 不含 deleted 列,任何状态都已入驻
+        MpAuthor existing = authorMapper.selectByCompanyId(companyId);
         if (existing != null) {
             throw new OpcException(409, "该企业已是作者，不可重复申请", "MARKETPLACE");
         }
         MpAuthor a = new MpAuthor();
-        a.setAuthorCompanyId(req.getAuthorCompanyId());
+        a.setAuthorCompanyId(companyId);
         a.setAuthorName(req.getAuthorName());
         a.setContactEmail(req.getContactEmail());
         a.setContactPhone(req.getContactPhone());
@@ -58,7 +59,7 @@ public class AuthorServiceImpl implements AuthorService {
         a.setCreateBy(String.valueOf(operatorId));
         a.setUpdateBy(String.valueOf(operatorId));
         authorMapper.insert(a);
-        log.info("[Author] apply success companyId={} authorId={}", req.getAuthorCompanyId(), a.getId());
+        log.info("[Author] apply success companyId={} authorId={}", companyId, a.getId());
         return a;
     }
 

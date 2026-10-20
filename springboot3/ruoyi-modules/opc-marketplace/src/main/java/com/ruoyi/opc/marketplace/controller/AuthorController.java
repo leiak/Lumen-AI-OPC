@@ -49,20 +49,29 @@ public class AuthorController {
 
     /**
      * 入驻申请
-     * <p>申请方（公司）id 来自请求体（{@code AuthorApplyRequest.authorCompanyId}），
-     * 创建者 id 来自 {@code SecurityUtils.getUserId()} 写入 {@code create_by/update_by}。
+     * <p>申请方（公司）id 取自登录态 {@code SecurityUtils.getCompanyId()}，
+     * 与 {@link #me()} 同源；创建者 id 取自 {@code SecurityUtils.getUserId()}
+     * 写入 {@code create_by/update_by}。请求体只承载申请人<b>自己</b>的资料
+     * （企业名 / 邮箱 / 电话 / 简介 / 头像）。
      *
-     * <p><b>⚠️ 已知未修的越权面</b>：{@code authorCompanyId} 仍由调用方传入，
-     * 任何已认证用户都能替别家公司申请入驻（撞 {@code uk_author_company} 后别家公司
-     * 自己就申请不了了 —— 属「占位」而非数据泄露）。P1 未引入审核流，
-     * 收紧它需要「申请 → 平台/该公司审批」的完整流程，超出本次范围。
-     * 修法：{@code authorCompanyId} 改为 {@code SecurityUtils.getCompanyId()}，
-     * 与 {@link #me()} 同源。
+     * <p><b>租户身份不再由请求体指定（越权修复）</b>：{@code AuthorApplyRequest}
+     * 原先带 {@code authorCompanyId} 字段，任何已认证用户都能替别家公司申请入驻。
+     * 由于 {@code mp_author.uk_author_company(author_company_id)} 是<b>不含 deleted 列</b>
+     * 的硬唯一键，被冒名申请后别家公司自己每次都拿到 409 —— 属「永久占位」而非数据泄露，
+     * 但足以把一家正常企业挡在市场之外。字段已从 DTO 删除，回归测试见
+     * {@code AuthorControllerTest#apply_ignoresBodyAuthorCompanyId_usesLoginTenant}。
+     *
+     * <p>fail-closed：账号未关联任何企业 → {@code OpcException(400)}，
+     * <b>禁止</b>用 {@code 0} 兜底（同 {@link #me()}）。
      */
     @PostMapping("/apply")
     public R<AuthorVO> apply(@Valid @RequestBody AuthorApplyRequest req) {
+        Long companyId = SecurityUtils.getCompanyId();
+        if (companyId == null) {
+            throw new OpcException(400, "当前账号未关联企业，请先加入或创建企业", "MARKETPLACE");
+        }
         Long userId = SecurityUtils.getUserId();
-        var author = authorService.apply(req, userId);
+        var author = authorService.apply(req, companyId, userId);
         return R.ok(authorService.toVO(author));
     }
 
