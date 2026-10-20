@@ -640,6 +640,7 @@ public class MpTag implements Serializable {
 package com.ruoyi.opc.marketplace.mapper;
 
 import com.ruoyi.opc.marketplace.domain.MpAuthor;
+import java.util.Collection;
 import java.util.List;
 
 public interface MpAuthorMapper {
@@ -648,6 +649,11 @@ public interface MpAuthorMapper {
     MpAuthor selectByCompanyId(Long authorCompanyId);
     int updateById(MpAuthor a);
     int incrementTotalAgents(Long id);
+    /**
+     * 批量按 id 查询作者,用于列表页一次性填充 authorName/authorAvatar,避免 N+1.
+     * 调用方契约: 传入空集合时不要调用本方法 —— MyBatis 会发出非法 SQL IN (),需在 service 层短路.
+     */
+    List<MpAuthor> selectByIds(Collection<Long> ids);
 }
 ```
 
@@ -900,7 +906,9 @@ Each XML has the same structure. `MpPublicationMapper.xml` (most complex):
 ```
 
 For other 5 XMLs, follow the same pattern. Truncated patterns:
-- `MpAuthorMapper.xml`: insert, selectById, selectByCompanyId, updateById, incrementTotalAgents
+- `MpAuthorMapper.xml`: insert, selectById, selectByCompanyId, updateById, incrementTotalAgents, selectByIds
+  - `selectByIds` 用 `<foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>` 拼 IN 子句
+  - **调用方契约**: 不要传入空集合 —— MyBatis 不能生成合法 IN (),service 层必须先短路 (`if (!authorIds.isEmpty())`)
 - `MpInstallMapper.xml`: insert, selectById, selectUnique, selectByUser, selectByTenant, updateStatus, reactivate
   - `reactivate` 必须显式写 `uninstalled_at = NULL`（`updateStatus` 的 `<set>` 无法清空该列）
   - `selectUnique` / `selectByPublicationAndUser` **不加** `deleted = 0`（见上文唯一键交互说明）
@@ -1569,7 +1577,7 @@ public interface PublicationService {
     MpPublication online(Long id, Long authorId);   // P1: auto-publish (no audit yet)
     MpPublication offline(Long id, Long authorId);
     MpPublication getById(Long id);
-    PublicationVO toVO(MpPublication p, Long categoryName);
+    PublicationVO toVO(MpPublication p);
     Map<String, Object> list(PublicationListQuery query);
     List<MpPublication> listByAuthor(Long authorId);
 }
@@ -1583,12 +1591,14 @@ package com.ruoyi.opc.marketplace.service.impl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ruoyi.opc.common.exception.OpcException;
+import com.ruoyi.opc.marketplace.domain.MpAuthor;
 import com.ruoyi.opc.marketplace.domain.MpCategory;
 import com.ruoyi.opc.marketplace.domain.MpPublication;
 import com.ruoyi.opc.marketplace.dto.PublicationCreateRequest;
 import com.ruoyi.opc.marketplace.dto.PublicationEditRequest;
 import com.ruoyi.opc.marketplace.dto.PublicationListQuery;
 import com.ruoyi.opc.marketplace.dto.PublicationVO;
+import com.ruoyi.opc.marketplace.mapper.MpAuthorMapper;
 import com.ruoyi.opc.marketplace.mapper.MpCategoryMapper;
 import com.ruoyi.opc.marketplace.mapper.MpPublicationMapper;
 import com.ruoyi.opc.marketplace.service.PublicationService;
@@ -1597,9 +1607,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -1609,6 +1622,8 @@ public class PublicationServiceImpl implements PublicationService {
 
     private final MpPublicationMapper publicationMapper;
     private final MpCategoryMapper categoryMapper;
+    /** 注入以支持列表页一次性批量填充 authorName/authorAvatar (避免 N+1) */
+    private final MpAuthorMapper authorMapper;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -1754,10 +1769,32 @@ public class PublicationServiceImpl implements PublicationService {
         vo.setAvgRating(p.getAvgRating());
         vo.setRatingCount(p.getRatingCount());
         vo.setCreateTime(p.getCreateTime());
-        // category name lookup
+
+        // 单条路径: author + category 各 1 次 DB 命中
+        if (p.getAuthorId() != null) {
+            MpAuthor a = authorMapper.selectById(p.getAuthorId());
+            if (a != null) {
+                vo.setAuthorName(a.getAuthorName());
+                vo.setAuthorAvatar(a.getAvatarUrl());
+            }
+        }
         if (p.getCategoryCode() != null) {
             MpCategory cat = categoryMapper.selectByCode(p.getProductType(), p.getCategoryCode());
             if (cat != null) vo.setCategoryName(cat.getName());
+        }
+        return vo;
+    }
+
+    /**
+     * 列表路径专用 VO 转换 — 作者批量预加载 (1+N → 1).
+     * categoryName 仍按需单查 (category 行数有限,缓存命中后实际开销小);P3 视情况改为批量.
+     */
+    private PublicationVO toVO(MpPublication p, Map<Long, MpAuthor> authors) {
+        PublicationVO vo = toVO(p);  // 单查 categoryName + 拷贝基础字段
+        MpAuthor a = authors.get(p.getAuthorId());
+        if (a != null) {
+            vo.setAuthorName(a.getAuthorName());
+            vo.setAuthorAvatar(a.getAvatarUrl());
         }
         return vo;
     }
@@ -1768,15 +1805,32 @@ public class PublicationServiceImpl implements PublicationService {
         params.put("category", query.getCategory());
         params.put("productType", query.getProductType());
         params.put("keyword", query.getKeyword());
-        params.put("status", query.getStatus() != null ? query.getStatus() : "PUBLISHED");
+        // 公开端点(网关白名单)恒定只返回 PUBLISHED。
+        // 若允许调用方传 status,匿名用户可枚举 DRAFT/PENDING/SUSPENDED —— 见 Task3 审查 Critical#1。
+        // 作者查看自己的全部状态请走 /my/list (需登录),由 listByAuthor 提供。
+        params.put("status", "PUBLISHED");
         params.put("sortBy", query.getSortBy() != null ? query.getSortBy() : "newest");
         params.put("offset", (query.getPage() - 1) * query.getPageSize());
         params.put("limit", query.getPageSize());
 
         List<MpPublication> rows = publicationMapper.selectList(params);
         int total = publicationMapper.countList(params);
+
+        // 一次性批量加载作者,避免 N+1
+        Map<Long, MpAuthor> authors = Collections.emptyMap();
+        if (!rows.isEmpty()) {
+            Set<Long> authorIds = new HashSet<>();
+            for (MpPublication p : rows) {
+                if (p.getAuthorId() != null) authorIds.add(p.getAuthorId());
+            }
+            if (!authorIds.isEmpty()) {
+                authors = authorMapper.selectByIds(authorIds).stream()
+                        .collect(Collectors.toMap(MpAuthor::getId, a -> a));
+            }
+        }
+
         Map<String, Object> data = new HashMap<>();
-        data.put("rows", rows.stream().map(this::toVO).collect(Collectors.toList()));
+        data.put("rows", rows.stream().map(p -> toVO(p, authors)).collect(Collectors.toList()));
         data.put("total", total);
         data.put("page", query.getPage());
         data.put("pageSize", query.getPageSize());
@@ -1896,7 +1950,7 @@ public class PublicationController {
 Pattern: 正常 / 鉴权失败 / 业务异常三类. 复制 AuthorControllerTest 的 `@WebMvcTest` + `MockedStatic<SecurityUtils>` 模式。
 
 Test cases:
-- `list_returnsPage` — list with status=PUBLISHED
+- `list_returnsPage` — list returns only PUBLISHED (硬编码,见 Task3 review Critical#1)
 - `get_returnsVO` — get existing id
 - `get_404_whenNotFound` — id=999
 - `create_returnsVO` — create request valid
@@ -3514,7 +3568,9 @@ def run():
         print(f"  submit: code={r['code']} status={r.get('data', {}).get('status')}")
     
     print("Step 6: List publications (public)")
-    r = get_json("/opc/marketplace/publication/list?status=PUBLISHED")
+    # 公开 endpoint 恒定 PUBLISHED (Task3 review Critical#1 已删除 status 入参);
+    # ?status= 等任意 status 查询参数会被 Spring 忽略,不会越权.
+    r = get_json("/opc/marketplace/publication/list")
     print(f"  list: code={r['code']} total={r.get('data', {}).get('total')}")
     
     print("Step 7: Search publications")
