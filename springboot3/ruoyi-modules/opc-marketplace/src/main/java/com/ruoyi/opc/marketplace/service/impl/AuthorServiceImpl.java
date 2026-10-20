@@ -99,6 +99,21 @@ public class AuthorServiceImpl implements AuthorService {
     }
 
     @Override
+    public AuthorVO toPublicVO(MpAuthor a) {
+        AuthorVO vo = toVO(a);
+        if (vo == null) {
+            return null;
+        }
+        // 公开端点(网关白名单 /opc/marketplace/author/{id:[0-9]+})的脱敏闸门。
+        // ⚠️ AuthorVO 当前没有 contactPhone 字段(domain 有),该字段不会进响应;
+        //    若日后给 VO 补 contactPhone,必须在此补一行 setContactPhone(null)。
+        vo.setContactEmail(null);
+        vo.setTotalRevenue(null);
+        log.debug("[Author] toPublicVO redacted authorId={} (contactEmail/totalRevenue cleared)", a.getId());
+        return vo;
+    }
+
+    @Override
     public Map<String, Object> list(AuthorListQuery query) {
         // P1: 占位实现 —— 返回空 rows/total,保留 query.page/pageSize 给前端做"无数据"提示
         // P2: 切换到 MpAuthorMapper.selectList(params) + countList(params),与 Publication 一致
@@ -115,7 +130,9 @@ public class AuthorServiceImpl implements AuthorService {
     public Map<String, Object> stats(Long id) {
         MpAuthor a = getById(id);
         Map<String, Object> data = new HashMap<>();
-        data.put("author", toVO(a));
+        // 嵌套的 author 同样走脱敏 —— stats 的 authorId 由调用方任意指定,
+        // 用 toVO 会让任意登录用户读到别家企业的邮箱与营收
+        data.put("author", toPublicVO(a));
         // 只统计 PUBLISHED 的商品(用 status='PUBLISHED' 过滤,与 selectPublishedById 一致语义)
         // params 同时传 authorId + status,XML 已支持 authorId 过滤;status 在 XML 里有 <if> 过滤
         Map<String, Object> params = new HashMap<>();

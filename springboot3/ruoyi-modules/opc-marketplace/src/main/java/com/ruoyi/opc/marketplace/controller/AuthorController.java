@@ -2,6 +2,7 @@ package com.ruoyi.opc.marketplace.controller;
 
 import com.ruoyi.common.core.domain.R;
 import com.ruoyi.common.security.utils.SecurityUtils;
+import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.marketplace.dto.AuthorApplyRequest;
 import com.ruoyi.opc.marketplace.dto.AuthorListQuery;
 import com.ruoyi.opc.marketplace.dto.AuthorVO;
@@ -13,7 +14,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
@@ -24,17 +24,19 @@ import java.util.Map;
  * <p>路由：{@code /opc/marketplace/author}
  * <ul>
  *   <li>POST /apply      — 入驻申请（@Valid JSR-303，撞唯一键 → 409）</li>
- *   <li>GET  /me         — 当前公司作者档案（{@code companyId} 由调用方显式传入）</li>
- *   <li>GET  /{id}       — 作者详情（公开）</li>
+ *   <li>GET  /me         — 当前登录用户所属公司的作者档案（companyId 取自登录态，无入参）</li>
+ *   <li>GET  /{id}       — 作者公开资料（<b>脱敏</b>，网关白名单允许匿名）</li>
  *   <li>GET  /list       — 作者分页列表（P1 占位返回空）</li>
  *   <li>GET  /{id}/publications — 作者的上架商品（P1 占位，P2 由 PublicationController 接管）</li>
- *   <li>GET  /{id}/stats — 作者统计（档案 + PUBLISHED 商品数）</li>
+ *   <li>GET  /{id}/stats — 作者统计（脱敏档案 + PUBLISHED 商品数）</li>
  * </ul>
  *
- * <p><b>/me 公司 id 取值约定</b>：ruoyi-api-system 的 {@code LoginUser.getSysUser()} 没有
- * {@code companyId} 字段（{@code SysUser} 不含），不能从 token 直接拿 companyId。
- * 因此 {@code /me} 显式要求 query 参数 {@code companyId}，由调用方传入 —
- * 与 opc-billing 的 {@code GET /wallet?companyId=...} 一致。
+ * <p><b>/me 租户身份来源</b>：{@code LoginUser.companyId}（commit a943721）。
+ * ruoyi-system 登录时经 {@code SysUserCompanyMapper} 反查 {@code opc_company_member}
+ * 解析出默认公司并写入 LoginUser，随 token 下发到各服务的 SecurityContextHolder，
+ * 因此 {@code SecurityUtils.getCompanyId()} 无需网关转发任何新请求头。
+ * 该方法<b>不接受</b>调用方传入的 companyId —— 传参版是 IDOR，任何已认证用户
+ * 都能读别家企业档案的邮箱/营收。
  *
  * @author OAC
  */
@@ -49,6 +51,13 @@ public class AuthorController {
      * 入驻申请
      * <p>申请方（公司）id 来自请求体（{@code AuthorApplyRequest.authorCompanyId}），
      * 创建者 id 来自 {@code SecurityUtils.getUserId()} 写入 {@code create_by/update_by}。
+     *
+     * <p><b>⚠️ 已知未修的越权面</b>：{@code authorCompanyId} 仍由调用方传入，
+     * 任何已认证用户都能替别家公司申请入驻（撞 {@code uk_author_company} 后别家公司
+     * 自己就申请不了了 —— 属「占位」而非数据泄露）。P1 未引入审核流，
+     * 收紧它需要「申请 → 平台/该公司审批」的完整流程，超出本次范围。
+     * 修法：{@code authorCompanyId} 改为 {@code SecurityUtils.getCompanyId()}，
+     * 与 {@link #me()} 同源。
      */
     @PostMapping("/apply")
     public R<AuthorVO> apply(@Valid @RequestBody AuthorApplyRequest req) {
@@ -58,10 +67,25 @@ public class AuthorController {
     }
 
     /**
-     * 当前公司的作者档案；未入驻 → {@code R.ok(null)}（不抛 404，调用方按 null 区分）
+     * 当前登录用户所属公司的作者档案。
+     *
+     * <p><b>不接受任何 companyId 入参</b> —— 租户身份一律取自登录态
+     * {@code SecurityUtils.getCompanyId()}（由 {@code opc_company_member} 在登录时解析，
+     * 见 {@code LoginUser.companyId}）。历史上这里是 {@code @RequestParam Long companyId}，
+     * 任何已认证用户都能传任意 companyId 读到别家企业档案（contactEmail / totalRevenue），
+     * 属 IDOR。
+     *
+     * <p>fail-closed：账号未关联任何企业 → {@code OpcException(400)}，
+     * <b>禁止</b>用 {@code 0} 兜底（把「无租户」当「公司 0」继续查库会越权/写脏数据）。
+     *
+     * <p>该公司尚未入驻 → {@code R.ok(null)}（不抛 404，调用方按 null 区分「未入驻」与「查询异常」）。
      */
     @GetMapping("/me")
-    public R<AuthorVO> me(@RequestParam Long companyId) {
+    public R<AuthorVO> me() {
+        Long companyId = SecurityUtils.getCompanyId();
+        if (companyId == null) {
+            throw new OpcException(400, "当前账号未关联企业，请先加入或创建企业", "MARKETPLACE");
+        }
         var author = authorService.getByCompanyId(companyId);
         if (author == null) {
             return R.ok(null);
@@ -70,11 +94,15 @@ public class AuthorController {
     }
 
     /**
-     * 作者详情（公开 — 调用方匿名也能访问，由网关白名单控制）
+     * 作者公开资料（网关白名单 {@code /opc/marketplace/author/{id:[0-9]+}} 允许匿名）。
+     *
+     * <p>走 {@code toPublicVO} 而非 {@code toVO}：脱敏在 service 层，
+     * 邮箱与营收对匿名调用方不可见。{@code "me"} 不匹配 {@code [0-9]+}，
+     * 因此本端点不会把 {@code /me} 放进白名单。
      */
     @GetMapping("/{id}")
     public R<AuthorVO> get(@PathVariable Long id) {
-        return R.ok(authorService.toVO(authorService.getById(id)));
+        return R.ok(authorService.toPublicVO(authorService.getById(id)));
     }
 
     /**
