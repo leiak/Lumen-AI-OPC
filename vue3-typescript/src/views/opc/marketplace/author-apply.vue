@@ -50,7 +50,11 @@
 
         <!-- 企业提示是常驻的，不是条件分支 —— 见下方 checkExisting 的注释。
              未关联企业的用户本来就无法通过 /author/me 探测出来（它只区分「是不是作者」），
-             所以这里把「去加入企业」的入口直接摆在表单里，而不是提交失败后才显示。 -->
+             所以这里把「去完成这一步」的入口直接摆在表单里，而不是提交失败后才显示。
+             链接指向 /opc/user/profile 而不是 /opc/invite：本页针对的正是「没有企业」的用户，
+             而 /opc/invite 没有 ?code= 时 inviteInfo 拿不到东西，页面直接渲染「邀请码无效或已过期」
+             （invite.vue 102-105 直接 return）；就算带码也没用 —— 邀请是别的公司发给他人的，
+             用户自己想创建公司得走 profile 的「+ 创建公司」。 -->
         <el-alert
           type="info"
           :closable="false"
@@ -59,7 +63,7 @@
           description="作者身份绑定企业：企业取自当前登录账号，不接受手动指定（这是后端的硬性设计，避免冒名申请占用别家企业的唯一键）。如果你的账号还没加入或创建企业，请先完成这一步，否则提交会被后端拒绝。"
           class="tenant-hint"
         >
-          <el-button size="small" @click="router.push('/opc/invite')">去加入企业</el-button>
+          <el-button size="small" @click="router.push('/opc/user/profile')">去加入企业</el-button>
         </el-alert>
 
         <div class="form-footer">

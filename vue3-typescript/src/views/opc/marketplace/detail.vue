@@ -26,25 +26,34 @@
               <div class="num"><el-icon class="star"><StarFilled /></el-icon> {{ formatRating(pub.avgRating) }}</div>
               <div class="lbl">{{ pub.ratingCount || 0 }} 条评价</div>
             </div>
-            <el-button v-if="!installed" type="primary" :loading="installing" @click="onInstall">
+            <!-- installed === null 表示「安装状态还没问出来」,此时按钮禁用:
+                 在状态回来之前画「安装」等于骗人 —— 装了的人点一下必然 409。
+                 状态查询失败也停在 null:那种情况(未关联企业/未登录)下安装本来就会同样被拒。 -->
+            <el-button
+              v-if="!installed"
+              type="primary"
+              :loading="installing"
+              :disabled="installed === null"
+              @click="onInstall"
+            >
               <el-icon><Download /></el-icon>&nbsp;安装
             </el-button>
-            <el-button v-else type="success" plain @click="onUninstall">
+            <!-- :loading 必须挂 —— request.ts 的防重复提交只拦 post/put,不拦 delete,
+                 不挂的话连点两次会发出两个 DELETE:一个成功一个 409,同屏弹两个矛盾的 toast -->
+            <el-button v-else type="success" plain :loading="installing" @click="onUninstall">
               <el-icon><CircleCheck /></el-icon>&nbsp;已安装
             </el-button>
           </div>
         </div>
       </el-card>
 
-      <!-- 统计条 -->
+      <!-- 统计条。刻意不展示「订阅数」:P1 没有订阅这个产品动作,后端
+           MpPublicationMapper#incrementSubscriptionCount 也没有任何调用方(见其 javadoc)。
+           展示一个永远为 0 的计数,比不展示更容易让人以为是 bug。P2 做订阅时再补。 -->
       <div class="stat-strip">
         <div class="stat-cell">
           <div class="num">{{ pub.installCount || 0 }}</div>
           <div class="lbl">安装数</div>
-        </div>
-        <div class="stat-cell">
-          <div class="num">{{ pub.subscriptionCount || 0 }}</div>
-          <div class="lbl">订阅数</div>
         </div>
         <div class="stat-cell">
           <div class="num">{{ pub.viewCount || 0 }}</div>
@@ -214,7 +223,11 @@ const router = useRouter()
 const loading = ref(false)
 const installing = ref(false)
 const pub = ref<PublicationVO | null>(null)
-const installed = ref(false)
+/**
+ * 三态而不是 boolean：null = 安装状态还在问 / 问失败了。
+ * 之前默认 false，意味着按钮在状态回来之前就画成「安装」——已安装的用户点一下必然 409。
+ */
+const installed = ref<boolean | null>(null)
 const activeTab = ref('intro')
 
 const reviewLoading = ref(false)
@@ -229,13 +242,24 @@ const reviewDialog = ref(false)
 const reviewSubmitting = ref(false)
 const reviewForm = reactive({ id: undefined as number | undefined, rating: 5, content: '' })
 
-/** 当前登录用户在我的评价里占一行（后端 list 返回裸 MpReview，只有 userId 可比对） */
-const myReview = computed(() => reviews.value.find((r) => currentUserId.value && String(r.userId) === currentUserId.value))
+/**
+ * 我自己的评价 —— **独立于当前页**存放（后端 list 返回裸 MpReview，只有 userId 可比对）。
+ *
+ * 之前是从 `reviews` 里 find 的，也就是「只认当前页」。后果：评价在第 3 页而用户停在第 1 页时，
+ * 按钮显示「我要评价」，提交走 createReview → 后端 uk_review(publication_id,user_id) 冲突 409。
+ *
+ * P1 没有「我的评价」单条端点，只有分页的 /review/list/{publicationId}，所以首次加载时额外拉
+ * 一页 pageSize=100（ReviewServiceImpl#listByPublication 的硬上限）来定位自己那条，之后不再重扫；
+ * 翻页途中如果本页命中也会就地补上。超过 100 条评价的商品在这一点上仍可能漏判 —— 那时候应该
+ * 补后端端点，而不是继续在前端堆扫描。
+ */
+const myReview = ref<ReviewVO | null>(null)
+const myReviewScanned = ref(false)
 
-// 路由约定 detail/:id(\\d+)；同时兼容 plan 里的 ?id= 直链
+// 路由固定是 detail/:id(\\d+)，命中该路由时 params.id 必然存在（?id=5 会匹配到别的路径），
+// 所以这里只读 params.id，不做 query 兜底 —— 兜底分支永远走不到，留着只会误导。
 const pubId = computed(() => {
-  const raw = route.params.id || route.query.id
-  const n = Number(raw)
+  const n = Number(route.params.id)
   return Number.isFinite(n) && n > 0 ? n : undefined
 })
 
@@ -280,31 +304,39 @@ async function load() {
     ElMessage.error('缺少商品 ID')
     return
   }
+  // 安装状态查询只依赖 pubId（路由参数，进来就有），不等详情接口 —— 两个请求并发跑，
+  // 「详情到了但按钮还画着安装」的窗口因此消失。之前是 await 完详情才查状态。
+  loadInstallStatus()
+  loadReviews()
+  ensureMyReview()
   loading.value = true
   try {
     // 公开详情端点：SQL 层硬过滤 status='PUBLISHED'，DRAFT 打开本页必然 404 —— 这是预期行为
     const res = await getPublication(pubId.value)
     pub.value = res.data || null
-  } catch (e: any) {
+  } catch {
     pub.value = null
-    ElMessage.error('加载商品详情失败: ' + (e?.message || 'unknown'))
+    // 不拼 e?.message：request.ts 的 code!==200 分支 reject 的是裸字符串 'error'（没有 .message），
+    // 拼上去只会得到 "加载商品详情失败: unknown"；真实文案它已经用通知弹过了。
+    ElMessage.error('加载商品详情失败')
   } finally {
     loading.value = false
   }
-  loadInstallStatus()
 }
 
 async function loadInstallStatus() {
   if (!pubId.value) return
   try {
-    // 未安装时后端返回 R.ok(null)，data 为 null —— 不能当成错误
+    // 未安装时后端 R.ok(null)，但本模块开了 default-property-inclusion: non_null，
+    // 所以响应里**没有 data 这个键**，res.data 是 undefined —— 同样不能当成错误。
     const res = await installStatus(pubId.value)
     // 注意：MpInstall.status 的取值是 ACTIVE / UNINSTALLED（InstallServiceImpl 写入的也是
     // "ACTIVE" / "UNINSTALLED"），没有 INSTALLED 这个值。比对错了会导致刷新后按钮永远退回「安装」。
     installed.value = !!res.data && res.data.status === 'ACTIVE'
   } catch {
-    // 未关联企业 / 未登录时后端 400，这里静默降级为「未安装」
-    installed.value = false
+    // 未关联企业 / 未登录时后端 400。停在 null（按钮禁用）而不是假装 false：
+    // 那种前提下的「安装」请求会以同样的理由被拒，画个能点的「安装」是骗人。
+    installed.value = null
   }
 }
 
@@ -316,8 +348,8 @@ async function onInstall() {
     installed.value = true
     if (pub.value) pub.value.installCount = (pub.value.installCount || 0) + 1
     ElMessage.success('安装成功')
-  } catch (e: any) {
-    ElMessage.error('安装失败: ' + (e?.message || 'unknown'))
+  } catch {
+    ElMessage.error('安装失败')
   } finally {
     installing.value = false
   }
@@ -331,8 +363,8 @@ async function onUninstall() {
     installed.value = false
     if (pub.value) pub.value.installCount = Math.max(0, (pub.value.installCount || 0) - 1)
     ElMessage.success('已卸载')
-  } catch (e: any) {
-    ElMessage.error('卸载失败: ' + (e?.message || 'unknown'))
+  } catch {
+    ElMessage.error('卸载失败')
   } finally {
     installing.value = false
   }
@@ -345,11 +377,31 @@ async function loadReviews() {
     const res = await listReviews(pubId.value, { page: reviewPage.value, pageSize: reviewPageSize })
     reviews.value = res.data?.rows || []
     reviewTotal.value = res.data?.total || 0
+    // 本页命中就就地补上 —— myReview 不随翻页清空，所以翻到自己的那条时按钮自然切成「修改」
+    const mine = reviews.value.find((r) => isMine(r))
+    if (mine) myReview.value = mine
   } catch {
     reviews.value = []
     reviewTotal.value = 0
   } finally {
     reviewLoading.value = false
+  }
+}
+
+/**
+ * 首次加载时扫一遍全部评价来定位「我的那条」（见 myReview 的注释）。
+ * 只跑一次；扫失败不影响评论列表，按钮退化成「我要评价」。
+ */
+async function ensureMyReview() {
+  if (myReviewScanned.value || !pubId.value || !currentUserId.value) return
+  myReviewScanned.value = true
+  try {
+    // 100 = ReviewServiceImpl#listByPublication 的 pageSize 上限，再大也会被夹回 100
+    const res = await listReviews(pubId.value, { page: 1, pageSize: 100 })
+    const mine = res.data?.rows?.find((r) => isMine(r))
+    if (mine) myReview.value = mine
+  } catch {
+    // 静默：评论列表本身由 loadReviews 负责报错，这里只是补一个按钮态
   }
 }
 
@@ -374,21 +426,26 @@ async function onSubmitReview() {
   }
   reviewSubmitting.value = true
   try {
+    let saved: ReviewVO | undefined
     if (reviewForm.id) {
-      await updateReview(reviewForm.id, { rating: reviewForm.rating, content: reviewForm.content })
+      saved = (await updateReview(reviewForm.id, { rating: reviewForm.rating, content: reviewForm.content })).data
       ElMessage.success('评价已更新')
     } else {
-      await createReview({
+      saved = (await createReview({
         publicationId: pubId.value,
         rating: reviewForm.rating,
         content: reviewForm.content
-      })
+      })).data
       ElMessage.success('评价已发布')
     }
+    // 直接用响应更新 myReview：新行按 create_time DESC 排在最前，落在当前页上，
+    // 但不依赖这一点 —— myReview 是独立状态，即使它不在本页也要记下来。
+    if (saved) myReview.value = saved
+    myReviewScanned.value = true
     reviewDialog.value = false
     await loadReviews()
-  } catch (e: any) {
-    ElMessage.error('提交失败: ' + (e?.message || 'unknown'))
+  } catch {
+    ElMessage.error('提交失败')
   } finally {
     reviewSubmitting.value = false
   }
@@ -403,9 +460,15 @@ async function onDeleteReview(r: ReviewVO) {
   try {
     await deleteReview(r.id)
     ElMessage.success('已删除')
+    // 后端是软删（HIDDEN），公开列表按 status='VISIBLE' 过滤，所以这一行确实会消失
+    if (isMine(r)) myReview.value = null
+    // 删掉本页最后一条且不在第 1 页 → 先退一页，否则会停在一个已经空了的页码上
+    if (reviews.value.length === 1 && reviewPage.value > 1) {
+      reviewPage.value -= 1
+    }
     await loadReviews()
-  } catch (e: any) {
-    ElMessage.error('删除失败: ' + (e?.message || 'unknown'))
+  } catch {
+    ElMessage.error('删除失败')
   }
 }
 
@@ -516,7 +579,8 @@ $bp-sm: 768px;
 
 .stat-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  // 与上方 3 个 stat-cell 对齐（安装数 / 浏览量 / 评分数）
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 
   .stat-cell {

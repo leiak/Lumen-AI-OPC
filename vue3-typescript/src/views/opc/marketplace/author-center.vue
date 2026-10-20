@@ -276,7 +276,23 @@ const stats = ref<AuthorStats | null>(null)
 // ---------- 计算属性 ----------
 const levelLabel = computed(() => (author.value?.level === 'PREMIUM' ? '优质作者' : '普通作者'))
 const levelTagType = computed(() => (author.value?.level === 'PREMIUM' ? 'success' : 'info'))
-const statusLabel = computed(() => (author.value?.status === 'ACTIVE' ? '正常' : author.value?.status || '—'))
+/**
+ * 作者状态标签（P1 下只有 ACTIVE 可写，见 AuthorServiceImpl#apply 的 setStatus("ACTIVE")）。
+ * 之前是 `status === 'ACTIVE' ? '正常' : status || '—'` —— 任何非 ACTIVE 的值都会把裸枚举
+ * （比如 SUSPENDED）直接显示在徽章上，等于把内部状态码漏到界面上。
+ *
+ * 与 detail.vue 的 statusLabel 是同一个套路，唯一的区别是这里的 default 不回显原值：
+ * mp_author.status 是无约束的 VARCHAR(16)，出现没预料到的值时显示「未知」，
+ * 比把内部码直接甩到用户脸上好。真出了新状态，在这里补一条即可。
+ */
+function authorStatusLabel(s?: string) {
+  switch (s) {
+    case 'ACTIVE': return '正常'
+    case 'SUSPENDED': return '已封禁'
+    default: return s ? '未知' : '—'
+  }
+}
+const statusLabel = computed(() => authorStatusLabel(author.value?.status))
 const typeCategories = computed(() => categories.value.filter((c) => c.productType === createForm.productType))
 const refIdProp = computed(() => (createForm.productType === 'AGENT' ? 'agentDefinitionId' : 'moduleId') as any)
 const totalInstalls = computed(() => myPubs.value.reduce((s, p) => s + (p.installCount || 0), 0))
@@ -354,12 +370,13 @@ const editRules: FormRules = {
 async function loadAuthor() {
   authorLoading.value = true
   try {
-    // 未入驻时后端返回 R.ok(null)，data 为 null —— 不是 404，别当错误弹
+    // 未入驻时后端 R.ok(null)，但本模块开了 default-property-inclusion: non_null，
+    // 响应里**没有 data 键**，res.data 是 undefined —— 不是 404，别当错误弹
     const res = await getMyAuthor()
     author.value = res.data || null
-  } catch (e: any) {
+  } catch {
     author.value = null
-    ElMessage.error('加载作者信息失败: ' + (e?.message || 'unknown'))
+    ElMessage.error('加载作者信息失败')
   } finally {
     authorLoading.value = false
   }
@@ -371,9 +388,9 @@ async function loadWorks() {
     // /my/list 返回作者全部状态的商品（DRAFT / PUBLISHED / DEPRECATED 都在内）
     const res = await myPublications()
     myPubs.value = res.data || []
-  } catch (e: any) {
+  } catch {
     myPubs.value = []
-    ElMessage.error('加载我的商品失败: ' + (e?.message || 'unknown'))
+    ElMessage.error('加载我的商品失败')
   } finally {
     worksLoading.value = false
   }
@@ -397,9 +414,9 @@ async function loadStats() {
   try {
     const res = await getAuthorStats(author.value.id)
     stats.value = res.data || null
-  } catch (e: any) {
+  } catch {
     stats.value = null
-    ElMessage.error('加载数据看板失败: ' + (e?.message || 'unknown'))
+    ElMessage.error('加载数据看板失败')
   } finally {
     statsLoading.value = false
   }
@@ -434,13 +451,14 @@ async function onCreate() {
     const res = await createPublication(payload)
     ElMessage.success('草稿已创建（提交审核或上架后才会出现在市场里）')
     resetCreate()
+    // 切 tab 会触发 watch(activeTab) 里的 loadWorks()，这里不要再显式调一次 ——
+    // 两次并发请求同一份数据，既浪费又会让表格闪两次 loading。
     activeTab.value = 'works'
-    await loadWorks()
     await loadStats()
     const created = res.data
     if (created?.id) openEditById(created.id)
-  } catch (e: any) {
-    ElMessage.error('创建失败: ' + (e?.message || 'unknown'))
+  } catch {
+    ElMessage.error('创建失败')
   } finally {
     creating.value = false
   }
@@ -489,8 +507,8 @@ async function openEditById(id: number) {
     editForm.iconUrl = p.iconUrl || ''
     editForm.tags = p.tags || ''
     editDialog.value = true
-  } catch (e: any) {
-    ElMessage.error('加载商品草稿失败: ' + (e?.message || 'unknown'))
+  } catch {
+    ElMessage.error('加载商品草稿失败')
   }
 }
 
@@ -510,8 +528,8 @@ async function onSaveEdit() {
     ElMessage.success('已保存')
     editDialog.value = false
     await loadWorks()
-  } catch (e: any) {
-    ElMessage.error('保存失败: ' + (e?.message || 'unknown'))
+  } catch {
+    ElMessage.error('保存失败')
   } finally {
     saving.value = false
   }
@@ -526,8 +544,8 @@ async function onSubmitAudit(row: PublicationVO) {
     ElMessage.success('已提交审核（P1 提交即自动过审）')
     await loadWorks()
     await loadStats()
-  } catch (e: any) {
-    ElMessage.error('提交审核失败: ' + (e?.message || 'unknown'))
+  } catch {
+    ElMessage.error('提交审核失败')
   }
 }
 
@@ -538,8 +556,8 @@ async function onOnline(row: PublicationVO) {
     ElMessage.success('已上架')
     await loadWorks()
     await loadStats()
-  } catch (e: any) {
-    ElMessage.error('上架失败: ' + (e?.message || 'unknown'))
+  } catch {
+    ElMessage.error('上架失败')
   }
 }
 
@@ -557,8 +575,8 @@ async function onOffline(row: PublicationVO) {
     ElMessage.success('已下架')
     await loadWorks()
     await loadStats()
-  } catch (e: any) {
-    ElMessage.error('下架失败: ' + (e?.message || 'unknown'))
+  } catch {
+    ElMessage.error('下架失败')
   }
 }
 

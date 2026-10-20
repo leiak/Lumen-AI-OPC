@@ -13,7 +13,10 @@ import type { AjaxResult } from '@/types'
 //    作者看全部状态走 `GET /publication/my/list`。
 // 3. 列表类接口返回 `R<Map<String,Object>>`，Map 键为 `rows/total/page/pageSize`，
 //    配合 AjaxResult 读作 `res.data.rows`。
-// 4. `GET /author/me` 在未入驻时返回 `R.ok(null)`，data 为 null（不是 404）。
+// 4. `GET /author/me` 在未入驻时返回 `R.ok(null)`。本模块开了
+//    `spring.jackson.default-property-inclusion: non_null`（opc-marketplace/src/main/resources/
+//    application.yml），所以 `R.ok(null)` 的响应里**根本没有 `data` 这个键**——
+//    `res.data` 是 `undefined`，不是 `null`。判空写 `res.data || null` 一样能用。
 
 /** ProductType: AGENT / MODULE */
 export type ProductType = 'AGENT' | 'MODULE'
@@ -72,6 +75,10 @@ export interface PublicationVO {
   publishedAt?: string
   viewCount?: number
   installCount?: number
+  /**
+   * P1 没有订阅这个产品动作，后端也没有任何调用方写这个计数 —— 所以**详情页刻意不展示它**
+   * （展示一个永远为 0 的数字比不展示更像 bug）。P2 真做订阅时连同 UI 一起补。
+   */
   subscriptionCount?: number
   avgRating?: number
   ratingCount?: number
@@ -113,7 +120,10 @@ export interface AuthorVO {
   authorCompanyId?: number
   authorName: string
   contactEmail?: string
-  contactPhone?: string
+  // ⚠️ 这里**刻意没有** contactPhone —— 后端 `dto/AuthorVO.java` 就没有这个字段（脱敏，
+  // 见 `AuthorServiceImpl#toPublicVO` 的注释）。值存在 `mp_author.contact_phone`，但任何
+  // 端点都不会返回它。声明一个永远拿不到的字段，只会让下一个人去找「为什么是 undefined」。
+  // 需要它就补后端 VO；`AuthorApplyPayload` 里的同名字段是真的会发出去的。
   intro?: string
   avatarUrl?: string
   level?: AuthorLevel | string
@@ -143,8 +153,10 @@ export interface AuthorApplyPayload {
 }
 
 /**
- * 评价列表行。后端 `GET /review/list/{publicationId}` 目前返回的是裸 `MpReview`
- * （不是 `ReviewVO`），因此没有 userName / userAvatar，展示时请退回 `User #id`。
+ * 评价列表行。后端 `GET /review/list/{publicationId}` 返回的是分页信封
+ * `{rows, total, page, pageSize}`（见 `ReviewServiceImpl#listByPublication`），
+ * **rows 里是裸 `MpReview` 而不是 `ReviewVO`** —— 没有 userName / userAvatar，
+ * 展示时请退回 `User #id`。
  */
 export interface ReviewVO {
   id: number
@@ -258,8 +270,11 @@ export function myInstalls(): Promise<AjaxResult<InstallVO[]>> {
   return request({ url: '/opc/marketplace/install/my', method: 'get' })
 }
 
-/** 未安装时后端返回 `R.ok(null)`（data 为 null），不要当成错误 */
-export function installStatus(id: number): Promise<AjaxResult<InstallVO | null>> {
+/**
+ * 未安装时后端 `R.ok(null)`；因为本模块开了 NON_NULL 序列化，响应里**没有 data 键**，
+ * 所以 `res.data` 是 `undefined`（不是 `null`）—— 不要当成错误。
+ */
+export function installStatus(id: number): Promise<AjaxResult<InstallVO | undefined>> {
   return request({ url: `/opc/marketplace/install/${id}/status`, method: 'get' })
 }
 
@@ -269,8 +284,11 @@ export function applyAuthor(data: AuthorApplyPayload): Promise<AjaxResult<Author
   return request({ url: '/opc/marketplace/author/apply', method: 'post', data })
 }
 
-/** 未入驻时 data 为 null（不是 404） */
-export function getMyAuthor(): Promise<AjaxResult<AuthorVO | null>> {
+/**
+ * 未入驻时后端 `R.ok(null)`；因为本模块开了 NON_NULL 序列化，响应里**没有 data 键**，
+ * 所以 `res.data` 是 `undefined`（不是 `null`），且这不是 404。
+ */
+export function getMyAuthor(): Promise<AjaxResult<AuthorVO | undefined>> {
   return request({ url: '/opc/marketplace/author/me', method: 'get' })
 }
 

@@ -48,23 +48,26 @@
           </el-select>
         </el-form-item>
         <el-form-item label="关键词">
+          <!-- 搜索/排序都必须走 onFilterChange（它把 page 复位到 1），不能直接调 load：
+               在第 3 页搜一个只有 3 条命中的词会得到 rows=[] + total=3，
+               页面显示「暂无上架商品」且分页器因 3 < pageSize 被隐藏 —— 用户被卡死在空页上。 -->
           <el-input
             v-model="query.keyword"
             placeholder="搜索商品名称 / 描述"
             clearable
             style="width: 260px"
-            @keyup.enter="load"
+            @keyup.enter="onFilterChange"
           />
         </el-form-item>
         <el-form-item label="排序">
-          <el-select v-model="query.sortBy" style="width: 140px" @change="load">
+          <el-select v-model="query.sortBy" style="width: 140px" @change="onFilterChange">
             <el-option label="最新上架" value="newest" />
             <el-option label="评分最高" value="rating" />
             <el-option label="安装最多" value="installs" />
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="load">搜索</el-button>
+          <el-button type="primary" @click="onFilterChange">搜索</el-button>
           <el-button @click="resetQuery">重置</el-button>
         </el-form-item>
       </el-form>
@@ -102,6 +105,8 @@
         <div class="card-bottom">
           <div class="meta">
             <span><el-icon><Download /></el-icon> {{ p.installCount || 0 }}</span>
+            <!-- 浏览量：由后端 GET /publication/{id} 在 200 路径上自增。这里的数字来自列表快照，
+                 只有重新 load 才刷新 —— 刚点进详情再退回来仍是旧值，这是预期延迟不是 bug。 -->
             <span><el-icon><View /></el-icon> {{ p.viewCount || 0 }}</span>
             <span><el-icon><ChatLineRound /></el-icon> {{ p.ratingCount || 0 }}</span>
           </div>
@@ -182,9 +187,9 @@ async function loadCategories() {
     categories.value = query.productType
       ? all.filter((c) => c.productType === query.productType)
       : all
-  } catch (e: any) {
+  } catch {
     categories.value = []
-    ElMessage.error('加载类目失败: ' + (e?.message || 'unknown'))
+    ElMessage.error('加载类目失败')
   }
 }
 
@@ -202,10 +207,10 @@ async function load() {
     })
     publications.value = res.data?.rows || []
     total.value = res.data?.total || 0
-  } catch (e: any) {
+  } catch {
     publications.value = []
     total.value = 0
-    ElMessage.error('加载商品失败: ' + (e?.message || 'unknown'))
+    ElMessage.error('加载商品失败')
   } finally {
     loading.value = false
   }
@@ -219,6 +224,11 @@ function onProductTypeChange() {
   load()
 }
 
+/**
+ * 所有「缩小结果集」的控件（分类 / 关键词 / 排序）统一走这里。
+ * 必须先复位 page —— 见模板里关键词输入框上的注释：在第 3 页收窄条件会拿到空 rows，
+ * 而分页器因 total < pageSize 被隐藏，用户会被困在一个没有返回路径的空页上。
+ */
 function onFilterChange() {
   query.page = 1
   load()
