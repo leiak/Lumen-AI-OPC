@@ -1,6 +1,6 @@
 # OPC 验证报告索引
 
-> 48 个 `OPC-W*-VERIFICATION-*.md` + 1 个 M4 部署报告。按周次 + 里程碑归档。
+> 49 个 `OPC-W*-VERIFICATION-*.md` + 1 个 M4 部署报告。按周次 + 里程碑归档。
 
 ## 周次速览
 
@@ -21,6 +21,7 @@
 | [W75](#week-75) | opc-content e2e 修复 + LLM retry | 1 |
 | [W49](#week-49) | opc-notification 服务全栈交付 | 7 |
 | [W50](#week-50) | opc-crm 客户关系管理服务全栈交付 | 20 |
+| [W80](#week-80) | opc-marketplace 智能体市场 P1 (⚠️ 未部署 / 未跑 e2e / 未跑 health-check) | 1 |
 | [late/](#late) | W19-W22 api 契约 + SFC Logo | 1 |
 | [M4](#m4-insight) | Insight MVP 部署 + 验证 | 2 |
 
@@ -180,6 +181,16 @@ opc-content 服务 W74 交付后 e2e Step 4/6 持续失败的根因分析 + 修�
 | [opc-crm-task18-frontend.md](./week-50/opc-crm-task18-frontend.md) | Task 18: 4 Vue 3 views + crm.ts (41 fns) + router |
 | [opc-crm-task19-e2e.md](./week-50/opc-crm-task19-e2e.md) | Task 19: crm_e2e.py 23/23 PASS (1 bug fix: score NOT NULL) |
 | [opc-crm-week50-verification.md](./week-50/opc-crm-week50-verification.md) | W50 验收报告 (Task 20) |
+
+## Week 80
+
+opc-marketplace (智能体市场, 9317) P1。**代码与静态配置可验收 (148 单测 + 6 controllers / 29 端点 + 24 条 API 契约对齐且 5 个未绑定端点逐条有据 + 三环境 Helm 渲染 + 白名单 44 条不变式);运行时完全未验证。**
+
+⚠️ 阻塞根因: Docker 主机与其他项目争抢 3308 / 8848 / 9848 / 8080 (被 `res-mysql` / `res-nacos` / `aicustomer-web-1` 占用),且 `fail-fast: true` 要求先导 `opc-marketplace-dev.yml` 到 Nacos。
+
+| 文件 | 主题 |
+|------|------|
+| [OPC-W80-VERIFICATION-opc-marketplace.md](./week-80/OPC-W80-VERIFICATION-opc-marketplace.md) | P1 验收: 148 单测 / 6 表 / **6 controllers · 29 端点** / 4 Vue 页 / 24 API 路径(另 5 个端点刻意不绑定,已逐条列明理由)+ 5 项未验证 + 7 项已知缺陷 |
 
 ## Late
 
