@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.marketplace.mapper.MpCategoryMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.marketplace.domain.MpCategory">
+        <id     column="id"          property="id"/>
+        <result column="parent_id"   property="parentId"/>
+        <result column="product_type" property="productType"/>
+        <result column="code"        property="code"/>
+        <result column="name"        property="name"/>
+        <result column="sort_order"  property="sortOrder"/>
+        <result column="icon"        property="icon"/>
+        <result column="create_by"   property="createBy"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_by"   property="updateBy"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, parent_id, product_type, code, name, sort_order, icon,
+        create_by, create_time, update_by, update_time
+    </sql>
+
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_category WHERE deleted = 0
+        ORDER BY product_type, sort_order, id
+    </select>
+
+    <select id="selectByProductType" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_category WHERE product_type = #{productType} AND deleted = 0
+        ORDER BY sort_order, id
+    </select>
+
+    <select id="selectByCode" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_category WHERE product_type = #{productType} AND code = #{code} AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_category WHERE id = #{id} AND deleted = 0
+    </select>
+
+</mapper>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.marketplace.mapper.MpTagMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.marketplace.domain.MpTag">
+        <id     column="id"         property="id"/>
+        <result column="name"       property="name"/>
+        <result column="category"   property="category"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="create_by"  property="createBy"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_by"  property="updateBy"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, name, category, sort_order, create_by, create_time, update_by, update_time
+    </sql>
+
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_tag WHERE deleted = 0
+        ORDER BY category, sort_order, id
+    </select>
+
+    <select id="selectByCategory" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_tag WHERE category = #{category} AND deleted = 0
+        ORDER BY sort_order, id
+    </select>
+
+</mapper>

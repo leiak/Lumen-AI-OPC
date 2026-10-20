@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.marketplace.mapper.MpPublicationMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.marketplace.domain.MpPublication">
+        <id     column="id"                 property="id"/>
+        <result column="product_type"       property="productType"/>
+        <result column="agent_definition_id" property="agentDefinitionId"/>
+        <result column="module_id"          property="moduleId"/>
+        <result column="author_id"          property="authorId"/>
+        <result column="code"               property="code"/>
+        <result column="name"               property="name"/>
+        <result column="category_code"      property="categoryCode"/>
+        <result column="sub_category_code"  property="subCategoryCode"/>
+        <result column="summary"            property="summary"/>
+        <result column="long_description"   property="longDescription"/>
+        <result column="icon_url"           property="iconUrl"/>
+        <result column="screenshots"        property="screenshots"/>
+        <result column="tags"               property="tags"/>
+        <result column="status"             property="status"/>
+        <result column="published_at"       property="publishedAt"/>
+        <result column="audit_message"      property="auditMessage"/>
+        <result column="view_count"         property="viewCount"/>
+        <result column="install_count"      property="installCount"/>
+        <result column="subscription_count" property="subscriptionCount"/>
+        <result column="avg_rating"         property="avgRating"/>
+        <result column="rating_count"       property="ratingCount"/>
+        <result column="create_by"          property="createBy"/>
+        <result column="create_time"        property="createTime"/>
+        <result column="update_by"          property="updateBy"/>
+        <result column="update_time"        property="updateTime"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, product_type, agent_definition_id, module_id, author_id, code, name,
+        category_code, sub_category_code, summary, long_description, icon_url, screenshots, tags, status,
+        published_at, audit_message, view_count, install_count, subscription_count, avg_rating, rating_count,
+        create_by, create_time, update_by, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.marketplace.domain.MpPublication"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mp_publication
+        (product_type, agent_definition_id, module_id, author_id, code, name,
+         category_code, sub_category_code, summary, long_description, icon_url, screenshots, tags, status,
+         create_by, update_by)
+        VALUES
+        (#{productType}, #{agentDefinitionId}, #{moduleId}, #{authorId}, #{code}, #{name},
+         #{categoryCode}, #{subCategoryCode}, #{summary}, #{longDescription}, #{iconUrl}, #{screenshots},
+         #{tags}, COALESCE(#{status}, 'DRAFT'), #{createBy}, #{updateBy})
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_publication WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectByCode" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_publication WHERE code = #{code} AND deleted = 0 LIMIT 1
+    </select>
+
+    <select id="selectList" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_publication
+        <where>
+            deleted = 0
+            <if test="category != null and category != ''">AND category_code = #{category}</if>
+            <if test="productType != null and productType != ''">AND product_type = #{productType}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+            <if test="authorId != null">AND author_id = #{authorId}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (name LIKE CONCAT('%', #{keyword}, '%')
+                  OR summary LIKE CONCAT('%', #{keyword}, '%')
+                  OR code LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'rating'">avg_rating DESC, rating_count DESC, id DESC</when>
+            <when test="sortBy == 'installs'">install_count DESC, id DESC</when>
+            <when test="sortBy == 'newest'">COALESCE(published_at, create_time) DESC, id DESC</when>
+            <otherwise>COALESCE(published_at, create_time) DESC, id DESC</otherwise>
+        </choose>
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countList" resultType="int">
+        SELECT COUNT(*) FROM mp_publication
+        <where>
+            deleted = 0
+            <if test="category != null and category != ''">AND category_code = #{category}</if>
+            <if test="productType != null and productType != ''">AND product_type = #{productType}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+            <if test="authorId != null">AND author_id = #{authorId}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (name LIKE CONCAT('%', #{keyword}, '%')
+                  OR summary LIKE CONCAT('%', #{keyword}, '%')
+                  OR code LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+    </select>
+
+    <select id="selectByAuthorId" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_publication WHERE author_id = #{authorId} AND deleted = 0 ORDER BY create_time DESC, id DESC
+    </select>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.marketplace.domain.MpPublication">
+        UPDATE mp_publication
+        <set>
+            <if test="name != null">name = #{name},</if>
+            <if test="categoryCode != null">category_code = #{categoryCode},</if>
+            <if test="subCategoryCode != null">sub_category_code = #{subCategoryCode},</if>
+            <if test="summary != null">summary = #{summary},</if>
+            <if test="longDescription != null">long_description = #{longDescription},</if>
+            <if test="iconUrl != null">icon_url = #{iconUrl},</if>
+            <if test="screenshots != null">screenshots = #{screenshots},</if>
+            <if test="tags != null">tags = #{tags},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="publishedAt != null">published_at = #{publishedAt},</if>
+            <if test="auditMessage != null">audit_message = #{auditMessage},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            update_time = NOW(3)
+        </set>
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <update id="incrementViewCount">
+        UPDATE mp_publication SET view_count = view_count + 1, update_time = NOW(3)
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <update id="incrementInstallCount">
+        UPDATE mp_publication SET install_count = install_count + 1, update_time = NOW(3)
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <update id="incrementSubscriptionCount">
+        UPDATE mp_publication SET subscription_count = subscription_count + 1, update_time = NOW(3)
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <update id="updateRating">
+        UPDATE mp_publication SET avg_rating = #{avg}, rating_count = #{count}, update_time = NOW(3)
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <update id="updateStatus">
+        UPDATE mp_publication SET status = #{status}, update_time = NOW(3)
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+</mapper>

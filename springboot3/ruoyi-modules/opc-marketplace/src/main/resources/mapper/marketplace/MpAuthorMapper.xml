@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.marketplace.mapper.MpAuthorMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.marketplace.domain.MpAuthor">
+        <id     column="id"                property="id"/>
+        <result column="author_company_id" property="authorCompanyId"/>
+        <result column="author_name"       property="authorName"/>
+        <result column="contact_email"     property="contactEmail"/>
+        <result column="contact_phone"     property="contactPhone"/>
+        <result column="intro"             property="intro"/>
+        <result column="avatar_url"        property="avatarUrl"/>
+        <result column="level"             property="level"/>
+        <result column="total_agents"      property="totalAgents"/>
+        <result column="total_subscribers" property="totalSubscribers"/>
+        <result column="total_revenue"     property="totalRevenue"/>
+        <result column="status"            property="status"/>
+        <result column="create_by"         property="createBy"/>
+        <result column="create_time"       property="createTime"/>
+        <result column="update_by"         property="updateBy"/>
+        <result column="update_time"       property="updateTime"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, author_company_id, author_name, contact_email, contact_phone, intro, avatar_url,
+        level, total_agents, total_subscribers, total_revenue, status,
+        create_by, create_time, update_by, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.marketplace.domain.MpAuthor"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mp_author
+        (author_company_id, author_name, contact_email, contact_phone, intro, avatar_url,
+         level, total_agents, total_subscribers, total_revenue, status, create_by, update_by)
+        VALUES
+        (#{authorCompanyId}, #{authorName}, #{contactEmail}, #{contactPhone}, #{intro}, #{avatarUrl},
+         COALESCE(#{level}, 'NORMAL'), COALESCE(#{totalAgents}, 0), COALESCE(#{totalSubscribers}, 0),
+         COALESCE(#{totalRevenue}, 0), COALESCE(#{status}, 'ACTIVE'), #{createBy}, #{updateBy})
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_author WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectByCompanyId" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_author WHERE author_company_id = #{authorCompanyId} AND deleted = 0 LIMIT 1
+    </select>
+
+    <update id="updateById" parameterType="com.ruoyi.opc.marketplace.domain.MpAuthor">
+        UPDATE mp_author
+        <set>
+            <if test="authorName != null">author_name = #{authorName},</if>
+            <if test="contactEmail != null">contact_email = #{contactEmail},</if>
+            <if test="contactPhone != null">contact_phone = #{contactPhone},</if>
+            <if test="intro != null">intro = #{intro},</if>
+            <if test="avatarUrl != null">avatar_url = #{avatarUrl},</if>
+            <if test="level != null">level = #{level},</if>
+            <if test="totalAgents != null">total_agents = #{totalAgents},</if>
+            <if test="totalSubscribers != null">total_subscribers = #{totalSubscribers},</if>
+            <if test="totalRevenue != null">total_revenue = #{totalRevenue},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            update_time = NOW(3)
+        </set>
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <update id="incrementTotalAgents">
+        UPDATE mp_author SET total_agents = total_agents + 1, update_time = NOW(3)
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+</mapper>

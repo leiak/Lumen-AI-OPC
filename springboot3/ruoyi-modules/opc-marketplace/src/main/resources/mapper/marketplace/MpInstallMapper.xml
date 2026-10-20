@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.marketplace.mapper.MpInstallMapper">
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.marketplace.domain.MpInstall">
+        <id     column="id"                property="id"/>
+        <result column="publication_id"    property="publicationId"/>
+        <result column="tenant_company_id" property="tenantCompanyId"/>
+        <result column="user_id"           property="userId"/>
+        <result column="agent_instance_id" property="agentInstanceId"/>
+        <result column="install_source"    property="installSource"/>
+        <result column="status"            property="status"/>
+        <result column="installed_at"      property="installedAt"/>
+        <result column="uninstalled_at"    property="uninstalledAt"/>
+        <result column="create_by"         property="createBy"/>
+        <result column="create_time"       property="createTime"/>
+        <result column="update_by"         property="updateBy"/>
+        <result column="update_time"       property="updateTime"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, publication_id, tenant_company_id, user_id, agent_instance_id, install_source, status,
+        installed_at, uninstalled_at, create_by, create_time, update_by, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.ruoyi.opc.marketplace.domain.MpInstall"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mp_install
+        (publication_id, tenant_company_id, user_id, agent_instance_id, install_source, status,
+         installed_at, create_by, update_by)
+        VALUES
+        (#{publicationId}, #{tenantCompanyId}, #{userId}, #{agentInstanceId},
+         COALESCE(#{installSource}, 'MARKET'), COALESCE(#{status}, 'ACTIVE'),
+         COALESCE(#{installedAt}, NOW(3)), #{createBy}, #{updateBy})
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_install WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <!-- uk_install(publication_id, tenant_company_id, user_id) 不含 deleted，
+         故这里不过滤 deleted：软删除的行同样占用唯一键，必须能被查到 -->
+    <select id="selectUnique" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_install
+        WHERE publication_id = #{publicationId}
+          AND tenant_company_id = #{tenantCompanyId}
+          AND user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <select id="selectByUser" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_install WHERE user_id = #{userId} AND deleted = 0
+        ORDER BY installed_at DESC, id DESC
+    </select>
+
+    <select id="selectByTenant" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_install WHERE tenant_company_id = #{tenantCompanyId} AND deleted = 0
+        ORDER BY installed_at DESC, id DESC
+    </select>
+
+    <update id="updateStatus">
+        UPDATE mp_install
+        <set>
+            status = #{status},
+            <if test="uninstalledAt != null">uninstalled_at = #{uninstalledAt},</if>
+            update_time = NOW(3)
+        </set>
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+</mapper>
