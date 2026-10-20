@@ -55,6 +55,9 @@
         FROM mp_publication WHERE id = #{id} AND deleted = 0
     </select>
 
+    <!-- mp_publication 生命周期走 status,本模块无软删除路径(无 deleted=1 写入),
+         故此过滤仅为防御性。若将来新增软删除,须同步把 uk_pub_code 改为含 deleted,
+         否则软删行仍占唯一键,重新发布会撞 1062。 -->
     <select id="selectByCode" resultMap="BaseResultMap">
         SELECT <include refid="BaseColumns"/>
         FROM mp_publication WHERE code = #{code} AND deleted = 0 LIMIT 1
@@ -79,8 +82,8 @@
         <choose>
             <when test="sortBy == 'rating'">avg_rating DESC, rating_count DESC, id DESC</when>
             <when test="sortBy == 'installs'">install_count DESC, id DESC</when>
-            <when test="sortBy == 'newest'">COALESCE(published_at, create_time) DESC, id DESC</when>
-            <otherwise>COALESCE(published_at, create_time) DESC, id DESC</otherwise>
+            <when test="sortBy == 'newest'">published_at DESC, id DESC</when>
+            <otherwise>published_at DESC, id DESC</otherwise>
         </choose>
         LIMIT #{offset}, #{limit}
     </select>

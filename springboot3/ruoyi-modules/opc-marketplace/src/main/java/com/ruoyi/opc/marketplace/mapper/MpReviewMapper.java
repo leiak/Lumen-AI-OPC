@@ -32,7 +32,13 @@ public interface MpReviewMapper {
 
     int countList(Map<String, Object> params);
 
-    /** 仅统计 VISIBLE 且未删除的评价 */
+    /**
+     * 仅统计 VISIBLE 且未删除的评价。
+     * <p><b>注意</b>：本方法对零行返回 {@code null}（SQL {@code AVG} 本身行为），
+     * 但 {@code mp_publication.avg_rating} 是 {@code NOT NULL} 列，
+     * Task 7 调用方必须 {@code COALESCE(averageForPublication(id), 0)}，否则会撞 NOT NULL。
+     * </p>
+     */
     BigDecimal averageForPublication(Long publicationId);
 
     /** 仅统计 VISIBLE 且未删除的评价 */

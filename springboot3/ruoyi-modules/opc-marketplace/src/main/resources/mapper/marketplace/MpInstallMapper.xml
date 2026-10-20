@@ -72,4 +72,16 @@
         WHERE id = #{id} AND deleted = 0
     </update>
 
+    <update id="reactivate">
+        UPDATE mp_install
+        SET status = 'ACTIVE',
+            uninstalled_at = NULL,
+            deleted = 0,
+            agent_instance_id = #{agentInstanceId},
+            installed_at = #{installedAt},
+            update_by = #{updateBy},
+            update_time = NOW(3)
+        WHERE id = #{id}
+    </update>
+
 </mapper>

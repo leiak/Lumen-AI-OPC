@@ -33,4 +33,15 @@ public interface MpInstallMapper {
 
     int updateStatus(@Param("id") Long id, @Param("status") String status,
                      @Param("uninstalledAt") LocalDateTime uninstalledAt);
+
+    /**
+     * 重新安装：复活既有行。
+     * 背景：uk_install(publication_id, tenant_company_id, user_id) 不含 deleted，
+     * 软删除行仍占用唯一键，重复 INSERT 会撞 1062；且 updateStatus 的 <set> 无法清空
+     * uninstalled_at，故单独提供本方法，显式置 NULL 并复位 deleted。
+     */
+    int reactivate(@Param("id") Long id,
+                   @Param("agentInstanceId") Long agentInstanceId,
+                   @Param("installedAt") LocalDateTime installedAt,
+                   @Param("updateBy") String updateBy);
 }

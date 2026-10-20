@@ -43,6 +43,9 @@
         FROM mp_author WHERE id = #{id} AND deleted = 0
     </select>
 
+    <!-- mp_author 生命周期走 status,本模块无软删除路径(无 deleted=1 写入),
+         故此过滤仅为防御性。若将来新增软删除,须同步把 uk_author_company 改为含 deleted,
+         否则软删行仍占唯一键,重新入驻会撞 1062。 -->
     <select id="selectByCompanyId" resultMap="BaseResultMap">
         SELECT <include refid="BaseColumns"/>
         FROM mp_author WHERE author_company_id = #{authorCompanyId} AND deleted = 0 LIMIT 1
