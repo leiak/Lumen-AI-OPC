@@ -45,6 +45,10 @@ import java.util.Map;
  * 解析出当前作者的 {@code MpAuthor}；解析不到 → 403「请先申请成为作者」，
  * 绝不让 {@code author.getId()} 空指针变成 500。
  *
+ * <p><b>authorId 与 operatorId 分开传</b>：前者是作者档案 id（归属校验用），
+ * 后者是 {@code SecurityUtils.getUserId()}（写入 {@code create_by/update_by}）。
+ * 两者在同一个请求里都要，但语义不同 —— 详见 {@link PublicationService} 的类注释。
+ *
  * @author OAC
  */
 @RestController
@@ -123,28 +127,28 @@ public class PublicationController {
     @PutMapping("/{id}")
     public R<PublicationVO> edit(@PathVariable Long id, @Valid @RequestBody PublicationEditRequest req) {
         Long authorId = currentAuthorId();
-        MpPublication p = publicationService.edit(id, req, authorId);
+        MpPublication p = publicationService.edit(id, req, authorId, SecurityUtils.getUserId());
         return R.ok(publicationService.toVO(p));
     }
 
     @PostMapping("/{id}/submit-audit")
     public R<PublicationVO> submitAudit(@PathVariable Long id) {
         Long authorId = currentAuthorId();
-        MpPublication p = publicationService.submitAudit(id, authorId);
+        MpPublication p = publicationService.submitAudit(id, authorId, SecurityUtils.getUserId());
         return R.ok(publicationService.toVO(p));
     }
 
     @PostMapping("/{id}/online")
     public R<PublicationVO> online(@PathVariable Long id) {
         Long authorId = currentAuthorId();
-        MpPublication p = publicationService.online(id, authorId);
+        MpPublication p = publicationService.online(id, authorId, SecurityUtils.getUserId());
         return R.ok(publicationService.toVO(p));
     }
 
     @PostMapping("/{id}/offline")
     public R<PublicationVO> offline(@PathVariable Long id) {
         Long authorId = currentAuthorId();
-        MpPublication p = publicationService.offline(id, authorId);
+        MpPublication p = publicationService.offline(id, authorId, SecurityUtils.getUserId());
         return R.ok(publicationService.toVO(p));
     }
 

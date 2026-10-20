@@ -39,6 +39,13 @@ import java.util.stream.Collectors;
  * DDL 里的 {@code DEFAULT}，必须由 service 层给值。其余计数列当前不在 INSERT 列清单里，
  * 走 DDL DEFAULT；service 层仍然显式赋值，避免日后有人把这些列加进 INSERT 时炸掉。
  *
+ * <p><b>{@code update_by} 只写操作者 userId，永不写 authorId</b>：{@code mp_publication}
+ * 只有一列 {@code create_by/update_by}，而「归属」（authorId，取自登录租户的作者档案）与
+ * 「操作」（operatorId，取自 {@code SecurityUtils.getUserId()}）是两个不同的 id。
+ * 早期实现把 authorId 写进 {@code update_by}，与 {@code create} 写的 userId 混在同一列里，
+ * 审计时无法判断是谁改的。现在全部写方法统一写 operatorId（与 RuoYi 其他模块一致），
+ * authorId 只用于归属校验（{@link #requireOwnership}），不进 {@code create_by/update_by}。
+ *
  * <p><b>ObjectMapper 是 {@code new} 出来的，不是 Spring bean</b>：本类只用它把
  * {@code List<String>} 序列化成 JSON 数组，不涉及 domain 对象的自定义模块，
  * 因此不需要 Spring 的全局 Jackson 配置。若日后要用它序列化带 {@code @JsonFormat}
@@ -125,54 +132,64 @@ public class PublicationServiceImpl implements PublicationService {
     }
 
     @Override
-    public MpPublication edit(Long id, PublicationEditRequest req, Long authorId) {
+    public MpPublication edit(Long id, PublicationEditRequest req, Long authorId, Long operatorId) {
         // 作者侧读路径:走 getById(不过滤 status),否则作者改不了自己的 DRAFT
         MpPublication p = getById(id);
         requireOwnership(p, authorId, "只有作者本人可编辑");
         // 局部更新:null = 不改(无法把字段显式置 null,这是本 API 的既定语义)
         if (req.getName() != null) p.setName(req.getName());
-        if (req.getCategoryCode() != null) p.setCategoryCode(req.getCategoryCode());
+        if (req.getCategoryCode() != null) {
+            // 与 create() 第 2 步同一条守卫。不校验就会落一个指向空行的 category_code:
+            // 商品照常上架,列表里 categoryName 恒为 null,category= 过滤 join 到孤儿。
+            // edit 请求体刻意不带 productType(不可改),所以用库里这一行自己的
+            // product_type 去查 —— uk_cat_code 是 (product_type, code) 复合唯一键。
+            MpCategory cat = categoryMapper.selectByCode(p.getProductType(), req.getCategoryCode());
+            if (cat == null) {
+                throw new OpcException(400, "类目不存在: " + req.getCategoryCode(), "MARKETPLACE");
+            }
+            p.setCategoryCode(req.getCategoryCode());
+        }
         if (req.getSubCategoryCode() != null) p.setSubCategoryCode(req.getSubCategoryCode());
         if (req.getSummary() != null) p.setSummary(req.getSummary());
         if (req.getLongDescription() != null) p.setLongDescription(req.getLongDescription());
         if (req.getIconUrl() != null) p.setIconUrl(req.getIconUrl());
         if (req.getTags() != null) p.setTags(req.getTags());
         if (req.getScreenshots() != null) p.setScreenshots(serializeScreenshots(req.getScreenshots()));
-        p.setUpdateBy(String.valueOf(authorId));
+        p.setUpdateBy(String.valueOf(operatorId));
         publicationMapper.updateById(p);
         return publicationMapper.selectById(id);
     }
 
     @Override
-    public MpPublication submitAudit(Long id, Long authorId) {
+    public MpPublication submitAudit(Long id, Long authorId, Long operatorId) {
         MpPublication p = getById(id);
         requireOwnership(p, authorId, "只有作者本人可提交");
         if (!STATUS_DRAFT.equals(p.getStatus())) {
             throw new OpcException(400, "只有 DRAFT 状态可提交审核", "MARKETPLACE");
         }
         // P1: auto-approve(P3 接入真实审核流后,这里改为置 PENDING)
-        return publish(p, authorId);
+        return publish(p, authorId, operatorId);
     }
 
     @Override
-    public MpPublication online(Long id, Long authorId) {
+    public MpPublication online(Long id, Long authorId, Long operatorId) {
         MpPublication p = getById(id);
         requireOwnership(p, authorId, "只有作者本人可上架");
         if (!ONLINE_FROM.contains(p.getStatus())) {
             throw new OpcException(400,
                     "当前状态不可上架: " + p.getStatus() + "（允许 " + ONLINE_FROM + "）", "MARKETPLACE");
         }
-        return publish(p, authorId);
+        return publish(p, authorId, operatorId);
     }
 
     @Override
-    public MpPublication offline(Long id, Long authorId) {
+    public MpPublication offline(Long id, Long authorId, Long operatorId) {
         MpPublication p = getById(id);
         requireOwnership(p, authorId, "只有作者本人可下架");
         p.setStatus(STATUS_DEPRECATED);
-        p.setUpdateBy(String.valueOf(authorId));
+        p.setUpdateBy(String.valueOf(operatorId));
         publicationMapper.updateById(p);
-        log.info("[Publication] offline id={} authorId={}", id, authorId);
+        log.info("[Publication] offline id={} authorId={} operatorId={}", id, authorId, operatorId);
         return p;
     }
 
@@ -393,12 +410,12 @@ public class PublicationServiceImpl implements PublicationService {
     }
 
     /** {@code publish} 之外的公共上架动作(P1 自动过审) */
-    private MpPublication publish(MpPublication p, Long authorId) {
+    private MpPublication publish(MpPublication p, Long authorId, Long operatorId) {
         p.setStatus(STATUS_PUBLISHED);
         p.setPublishedAt(LocalDateTime.now());
-        p.setUpdateBy(String.valueOf(authorId));
+        p.setUpdateBy(String.valueOf(operatorId));
         publicationMapper.updateById(p);
-        log.info("[Publication] published id={} authorId={}", p.getId(), authorId);
+        log.info("[Publication] published id={} authorId={} operatorId={}", p.getId(), authorId, operatorId);
         return p;
     }
 

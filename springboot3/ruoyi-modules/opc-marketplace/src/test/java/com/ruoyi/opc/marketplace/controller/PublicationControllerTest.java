@@ -62,6 +62,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>作者读自己的 DRAFT 走 {@code /my/{id}}，且非本人 403</li>
  *   <li>所有租户维度入口在 {@code companyId == null} 时 fail-closed（400），不用 0 兜底</li>
  *   <li>未入驻（非作者）时一律 403，绝不让 author 为 null 变成 500</li>
+ *   <li>写操作把 <b>authorId（=10，来自 companyId 解析）</b>与 <b>operatorId（=1，来自
+ *       {@code SecurityUtils.getUserId()}）</b>分两个参数传下去 —— 混用会让审计列失真</li>
  * </ul>
  *
  * @author OAC
@@ -337,13 +339,13 @@ class PublicationControllerTest {
     }
 
     @Test
-    @DisplayName("edit — 正常路径: 传当前登录者的 authorId(不是请求体里的任何东西)")
+    @DisplayName("edit — 正常路径: authorId 来自登录租户解析, operatorId 来自登录用户(两者不同源)")
     void edit_returnsVO() throws Exception {
         loginAsAuthor();
         MpPublication p = pub(1L, 10L, "DRAFT");
         PublicationVO edited = vo(1L, "DRAFT");
         edited.setName("新名字");
-        when(publicationService.edit(eq(1L), any(PublicationEditRequest.class), eq(10L))).thenReturn(p);
+        when(publicationService.edit(eq(1L), any(PublicationEditRequest.class), eq(10L), eq(1L))).thenReturn(p);
         when(publicationService.toVO(p)).thenReturn(edited);
 
         mvc.perform(put("/opc/marketplace/publication/1")
@@ -352,14 +354,14 @@ class PublicationControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.name").value("新名字"));
 
-        verify(publicationService).edit(eq(1L), any(PublicationEditRequest.class), eq(10L));
+        verify(publicationService).edit(eq(1L), any(PublicationEditRequest.class), eq(10L), eq(1L));
     }
 
     @Test
     @DisplayName("edit — 非本人 → 403(service 归属校验透传到响应)")
     void edit_403_whenOtherAuthorsPublication() throws Exception {
         loginAsAuthor();
-        when(publicationService.edit(eq(2L), any(PublicationEditRequest.class), eq(10L)))
+        when(publicationService.edit(eq(2L), any(PublicationEditRequest.class), eq(10L), eq(1L)))
                 .thenThrow(new OpcException(403, "只有作者本人可编辑", "MARKETPLACE"));
 
         mvc.perform(put("/opc/marketplace/publication/2")
@@ -379,7 +381,7 @@ class PublicationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(400));
 
-        verify(publicationService, never()).edit(any(), any(), any());
+        verify(publicationService, never()).edit(any(), any(), any(), any());
     }
 
     @Test
@@ -387,7 +389,7 @@ class PublicationControllerTest {
     void submitAudit_returnsPublished() throws Exception {
         loginAsAuthor();
         MpPublication p = pub(1L, 10L, "PUBLISHED");
-        when(publicationService.submitAudit(eq(1L), eq(10L))).thenReturn(p);
+        when(publicationService.submitAudit(eq(1L), eq(10L), eq(1L))).thenReturn(p);
         when(publicationService.toVO(p)).thenReturn(vo(1L, "PUBLISHED"));
 
         mvc.perform(post("/opc/marketplace/publication/1/submit-audit"))
@@ -407,7 +409,7 @@ class PublicationControllerTest {
                 .andExpect(jsonPath("$.code").value(403))
                 .andExpect(jsonPath("$.msg").value("请先申请成为作者"));
 
-        verify(publicationService, never()).submitAudit(any(), any());
+        verify(publicationService, never()).submitAudit(any(), any(), any());
     }
 
     @Test
@@ -419,7 +421,7 @@ class PublicationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(400));
 
-        verify(publicationService, never()).submitAudit(any(), any());
+        verify(publicationService, never()).submitAudit(any(), any(), any());
     }
 
     @Test
@@ -427,7 +429,7 @@ class PublicationControllerTest {
     void online_republishes() throws Exception {
         loginAsAuthor();
         MpPublication p = pub(1L, 10L, "PUBLISHED");
-        when(publicationService.online(eq(1L), eq(10L))).thenReturn(p);
+        when(publicationService.online(eq(1L), eq(10L), eq(1L))).thenReturn(p);
         when(publicationService.toVO(p)).thenReturn(vo(1L, "PUBLISHED"));
 
         mvc.perform(post("/opc/marketplace/publication/1/online"))
@@ -446,7 +448,7 @@ class PublicationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(403));
 
-        verify(publicationService, never()).online(any(), any());
+        verify(publicationService, never()).online(any(), any(), any());
     }
 
     @Test
@@ -454,7 +456,7 @@ class PublicationControllerTest {
     void offline_returnsDeprecated() throws Exception {
         loginAsAuthor();
         MpPublication p = pub(1L, 10L, "DEPRECATED");
-        when(publicationService.offline(eq(1L), eq(10L))).thenReturn(p);
+        when(publicationService.offline(eq(1L), eq(10L), eq(1L))).thenReturn(p);
         when(publicationService.toVO(p)).thenReturn(vo(1L, "DEPRECATED"));
 
         mvc.perform(post("/opc/marketplace/publication/1/offline"))
@@ -472,14 +474,14 @@ class PublicationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(400));
 
-        verify(publicationService, never()).offline(any(), any());
+        verify(publicationService, never()).offline(any(), any(), any());
     }
 
     @Test
     @DisplayName("下架后公开详情立刻 404(service 层 selectPublishedById 过滤 DEPRECATED)")
     void offline_then_publicDetail_404() throws Exception {
         // 端到端语义:offline 只写 DEPRECATED,公开端点的 SQL 层过滤自然把它挡掉
-        when(publicationService.offline(eq(1L), eq(10L))).thenReturn(pub(1L, 10L, "DEPRECATED"));
+        when(publicationService.offline(eq(1L), eq(10L), eq(1L))).thenReturn(pub(1L, 10L, "DEPRECATED"));
         when(publicationService.getPublishedById(1L))
                 .thenThrow(new OpcException(404, "商品不存在: 1", "MARKETPLACE"));
         when(publicationService.toVO(any())).thenReturn(vo(1L, "DEPRECATED"));

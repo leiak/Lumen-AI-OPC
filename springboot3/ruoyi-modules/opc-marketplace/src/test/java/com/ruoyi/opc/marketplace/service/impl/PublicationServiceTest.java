@@ -29,6 +29,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -51,6 +52,10 @@ import static org.mockito.Mockito.when;
  *       类目按 productType 各一次 {@code selectByCodes}、空结果集不发 {@code IN ()}</li>
  *   <li><b>NOT NULL 补默认（W50 教训）</b>：INSERT 显式列名时不应用 DDL DEFAULT，
  *       service 必须自己给值</li>
+ *   <li><b>类目外键在 create 与 edit 两侧都被守卫</b>：未知 categoryCode 一律 400，
+ *       不落指向空 {@code mp_category} 行的外键</li>
+ *   <li><b>{@code update_by} 只记 operatorId</b>：authorId(档案 id) 与 operatorId(用户 id)
+ *       是两个值，审计列里出现 authorId 就是回归</li>
  * </ol>
  *
  * @author OAC
@@ -191,11 +196,12 @@ class PublicationServiceTest {
         refreshed.setName("新名字");
         refreshed.setScreenshots("[\"x.png\"]");
         when(publicationMapper.selectById(1L)).thenReturn(draft, refreshed);
+        // 本用例不传 categoryCode → 不触发类目守卫,mock 保持未命中即可
 
         PublicationEditRequest req = new PublicationEditRequest();
         req.setName("新名字");
         req.setScreenshots(List.of("x.png"));
-        MpPublication result = service.edit(1L, req, 10L);
+        MpPublication result = service.edit(1L, req, 10L, 7L);
 
         assertThat(result.getName()).as("返回的是写库后的重读行").isEqualTo("新名字");
         assertThat(result.getScreenshots()).isEqualTo("[\"x.png\"]");
@@ -204,9 +210,47 @@ class PublicationServiceTest {
         var captor = ArgumentCaptor.forClass(MpPublication.class);
         verify(publicationMapper).updateById(captor.capture());
         assertThat(captor.getValue().getName()).isEqualTo("新名字");
+        // update_by 必须是 operatorId(7),绝不是 authorId(10)
+        assertThat(captor.getValue().getUpdateBy()).isEqualTo("7");
 
         // 关键回归:编辑路径绝不能走公开详情(否则作者改不了自己的 DRAFT)
         verify(publicationMapper, never()).selectPublishedById(any());
+    }
+
+    @Test
+    @DisplayName("edit — 改类目:按该商品自己的 productType 校验,合法类目才写库")
+    void edit_success_whenCategoryExists() {
+        MpPublication draft = pub(1L, 10L, "DRAFT", "AGENT", "office");
+        when(publicationMapper.selectById(1L)).thenReturn(draft);
+        when(categoryMapper.selectByCode("AGENT", "finance")).thenReturn(cat("AGENT", "finance", "财务"));
+
+        PublicationEditRequest req = new PublicationEditRequest();
+        req.setCategoryCode("finance");
+        service.edit(1L, req, 10L, 7L);
+
+        // uk_cat_code 是 (product_type, code) 复合键 —— 必须带上 AGENT 去查
+        verify(categoryMapper).selectByCode("AGENT", "finance");
+        var captor = ArgumentCaptor.forClass(MpPublication.class);
+        verify(publicationMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getCategoryCode()).isEqualTo("finance");
+    }
+
+    @Test
+    @DisplayName("edit — 类目不存在 → 400 且不写库(否则 category_code 指向空 mp_category 行)")
+    void edit_400_whenCategoryNotFound() {
+        when(publicationMapper.selectById(1L)).thenReturn(pub(1L, 10L, "DRAFT", "AGENT", "office"));
+        when(categoryMapper.selectByCode("AGENT", "not-exist")).thenReturn(null);
+
+        PublicationEditRequest req = new PublicationEditRequest();
+        req.setCategoryCode("not-exist");
+
+        Throwable e = catchThrowable(() -> service.edit(1L, req, 10L, 7L));
+
+        assertThat(e).isInstanceOf(OpcException.class)
+                .hasMessageContaining("类目不存在");
+        assertThat(((OpcException) e).getCode())
+                .as("与 create() 同一条守卫:必须是 400,不能是 404/500").isEqualTo(400);
+        verify(publicationMapper, never()).updateById(any());
     }
 
     @Test
@@ -214,7 +258,7 @@ class PublicationServiceTest {
     void edit_403_whenNotAuthor() {
         when(publicationMapper.selectById(1L)).thenReturn(pub(1L, 10L, "DRAFT", "AGENT", "office"));
 
-        assertThatThrownBy(() -> service.edit(1L, new PublicationEditRequest(), 999L))
+        assertThatThrownBy(() -> service.edit(1L, new PublicationEditRequest(), 999L, 7L))
                 .isInstanceOf(OpcException.class)
                 .hasMessageContaining("只有作者本人可编辑");
         verify(publicationMapper, never()).updateById(any());
@@ -225,7 +269,7 @@ class PublicationServiceTest {
     void edit_404_whenMissing() {
         when(publicationMapper.selectById(999L)).thenReturn(null);
 
-        assertThatThrownBy(() -> service.edit(999L, new PublicationEditRequest(), 10L))
+        assertThatThrownBy(() -> service.edit(999L, new PublicationEditRequest(), 10L, 7L))
                 .isInstanceOf(OpcException.class)
                 .hasMessageContaining("商品不存在");
         verify(publicationMapper, never()).updateById(any());
@@ -239,14 +283,16 @@ class PublicationServiceTest {
         MpPublication draft = pub(1L, 10L, "DRAFT", "AGENT", "office");
         when(publicationMapper.selectById(1L)).thenReturn(draft);
 
-        MpPublication result = service.submitAudit(1L, 10L);
+        MpPublication result = service.submitAudit(1L, 10L, 7L);
 
         assertThat(result.getStatus()).isEqualTo("PUBLISHED");
         assertThat(result.getPublishedAt()).isNotNull();
-        assertThat(result.getUpdateBy()).isEqualTo("10");
+        // update_by 是 operatorId(7),不是 authorId(10) —— 审计列只认操作用户 id
+        assertThat(result.getUpdateBy()).isEqualTo("7");
         var captor = ArgumentCaptor.forClass(MpPublication.class);
         verify(publicationMapper).updateById(captor.capture());
         assertThat(captor.getValue().getPublishedAt()).isNotNull();
+        assertThat(captor.getValue().getUpdateBy()).isEqualTo("7");
     }
 
     @Test
@@ -254,7 +300,7 @@ class PublicationServiceTest {
     void submitAudit_400_whenNotDraft() {
         when(publicationMapper.selectById(1L)).thenReturn(pub(1L, 10L, "PUBLISHED", "AGENT", "office"));
 
-        assertThatThrownBy(() -> service.submitAudit(1L, 10L))
+        assertThatThrownBy(() -> service.submitAudit(1L, 10L, 7L))
                 .isInstanceOf(OpcException.class)
                 .hasMessageContaining("只有 DRAFT 状态可提交审核");
         verify(publicationMapper, never()).updateById(any());
@@ -265,7 +311,7 @@ class PublicationServiceTest {
     void submitAudit_403_whenNotAuthor() {
         when(publicationMapper.selectById(1L)).thenReturn(pub(1L, 10L, "DRAFT", "AGENT", "office"));
 
-        assertThatThrownBy(() -> service.submitAudit(1L, 999L))
+        assertThatThrownBy(() -> service.submitAudit(1L, 999L, 7L))
                 .isInstanceOf(OpcException.class)
                 .hasMessageContaining("只有作者本人可提交");
         verify(publicationMapper, never()).updateById(any());
@@ -276,10 +322,13 @@ class PublicationServiceTest {
     void offline_returnsDeprecated() {
         when(publicationMapper.selectById(1L)).thenReturn(pub(1L, 10L, "PUBLISHED", "AGENT", "office"));
 
-        MpPublication result = service.offline(1L, 10L);
+        MpPublication result = service.offline(1L, 10L, 7L);
 
         assertThat(result.getStatus()).isEqualTo("DEPRECATED");
-        verify(publicationMapper).updateById(any());
+        var captor = ArgumentCaptor.forClass(MpPublication.class);
+        verify(publicationMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getUpdateBy())
+                .as("update_by 记操作用户 id,不记 authorId").isEqualTo("7");
     }
 
     @Test
@@ -287,7 +336,7 @@ class PublicationServiceTest {
     void offline_403_whenNotAuthor() {
         when(publicationMapper.selectById(1L)).thenReturn(pub(1L, 10L, "PUBLISHED", "AGENT", "office"));
 
-        assertThatThrownBy(() -> service.offline(1L, 999L))
+        assertThatThrownBy(() -> service.offline(1L, 999L, 7L))
                 .isInstanceOf(OpcException.class)
                 .hasMessageContaining("只有作者本人可下架");
         verify(publicationMapper, never()).updateById(any());
@@ -300,11 +349,13 @@ class PublicationServiceTest {
         // 商品一旦下架就永远回不了市场 —— 本用例锁住往返能力
         when(publicationMapper.selectById(1L)).thenReturn(pub(1L, 10L, "DEPRECATED", "AGENT", "office"));
 
-        MpPublication result = service.online(1L, 10L);
+        MpPublication result = service.online(1L, 10L, 7L);
 
         assertThat(result.getStatus()).isEqualTo("PUBLISHED");
         assertThat(result.getPublishedAt()).isNotNull();
-        verify(publicationMapper).updateById(any());
+        var captor = ArgumentCaptor.forClass(MpPublication.class);
+        verify(publicationMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getUpdateBy()).isEqualTo("7");
     }
 
     @Test
@@ -312,7 +363,7 @@ class PublicationServiceTest {
     void online_fromDraft() {
         when(publicationMapper.selectById(1L)).thenReturn(pub(1L, 10L, "DRAFT", "AGENT", "office"));
 
-        assertThat(service.online(1L, 10L).getStatus()).isEqualTo("PUBLISHED");
+        assertThat(service.online(1L, 10L, 7L).getStatus()).isEqualTo("PUBLISHED");
     }
 
     @Test
@@ -320,7 +371,7 @@ class PublicationServiceTest {
     void online_400_whenAlreadyPublished() {
         when(publicationMapper.selectById(1L)).thenReturn(pub(1L, 10L, "PUBLISHED", "AGENT", "office"));
 
-        assertThatThrownBy(() -> service.online(1L, 10L))
+        assertThatThrownBy(() -> service.online(1L, 10L, 7L))
                 .isInstanceOf(OpcException.class)
                 .hasMessageContaining("当前状态不可上架");
         verify(publicationMapper, never()).updateById(any());
@@ -331,7 +382,7 @@ class PublicationServiceTest {
     void online_403_whenNotAuthor() {
         when(publicationMapper.selectById(1L)).thenReturn(pub(1L, 10L, "DRAFT", "AGENT", "office"));
 
-        assertThatThrownBy(() -> service.online(1L, 999L))
+        assertThatThrownBy(() -> service.online(1L, 999L, 7L))
                 .isInstanceOf(OpcException.class)
                 .hasMessageContaining("只有作者本人可上架");
         verify(publicationMapper, never()).updateById(any());

@@ -26,6 +26,11 @@ import java.util.Map;
  * 解析得到。service 层不再查一次「这条商品是不是你的」以外的东西，归属校验一律
  * 「{@code p.getAuthorId()} 是否等于入参 authorId」，不等即 403。
  *
+ * <p><b>{@code authorId} 与 {@code operatorId} 是两个不同的 id，别混用</b>：
+ * authorId 是作者档案（{@code mp_author}）主键，operatorId 是登录用户（{@code sys_user}）主键。
+ * 归属校验用前者；{@code create_by/update_by} 一律写后者 —— 同一列里塞两种语义的 id
+ * 会让审计分不清是谁改的。
+ *
  * @author OAC
  */
 public interface PublicationService {
@@ -47,16 +52,23 @@ public interface PublicationService {
      * <p>读路径走 {@link #getById}（不过滤 status）—— 作者必须能编辑自己的 DRAFT。
      * 非本人 → 403。
      *
-     * @throws com.ruoyi.opc.common.exception.OpcException 404 不存在 / 403 非本人
+     * <p>{@code categoryCode} 若传，<b>必须</b>在该商品的 productType 下真实存在（与
+     * {@link #create} 同一条守卫）：否则会落一个指向空 {@code mp_category} 行的外键，
+     * 列表页 {@code categoryName} 恒为 null、{@code category=} 过滤 join 到孤儿。
+     * 编辑请求刻意不带 productType（不可改），所以校验用库里那一行自己的 product_type。
+     *
+     * @param operatorId 当前操作用户 id，写入 {@code update_by}
+     * @throws com.ruoyi.opc.common.exception.OpcException 404 不存在 / 403 非本人 / 400 类目不存在
      */
-    MpPublication edit(Long id, PublicationEditRequest req, Long authorId);
+    MpPublication edit(Long id, PublicationEditRequest req, Long authorId, Long operatorId);
 
     /**
      * 提交审核。P1 无真实审核流，等价于「上架」：{@code DRAFT → PUBLISHED} 并写 {@code publishedAt}。
      *
+     * @param operatorId 当前操作用户 id，写入 {@code update_by}
      * @throws com.ruoyi.opc.common.exception.OpcException 404 不存在 / 403 非本人 / 400 非 DRAFT 状态
      */
-    MpPublication submitAudit(Long id, Long authorId);
+    MpPublication submitAudit(Long id, Long authorId, Long operatorId);
 
     /**
      * 上架。P1 与 {@link #submitAudit} 同为自动过审，但<b>入参状态不同</b>：
@@ -64,16 +76,18 @@ public interface PublicationService {
      * 若照搬 {@code submitAudit} 的「仅 DRAFT」判定，{@code offline → online} 的
      * 往返会永久卡死在 400。
      *
+     * @param operatorId 当前操作用户 id，写入 {@code update_by}
      * @throws com.ruoyi.opc.common.exception.OpcException 404 不存在 / 403 非本人 / 400 已是 PUBLISHED 或状态不允许
      */
-    MpPublication online(Long id, Long authorId);
+    MpPublication online(Long id, Long authorId, Long operatorId);
 
     /**
      * 下架：{@code → DEPRECATED}（已上架的商品对市场不可见，公开详情随即 404）
      *
+     * @param operatorId 当前操作用户 id，写入 {@code update_by}
      * @throws com.ruoyi.opc.common.exception.OpcException 404 不存在 / 403 非本人
      */
-    MpPublication offline(Long id, Long authorId);
+    MpPublication offline(Long id, Long authorId, Long operatorId);
 
     /**
      * 作者侧任意状态读取：<b>不过滤 status</b>，用于编辑 / 上下架 / 我的列表。
