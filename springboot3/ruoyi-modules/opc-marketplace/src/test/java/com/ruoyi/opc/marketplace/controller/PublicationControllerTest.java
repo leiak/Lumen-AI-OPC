@@ -8,6 +8,7 @@ import com.ruoyi.opc.marketplace.domain.MpPublication;
 import com.ruoyi.opc.marketplace.dto.PublicationCreateRequest;
 import com.ruoyi.opc.marketplace.dto.PublicationEditRequest;
 import com.ruoyi.opc.marketplace.dto.PublicationVO;
+import com.ruoyi.opc.marketplace.feign.AgentHubClient;
 import com.ruoyi.opc.marketplace.mapper.MpAuthorMapper;
 import com.ruoyi.opc.marketplace.mapper.MpCategoryMapper;
 import com.ruoyi.opc.marketplace.mapper.MpInstallMapper;
@@ -95,6 +96,10 @@ class PublicationControllerTest {
     @MockBean private MpReviewMapper reviewMapper;
     @MockBean private MpCategoryMapper categoryMapper;
     @MockBean private MpTagMapper tagMapper;
+    // W80 P1 Task 6: InstallServiceImpl 的构造函数依赖 AgentHubClient;
+    // @WebMvcTest 默认不初始化 FeignClientsRegistrar → 没有 FeignClientFactory bean,
+    // 必须用 @MockBean 占位(同 mapper 占位模式),否则 ApplicationContext 启动失败
+    @MockBean private AgentHubClient agentHubClient;
 
     private MockedStatic<SecurityUtils> securityUtils;
 

@@ -6,6 +6,7 @@ import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.marketplace.domain.MpAuthor;
 import com.ruoyi.opc.marketplace.dto.AuthorApplyRequest;
 import com.ruoyi.opc.marketplace.dto.AuthorVO;
+import com.ruoyi.opc.marketplace.feign.AgentHubClient;
 import com.ruoyi.opc.marketplace.mapper.MpAuthorMapper;
 import com.ruoyi.opc.marketplace.mapper.MpCategoryMapper;
 import com.ruoyi.opc.marketplace.mapper.MpInstallMapper;
@@ -102,6 +103,9 @@ class AuthorControllerTest {
     @MockBean private MpReviewMapper reviewMapper;
     @MockBean private MpCategoryMapper categoryMapper;
     @MockBean private MpTagMapper tagMapper;
+    // W80 P1 Task 6: InstallServiceImpl 依赖 AgentHubClient Feign;
+    // @WebMvcTest 默认不初始化 FeignClientsRegistrar → 必须 @MockBean 占位
+    @MockBean private AgentHubClient agentHubClient;
 
     private MockedStatic<SecurityUtils> securityUtils;
 
