@@ -33,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -426,11 +427,17 @@ class PublicationServiceTest {
     }
 
     @Test
-    @DisplayName("getPublishedById — PUBLISHED 正常返回")
+    @DisplayName("getPublishedById — PUBLISHED 正常返回;读路径必须保持纯读(永不调 incrementViewCount / updateById)")
     void getPublishedById_success() {
         when(publicationMapper.selectPublishedById(1L)).thenReturn(pub(1L, 10L, "PUBLISHED", "AGENT", "office"));
 
         assertThat(service.getPublishedById(1L).getStatus()).isEqualTo("PUBLISHED");
+
+        // F1 — 锁住「读路径纯读」不变量:把 incrementViewCount / updateById 折进
+        // getPublishedById 会让「同一条详情查两次」变成 +2 计数,而所有现有测试仍
+        // 全绿 —— 单独这一行就是咬这条 bug 的诱饵,具体见 git log 的 mutation 验证。
+        verify(publicationMapper, never()).incrementViewCount(anyLong());
+        verify(publicationMapper, never()).updateById(any());
     }
 
     // ==================== 浏览量计数 ====================

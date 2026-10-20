@@ -147,9 +147,11 @@
          显式赋值只是不再**重复**刷一次(效果与自动刷新基本一致)。
          要真正做到「浏览不改更新时间」,需要一条 migration 去掉 mp_publication.update_time 的
          ON UPDATE 子句 —— 本 mapper 的其余写路径(updateById / incrementInstallCount /
-         updateRating / updateStatus)都显式写 update_time = NOW(3),去掉后仍能正确更新。
+         incrementSubscriptionCount / updateRating / updateStatus)都显式写
+         update_time = NOW(3),去掉后仍能正确更新。
          在那条 migration 落地前,别把这里当成「已经不会刷了」。
-         incrementInstallCount 相反:每次安装都是真实业务动作,刷 update_time 是对的。 -->
+         incrementInstallCount / incrementSubscriptionCount 相反:每次订阅 / 安装都是真实业务动作,
+         刷 update_time 是对的。 -->
     <update id="incrementViewCount">
         UPDATE mp_publication SET view_count = view_count + 1
         WHERE id = #{id} AND deleted = 0

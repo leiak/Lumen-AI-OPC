@@ -273,7 +273,14 @@ function splitTags(tags?: string): string[] {
   return tags.split(/[,，]/).map((t) => t.trim()).filter(Boolean)
 }
 
-/** 与后端 PublicationStatus 枚举对齐 —— 不新增后端不存在的状态 */
+/**
+ * 与后端 PublicationStatus 枚举对齐 —— 不新增后端不存在的状态。
+ *
+ * 这里 fallback 「回显原值」而非「未知」是有意为之:mp_publication.status 在应用层受约束
+ * （仅 DRAFT/PUBLISHED/DEPRECATED 三个字面量可达,P1 见 PublicationServiceImpl 的常量），
+ * 不会泄漏。contrast:author-center.vue 的 authorStatusLabel 默认「未知」,因为
+ * mp_author.status 是无约束 VARCHAR(16),裸回显会漏内部状态码到界面上。
+ */
 function statusLabel(s?: string) {
   switch (s) {
     case 'DRAFT': return '草稿'
@@ -307,13 +314,15 @@ async function load() {
   // 安装状态查询只依赖 pubId（路由参数，进来就有），不等详情接口 —— 两个请求并发跑，
   // 「详情到了但按钮还画着安装」的窗口因此消失。之前是 await 完详情才查状态。
   loadInstallStatus()
-  loadReviews()
-  ensureMyReview()
   loading.value = true
   try {
     // 公开详情端点：SQL 层硬过滤 status='PUBLISHED'，DRAFT 打开本页必然 404 —— 这是预期行为
     const res = await getPublication(pubId.value)
     pub.value = res.data || null
+    // 详情 200 后再拉评论 + 我的评价(并发跑,不串行):DRAFT / 未知 id 直接 404 时,
+    // 这两条请求没有意义 —— 之前先于详情发起会白烧两次 RTT + 两条 404 notice。
+    loadReviews()
+    ensureMyReview()
   } catch {
     pub.value = null
     // 不拼 e?.message：request.ts 的 code!==200 分支 reject 的是裸字符串 'error'（没有 .message），

@@ -453,6 +453,10 @@ async function onCreate() {
     resetCreate()
     // 切 tab 会触发 watch(activeTab) 里的 loadWorks()，这里不要再显式调一次 ——
     // 两次并发请求同一份数据，既浪费又会让表格闪两次 loading。
+    // ⚠️ 此处依赖一个隐式耦合:**当前**「新建商品」表单只在 `create` tab 上渲染,
+    // 所以 activeTab.value 一定真切到 works,watch 才会拉一次新的作品列表。
+    // 若日后把新建表单搬到 works/stats tab 内(例如弹窗/drawer、就地创建并保留当前 tab),
+    // 这里会把用户悄悄切走 —— 必须改成显式调用 loadWorks() 并去掉 activeTab 赋值。
     activeTab.value = 'works'
     await loadStats()
     const created = res.data
