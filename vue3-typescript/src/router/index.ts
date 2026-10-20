@@ -116,6 +116,31 @@ export const constantRoutes = [
         meta: { title: '模块市场', icon: 'shop' }
       },
       {
+        path: 'marketplace/index',
+        component: () => import('@/views/opc/marketplace/index.vue'),
+        name: 'OpcMarketplaceIndex',
+        meta: { title: '智能体市场', icon: 'shopping', affix: true }
+      },
+      {
+        path: 'marketplace/detail/:id(\\d+)',
+        component: () => import('@/views/opc/marketplace/detail.vue'),
+        name: 'OpcMarketplaceDetail',
+        meta: { title: '商品详情', activeMenu: '/opc/marketplace/index' },
+        hidden: true
+      },
+      {
+        path: 'marketplace/author-center',
+        component: () => import('@/views/opc/marketplace/author-center.vue'),
+        name: 'OpcMarketplaceAuthorCenter',
+        meta: { title: '作者后台', icon: 'skill' }
+      },
+      {
+        path: 'marketplace/author-apply',
+        component: () => import('@/views/opc/marketplace/author-apply.vue'),
+        name: 'OpcMarketplaceAuthorApply',
+        meta: { title: '申请作者', icon: 'form' }
+      },
+      {
         path: 'user/profile',
         component: () => import('@/views/opc/user/profile.vue'),
         name: 'OpcUserProfile',
