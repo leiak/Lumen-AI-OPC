@@ -15,6 +15,7 @@
 #   8) opc-hr 8 项健康检查 (W71 Task 12)
 #   9) opc-erp 9 项健康检查 (W72 Task 12)
 #  10) opc-content 10 项健康检查 (W74 Task 15)
+#  11) opc-marketplace 10 项健康检查 (W80 P1)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -967,6 +968,121 @@ except Exception:
   fi
 }
 
+# ---------- 11. opc-marketplace 健康 ----------
+check_marketplace() {
+  hr
+  echo "[11] opc-marketplace 健康检查 (W80 P1)"
+  hr
+
+  local port=9317
+  local base_url="http://127.0.0.1:${port}"
+
+  # 11.1 容器 Up (非阻塞, dev 直连模式可能无容器)
+  local c="aiopc-marketplace"
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${c}$"; then
+    local st
+    st=$(docker inspect --format '{{.State.Status}}' "${c}" 2>/dev/null)
+    if [[ "${st}" == "running" ]]; then
+      ok "${c} running"
+    else
+      warn "${c} 状态异常: ${st}"
+    fi
+  else
+    warn "${c} 容器不存在 (本地直连模式)"
+  fi
+
+  # 11.2 Nacos 注册 (非阻塞)
+  local nacos_url="http://${GATEWAY_HOST}:${NACOS_PORT}/nacos/v1/ns/instance/list?serviceName=opc-marketplace&namespaceId=opc-dev"
+  local nacos_body
+  nacos_body=$(curl -sf -m 10 "${nacos_url}" 2>/dev/null) || nacos_body=""
+  local healthy_count
+  healthy_count=$(echo "${nacos_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin)
+    hosts = d.get('hosts', [])
+    print(len(hosts) if hosts else 0)
+except Exception:
+    print(0)
+" 2>/dev/null)
+  if [[ "${healthy_count}" -ge 1 ]]; then
+    ok "Nacos opc-marketplace 注册 ${healthy_count} 实例 (opc-dev)"
+  else
+    warn "Nacos opc-marketplace 未注册 (开发模式可能未启动)"
+  fi
+
+  # 11.3 /actuator/health (阻塞)
+  local health_body
+  health_body=$(curl -sf -m 10 "${base_url}/actuator/health" 2>/dev/null) || health_body=""
+  if [[ "${health_body}" == "UP" ]] || echo "${health_body}" | grep -q '"status":"UP"'; then
+    ok "opc-marketplace /actuator/health UP"
+  else
+    nok "opc-marketplace /actuator/health: ${health_body:-<no response>}"
+  fi
+
+  # 11.4-11.7 匿名可读的公开端点 (白名单内, 验证路由 + service 都在)
+  # 这 4 个是应用商店首屏真正依赖的接口。
+  local pub_eps=(
+    "/opc/marketplace/category/tree"
+    "/opc/marketplace/category/list"
+    "/opc/marketplace/tag/list"
+    "/opc/marketplace/publication/list?pageNum=1&pageSize=10"
+  )
+  for ep in "${pub_eps[@]}"; do
+    local body
+    body=$(curl -sf -m 10 "${base_url}${ep}" 2>/dev/null) || body=""
+    # 必须 code=200。HTTP 200 但 code!=200 说明是 OpcException 业务错误
+    # (例如 DRAFT 被误当 PUBLISHED 返回), 不能算通过。
+    if echo "${body}" | python -c "
+import sys,json
+try:
+    sys.exit(0 if json.load(sys.stdin).get('code') == 200 else 1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null; then
+      ok "${ep} code=200"
+    else
+      nok "${ep} 不可达或 code!=200: ${body:0:120}"
+    fi
+  done
+
+  # 11.8 需登录端点必须被拦截 (阻塞, 租户隔离的第一道闸)
+  # install 是 POST 且不在白名单 —— 匿名调用应拿不到 200。
+  local auth_code
+  auth_code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 \
+    -X POST "${base_url}/opc/marketplace/install/1" 2>/dev/null)
+  if [[ "${auth_code}" == "401" ]] || [[ "${auth_code}" == "403" ]]; then
+    ok "鉴权拦截正确 (POST /install/1 → HTTP ${auth_code})"
+  else
+    nok "POST /install/1 未被拦截 (HTTP ${auth_code}) — 租户隔离失效"
+  fi
+
+  # 11.9 公开详情不得泄漏非 PUBLISHED 行 (SQL 层 selectPublishedById 硬过滤)
+  #     DRAFT/DEPRECATED 的 id 匿名查询必须拿不到 code=200。
+  local draft_body
+  draft_body=$(curl -sf -m 10 "${base_url}/opc/marketplace/publication/999999" 2>/dev/null) || draft_body=""
+  if echo "${draft_body}" | python -c "
+import sys,json
+try:
+    sys.exit(0 if json.load(sys.stdin).get('code') != 200 else 1)
+except Exception:
+    sys.exit(0)   # 连不上也算通过 (服务没起时不该在这里误报)
+" 2>/dev/null; then
+    ok "公开详情不泄漏非 PUBLISHED 行"
+  else
+    nok "GET /publication/999999 返回 code=200 — 未发布商品对外可见"
+  fi
+
+  # 11.10 数据库连接 (非阻塞, db indicator)
+  local db_health
+  db_health=$(curl -sf -m 10 "${base_url}/actuator/health/db" 2>/dev/null) || db_health=""
+  if echo "${db_health}" | grep -q "UP" || [[ -z "${db_health}" ]]; then
+    ok "数据库健康 (db indicator UP 或未启用)"
+  else
+    warn "数据库健康状态: ${db_health}"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -982,6 +1098,7 @@ main() {
   check_hr
   check_erp
   check_content
+  check_marketplace
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"

@@ -17,11 +17,23 @@
 # 前置:
 #   该脚本会先 GET 现有 application-{env}.yml,与本目录的
 #   whitelist-opc-invite.yml 做合并,然后 POST 回 Nacos。
-#   合并策略:以本地补丁的 security.ignore.whites 为准,
-#           合并远端的其余 security.* 配置。
+#   合并策略 (W80 修复): security.ignore.whites 取【并集】——
+#   远端条目在前(保留运维手工加的),本地补丁去重追加在后。
+#   【只增不减】, 所以重复执行是安全的。
+#   其余 security.* / 非 security 节点一律原样保留远端。
+#
+# ⚠️ 为什么 snippet 必须是 ruoyi-gateway application.yml 白名单的【超集】:
+#   Spring Cloud 里 Nacos 配置优先级高于 jar 内 application.yml。一旦 Nacos
+#   存在 security.ignore.whites,jar 内那份 fallback 就被整体盖掉。所以
+#   snippet 少一条 = 线上少一条, 而不是"回落到本地默认值"。
+#   改网关白名单时, application.yml 和本文件必须一起改。
 # ============================================================
 
 set -euo pipefail
+
+# Windows console 默认 GBK, merge 的 diff 行含中文, 不设会被破坏成乱码。
+# (与 deploy/scripts/health-check.sh 同一处理)
+export PYTHONIOENCODING=utf-8
 
 # ---------- 参数解析 ----------
 ENV="${1:-}"
@@ -75,11 +87,38 @@ def load(p):
 remote = load(remote_path)
 patch  = load(patch_path)
 
-# 合并策略:patch.security.ignore.whites 整体替换(以本补丁为准),
-# 其他节点保留远端(防误删其他团队配置)。
-if "security" not in remote: remote["security"] = {}
-if "ignore"   not in remote["security"]: remote["security"]["ignore"] = {}
-remote["security"]["ignore"]["whites"] = patch["security"]["ignore"]["whites"]
+# 合并策略:security.ignore.whites 取【并集】, 不是整体替换。
+#
+# W80 修复 —— 旧实现是:
+#     remote["security"]["ignore"]["whites"] = patch["security"]["ignore"]["whites"]
+# 那是整体替换, 会静默抹掉 Nacos 里已有的【全部】白名单条目, 而当时
+# whitelist-opc-invite.yml 里只有 13 条 (邀请 + RuoYi 既有)。实测会连带干掉:
+#   - W48.5 收紧过的邀请正则 /opc/user/invitations/{code:[...]{8}}
+#   - notification WebSocket 的 /opc/notification/ws*  (token 走 URL, 不走 Authorization 头)
+#   - community / hr / erp / content / marketplace 的全部公开读入口
+#   - 顶层 /login /logout /refresh /register /unlockscreen /captchaImage
+# 结果 = 这些模块的公网入口一次性全部变成需登录, 且因为远端本来就没这条 key,
+# 写回后本地 application.yml 的安全网 fallback 也被 Nacos 覆盖掉, 回滚很难。
+#
+# 现在: 远端顺序在前(保留运维手工加的条目), 本地补丁去重追加在后。
+# 脚本因此是幂等且只增不减的 —— 再跑一次不会丢任何东西。
+existing = (remote.get("security") or {}).get("ignore", {}) or {}
+existing = existing.get("whites") or []
+if not isinstance(existing, list):
+    print("WARN: 远端 security.ignore.whites 不是列表, 按空处理", file=sys.stderr)
+    existing = []
+
+incoming = patch["security"]["ignore"]["whites"]
+merged, seen = [], set()
+for item in list(existing) + list(incoming):
+    if item not in seen:
+        seen.add(item)
+        merged.append(item)
+
+remote.setdefault("security", {}).setdefault("ignore", {})["whites"] = merged
+print("[merge] whites: 远端 %d 条 + 本地补丁 %d 条 -> 并集 %d 条 (新增 %d, 删除 0)"
+      % (len(existing), len(incoming), len(merged), len(merged) - len(existing)),
+      file=sys.stderr)
 
 yaml.dump(remote, sys.stdout, default_flow_style=False, allow_unicode=True, sort_keys=False)
 PY

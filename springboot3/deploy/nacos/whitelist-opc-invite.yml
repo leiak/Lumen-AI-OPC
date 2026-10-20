@@ -1,54 +1,108 @@
 # ============================================================
-# OPC 邀请落地页 — 网关白名单补丁片段
-# OPC Invite Landing — Gateway Whitelist Patch Snippet
+# OPC 网关白名单 — 推送到 Nacos 的完整片段
+# OPC Gateway Whitelist — canonical snippet for Nacos
 # ============================================================
-# 用途:把以下片段合并到 Nacos ruoyi-gateway 配置的
-#      application-{env}.yml 的 security.ignore.whites 列表里。
-#      (env ∈ {dev, staging, prod})
+# 用途: 由同目录 apply-whitelist.sh 以【并集】方式合并进 Nacos
+#      application-{env}.yml 的 security.ignore.whites。
 #
-# 影响的接口:
-#   GET /opc/user/invitations/{code}     ← 落地页匿名访问必需
+# ⚠️ 本文件必须是 ruoyi-gateway/src/main/resources/application.yml
+#    里那份白名单的【超集】, 不是子集, 也不是替代品。
+#    原因: Spring Cloud 中 Nacos 配置优先级高于 jar 内 application.yml。
+#    Nacos 里一旦存在 security.ignore.whites, jar 内那份 fallback 就被
+#    整体盖掉 —— 少写一条 = 线上直接少一条, 不会"回落到本地默认值"。
+#    改网关白名单时, 两处必须同步修改。
 #
-# 已知限制:
-#   OPC AuthFilter 使用 AntPathMatcher + 路径白名单,
-#   不支持 HTTP method 维度。因此 `/opc/user/invitations/*`
-#   会同时豁免:
-#     - POST /opc/user/invitations/generate  ← 期望:需登录
-#     - POST /opc/user/invitations/accept    ← 期望:需登录
-#     - GET  /opc/user/invitations/*         ← 期望:落地页匿名
+# ⚠️ AuthFilter 不区分 HTTP method (AuthFilter.java:50 只做路径匹配)。
+#    凡是写成 `/**` 的条目, 对该路径下的 POST/PUT/DELETE 同样放行。
+#    下游必须自己在 service 层 fail-closed, 不能指望网关兜底。
 #
-#   但下游 controller 在缺少 userId 时会抛 OpcException("userId 不能为空"),
-#   即 controller 内 SecurityUtils.getUserId() == null → 500,
-#   因此匿名 POST 不会真正创建邀请码 / 接受邀请 / 发放奖励。
-#   风险评估:🟡 低 (只暴露 500 错误,不暴露数据)
-#
-# 长期方案(后续 Task):改造 IgnoreWhiteProperties 支持 method+path,
-#   例:whites: ["GET /opc/user/invitations/*"]
-#   届时把本文件路径换成精准匹配。
+# W80 变更 (相对本文件的历史版本):
+#   1) 删除过时的 `/opc/user/invitations/*` 通配 —— 它会把
+#      POST /generate 一并放行, 正是 W48.5 要修的问题。
+#      换成两条精确条目 (accept + 8位 base32 code 正则)。
+#   2) 补齐 notification / community / hr / erp / content / marketplace
+#      的公开读白名单 —— 老版本缺这些, 一旦推送就把对应模块公网入口全关。
 # ============================================================
 
 security:
   ignore:
     whites:
-      # ===== OPC 业务(本 patch 新增)=====
-      # 邀请落地页公开查接口 (Ant: * = 一层路径段,** = 多层)
-      - /opc/user/invitations/*
-
-      # ===== 以下为 OPC 沿用 RuoYi 既有白名单(保留,不要删)=====
-      # 认证相关
+      # ===== 认证 / 验证码 / 注册 (RuoYi 既有) =====
       - /auth/logout
       - /auth/register
       - /auth/login
       - /auth/smsCode
-      # 验证码
+      - /auth/captchaImage
       - /code
       - /captcha/image
-      # 注册
+      - /captchaImage
       - /register
-      # 第三方 OAuth
       - /social/*
-      # 测试/演示
-      - /test/**
-      # 静态资源
-      - /*/v2/api-docs
-      - /*/v3/api-docs
+      # ===== 顶层路径 (nginx 不剥前缀, 直达 gateway) =====
+      - /login
+      - /logout
+      - /refresh
+      - /register
+      - /unlockscreen
+      # ===== OPC 邀请落地页 =====
+      # GET /{code} 公开查邀请人 (落地页); POST /accept 匿名被邀请人接受。
+      # POST /generate 不在白名单 → 需登录 (W48.5 修复:
+      # 曾经的 `/opc/user/invitations/*` 会把 generate 误放过公网,
+      # 导致 SecurityUtils.getUserId() 返回 null, 生成邀请失败)。
+      # 8位 base32 = [A-HJ-KM-NP-Z2-9]{8} (排除 I/L/O/0/1, 与 OpcCodeGenerator 一致)
+      - /opc/user/invitations/accept
+      - /opc/user/invitations/{code:[A-HJ-KM-NP-Z2-9]{8}}
+
+      # ===== Notification WebSocket (W49) =====
+      # token 在 URL ?token= 里, 不走 Authorization 头 → 不白名单会报"令牌不能为空"
+      - /opc/notification/ws
+      - /opc/notification/ws/**
+
+      # ===== Community 公开浏览 (W52) =====
+      # install / create 评论仍需鉴权 — service 层 SecurityUtils 校验
+      - /opc/community/module/list
+      - /opc/community/module/**
+      - /opc/community/comment
+      - /opc/community/rating
+
+      # ===== HR 公开浏览 (W51) =====
+      # 创建 JD / 投递 / 面试 / offer 不在白名单 → 需登录
+      - /opc/hr/dashboard
+      - /opc/hr/job/list
+      - /opc/hr/job/**
+
+      # ===== ERP 公开浏览 (W72) =====
+      # 创建商品 / 采购 / 销售 / 退货不在白名单 → 需登录
+      - /opc/erp/product/list
+      - /opc/erp/product/**
+      - /opc/erp/inventory/low-stock
+
+      # ===== Content 公开浏览 (W74) =====
+      # 创建脚本 / 精修 / 发布不在白名单 → 需登录
+      - /opc/content/script/list
+      - /opc/content/script/dashboard
+      - /opc/content/script/recent
+      - /opc/content/script/**
+      - /opc/content/platform-account/list
+
+      # ===== Marketplace 公开浏览 (W80 P1) =====
+      # 类目详情用数字正则而非 `**`: 网关不区分 method, `**` 会把将来
+      # 任何 POST/PUT /category/xxx 一并放行。
+      - /opc/marketplace/category/tree
+      - /opc/marketplace/category/list
+      - /opc/marketplace/category/{id:[0-9]+}
+      - /opc/marketplace/tag/list
+      - /opc/marketplace/publication/list
+      - /opc/marketplace/publication/search
+      # 公开详情仅返回 PUBLISHED (selectPublishedById 在 SQL 层硬过滤)。
+      # ⚠️ 该条目同样放行 PUT /publication/{id} (编辑商品), 目前靠
+      #    PublicationController.currentAuthorId() → requireCompanyId()
+      #    的 400 fail-closed 兜住 —— 去掉那个守卫 = 全网可改任意商品。
+      - /opc/marketplace/publication/{id:[0-9]+}
+      - /opc/marketplace/review/list/**
+      # `[0-9]+` 是必须的: 它保证 "me" 不匹配, 于是 /author/me 仍需登录态。
+      # service 层 toPublicVO 已清空 contactEmail / contactPhone / totalRevenue。
+      - /opc/marketplace/author/{id:[0-9]+}
+      - /opc/marketplace/author/list
+      # 注: /publication/my/{id}, /publication/my/list 不加白名单 —— 需校验 author 归属
+      # 注: /install/** 全部需登录
