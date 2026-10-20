@@ -12,7 +12,7 @@ import java.util.Map;
  * opc-erp → opc-notification 远程调用（Task 8）。
  *
  * <p>用途：低库存预警（email）+ 退货确认（inbox）。对端 controller 在 opc-notification 模块（9310），
- * 走 {@code @InnerAuth}（由 {@code @EnableRyFeignClients} 自动注入 {@code from-source: inner}
+ * 走 {@code @InnerAuth}（由 {@code FeignRequestInterceptor} 无条件注入 {@code from-source: inner}
  * header 绕过 gateway AuthFilter）。
  *
  * <p>降级策略：{@link OpcErpNotificationGatewayFactory} —— 通知失败不影响主流程，返回 R.ok()。

@@ -93,7 +93,7 @@ public class OpcUserController extends BaseController {
     }
 
     // ==================== INSIGHT 聚合端点（M4 INSIGHT 拉取公司档案） ====================
-    // C2 (W11 评审修复)：@InnerAuth 防止公网直接命中 —— Feign 自动带 from-source: inner。
+    // C2 (W11 评审修复)：@InnerAuth 防止公网直接命中 —— 由 FeignRequestInterceptor 无条件注入 from-source: inner（commit c833fd6 修复，此前从未注入）。
     // C1 (W11 评审修复)：controller 级 @ExceptionHandler 把 OpcException 转成 R.fail(code, msg)，
     //   避免全局 advice 把响应体转成 AjaxResult 导致 Feign 侧 R<OpcCompanyProfile> 解析失败。
     //

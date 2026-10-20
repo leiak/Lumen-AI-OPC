@@ -98,7 +98,7 @@ public class OpcBillingController extends BaseController {
     //
     // C2 (W11 评审修复)：全部 3 个端点加 @InnerAuth —— 要求请求头 from-source: inner，
     //   网关 AuthFilter 会剥掉外部请求的该请求头，因此这些端点不会被公网触达。
-    //   仅有 opc-insight 等服务间 Feign 调用（Feign 客户端会带上 from-source: inner）能命中。
+    //   仅有服务间 Feign 调用能命中 —— FeignRequestInterceptor 无条件注入该头(commit c833fd6 修复,此前从未注入,所有 @InnerAuth 端点对 Feign 全部不可达)。
     //
     // C1 (W11 评审修复)：全局 GlobalExceptionHandler.handleServiceException 把 OpcException
     //   转成 AjaxResult。若任由 advice 兜底，Feign 侧声明的 R<WalletAggVo> 解析会失败。
