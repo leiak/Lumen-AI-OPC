@@ -27,6 +27,12 @@ spring:
       - nacos:application-${spring.profiles.active}.${spring.config.file-extension}
       - nacos:${spring.application.name}-${spring.profiles.active}.${spring.config.file-extension}
 
+# Jasypt（Nacos 配置里的 ENC(...) 解密，必须在 bootstrap 阶段可用）
+jasypt:
+  encryptor:
+    password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
+    algorithm: PBEWithMD5AndDES
+
 # 日志
 logging:
   level:

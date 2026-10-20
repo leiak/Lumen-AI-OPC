@@ -45,7 +45,7 @@ CREATE TABLE mp_author (
     update_by VARCHAR(64),
     update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     deleted TINYINT(1) NOT NULL DEFAULT 0,
-    UNIQUE KEY uk_author_company (author_company_id, deleted),
+    UNIQUE KEY uk_author_company (author_company_id),
     KEY idx_level_status (level, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=''作者档案''');
 
@@ -79,7 +79,7 @@ CREATE TABLE mp_publication (
     update_by VARCHAR(64),
     update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     deleted TINYINT(1) NOT NULL DEFAULT 0,
-    UNIQUE KEY uk_pub_code (code, deleted),
+    UNIQUE KEY uk_pub_code (code),
     KEY idx_status_pub (status, published_at DESC),
     KEY idx_author (author_id),
     KEY idx_category (category_code, status, published_at DESC)
@@ -102,7 +102,7 @@ CREATE TABLE mp_install (
     update_by VARCHAR(64),
     update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     deleted TINYINT(1) NOT NULL DEFAULT 0,
-    UNIQUE KEY uk_install (publication_id, tenant_company_id, user_id, deleted),
+    UNIQUE KEY uk_install (publication_id, tenant_company_id, user_id),
     KEY idx_user_status (user_id, status),
     KEY idx_tenant (tenant_company_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=''安装记录''');
@@ -122,7 +122,7 @@ CREATE TABLE mp_review (
     update_by VARCHAR(64),
     update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     deleted TINYINT(1) NOT NULL DEFAULT 0,
-    UNIQUE KEY uk_review (publication_id, user_id, deleted),
+    UNIQUE KEY uk_review (publication_id, user_id),
     KEY idx_pub_status (publication_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=''评价''');
 
@@ -141,7 +141,7 @@ CREATE TABLE mp_category (
     update_by VARCHAR(64),
     update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     deleted TINYINT(1) NOT NULL DEFAULT 0,
-    UNIQUE KEY uk_cat_code (product_type, code, deleted),
+    UNIQUE KEY uk_cat_code (product_type, code),
     KEY idx_parent (parent_id, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=''类目树''');
 
@@ -157,7 +157,7 @@ CREATE TABLE mp_tag (
     update_by VARCHAR(64),
     update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     deleted TINYINT(1) NOT NULL DEFAULT 0,
-    UNIQUE KEY uk_tag_name (name, deleted)
+    UNIQUE KEY uk_tag_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=''标签''');
 
 -- ---------- 种子数据（幂等 INSERT IGNORE）----------
