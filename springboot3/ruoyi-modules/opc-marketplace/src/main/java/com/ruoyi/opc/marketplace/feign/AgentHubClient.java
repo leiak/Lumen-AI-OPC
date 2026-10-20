@@ -64,6 +64,20 @@ public interface AgentHubClient {
      *
      * @param id {@code opc_agent_instance.id}
      */
+    /**
+     * 退订（{@code REVOKED}）一个 Agent 实例 ——
+     * 仅用于「远端成功 / 本地写失败」时 best-effort 清理孤儿实例，
+     * 正常 uninstall 路径不会调它（uninstall 只把 mp_install 置 {@code UNINSTALLED}，
+     * 不下架 Agent 实例,这是设计选择：实例由用户后续在 opc-agent-hub 显式退订）。
+     *
+     * <p>对应 server 端 {@code @InnerAuth} 端点 {@code POST /opc/agent/marketplace-instance/revoke/{id}}。
+     * {@code body} 必须含 {@code tenantCompanyId} —— 与 install 时的 id 一致,
+     * 服务端在 SQL 层校验 {@code WHERE id = #{id} AND company_id = #{tenantCompanyId}}
+     * —— 0 行 → 403,避免 marketplace 跨租户误退订别家实例。
+     *
+     * @param id {@code opc_agent_instance.id}
+     * @param body 必须含 {@code tenantCompanyId}
+     */
     @PostMapping("/marketplace-instance/revoke/{id}")
-    Map<String, Object> revokeAgentInstance(@PathVariable("id") Long id);
+    Map<String, Object> revokeAgentInstance(@PathVariable("id") Long id, @RequestBody Map<String, Object> body);
 }

@@ -162,25 +162,35 @@ class OpcMarketplaceInstanceControllerTest {
     // ==================== POST /opc/agent/marketplace-instance/revoke/{id} ====================
 
     @Test
-    @DisplayName("revoke — 正常路径: instanceService.revoke(id) + 响应 {id, rowsAffected}")
+    @DisplayName("revoke — 正常路径: instanceService.revoke(id, tenantCompanyId, 'marketplace') + 响应 {id, rowsAffected}")
     void revoke_returnsOkWithRowsAffected() {
-        when(instanceService.revoke(12345L)).thenReturn(1);
+        when(instanceService.revoke(eq(12345L), eq(200L), eq("marketplace"))).thenReturn(1);
 
-        R<Map<String, Object>> result = controller.revoke(12345L);
+        R<Map<String, Object>> result = controller.revoke(12345L, validBody());
 
         assertEquals(R.SUCCESS, result.getCode(), "HTTP 仍 200(RuoYi 业务码),这是 best-effort 清理");
         assertNotNull(result.getData());
         Map<String, Object> data = result.getData();
         assertEquals(12345L, data.get("id"));
         assertEquals(1, data.get("rowsAffected"));
-        verify(instanceService).revoke(12345L);
+        verify(instanceService).revoke(12345L, 200L, "marketplace");
         verifyNoMoreInteractions(instanceService);
     }
 
     @Test
     @DisplayName("revoke — id 为 null → 400(controller 不应让 service.revoke(null) 落到 NPE)")
     void revoke_400_whenIdNull() {
-        OpcException ex = assertThrows(OpcException.class, () -> controller.revoke(null));
+        OpcException ex = assertThrows(OpcException.class, () -> controller.revoke(null, validBody()));
+        assertEquals(400, ex.getCode());
+        verifyNoMoreInteractions(instanceService);
+    }
+
+    @Test
+    @DisplayName("revoke — 缺 tenantCompanyId → 400(防止跨租户误退订,缺字段不可走 service)")
+    void revoke_400_whenTenantCompanyIdMissing() {
+        Map<String, Object> body = new HashMap<>();
+        // 故意不放 tenantCompanyId
+        OpcException ex = assertThrows(OpcException.class, () -> controller.revoke(12345L, body));
         assertEquals(400, ex.getCode());
         verifyNoMoreInteractions(instanceService);
     }
@@ -188,9 +198,11 @@ class OpcMarketplaceInstanceControllerTest {
     @Test
     @DisplayName("revoke — service.revoke 抛异常 → 透传(上层 marketplace 据此判定清理失败)")
     void revoke_serviceThrowsPropagates() {
-        when(instanceService.revoke(999L)).thenThrow(new RuntimeException("DB connection lost"));
+        when(instanceService.revoke(eq(999L), eq(200L), eq("marketplace")))
+                .thenThrow(new RuntimeException("DB connection lost"));
 
-        RuntimeException ex = assertThrows(RuntimeException.class, () -> controller.revoke(999L));
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> controller.revoke(999L, validBody()));
         assertTrue(ex.getMessage().contains("DB connection lost"));
     }
 
@@ -223,7 +235,7 @@ class OpcMarketplaceInstanceControllerTest {
     @Test
     @DisplayName("revoke 方法 URL 契约: POST /marketplace-instance/revoke/{id}")
     void revokeMethod_urlAnnotations() throws Exception {
-        Method m = OpcMarketplaceInstanceController.class.getMethod("revoke", Long.class);
+        Method m = OpcMarketplaceInstanceController.class.getMethod("revoke", Long.class, Map.class);
 
         PostMapping postMapping = m.getAnnotation(PostMapping.class);
         assertNotNull(postMapping);
@@ -247,12 +259,12 @@ class OpcMarketplaceInstanceControllerTest {
     }
 
     @Test
-    @DisplayName("revoke 响应不泄漏 owner 信息(无 SecurityUtils 登录态校验 —— orphan 无 mp_install 归属)")
+    @DisplayName("revoke 响应不泄漏 owner 信息(无 SecurityUtils 登录态校验 —— orphan 无 mp_install 归属,但仍校验 tenantCompanyId)")
     void revoke_doesNotRequireLogin() throws Exception {
         // 验证 revoke 方法在 SecurityContextHolder 无 user 时也能跑 —— 它就是不需要 user
         // 由 @InnerAuth 守门,from-source 头校验交给 gateway + InnerAuthAspect
-        when(instanceService.revoke(anyLong())).thenReturn(1);
-        R<Map<String, Object>> result = controller.revoke(999L);
+        when(instanceService.revoke(eq(999L), eq(200L), eq("marketplace"))).thenReturn(1);
+        R<Map<String, Object>> result = controller.revoke(999L, validBody());
         assertEquals(R.SUCCESS, result.getCode());
         // 没 login 也不会抛 "未登录" 之类的错(不像 OpcAgentController.hire)
         assertNull(result.getMsg() == null ? null : "msg-leak-check", "revoke 路径不应有 user/owner 信息泄露");

@@ -38,6 +38,11 @@ public class OpcAgentInstanceServiceImpl implements IOpcAgentInstanceService {
     }
 
     @Override
+    public OpcAgentInstance getByIdAndCompany(Long id, Long companyId) {
+        return instanceMapper.selectByIdAndCompany(id, companyId);
+    }
+
+    @Override
     public OpcAgentInstance getByCode(String code) {
         return instanceMapper.selectByCode(code);
     }
@@ -86,30 +91,38 @@ public class OpcAgentInstanceServiceImpl implements IOpcAgentInstanceService {
     }
 
     @Override
-    public int pause(Long id) {
-        OpcAgentInstance inst = new OpcAgentInstance();
-        inst.setId(id);
-        inst.setStatus("PAUSED");
-        inst.setUpdateBy("system");
-        return instanceMapper.update(inst);
+    public int pause(Long id, Long companyId, String operatorId) {
+        return updateStatusScoped(id, companyId, operatorId, "PAUSED");
     }
 
     @Override
-    public int resume(Long id) {
-        OpcAgentInstance inst = new OpcAgentInstance();
-        inst.setId(id);
-        inst.setStatus("RUNNING");
-        inst.setUpdateBy("system");
-        return instanceMapper.update(inst);
+    public int resume(Long id, Long companyId, String operatorId) {
+        return updateStatusScoped(id, companyId, operatorId, "RUNNING");
     }
 
     @Override
-    public int revoke(Long id) {
-        OpcAgentInstance inst = new OpcAgentInstance();
-        inst.setId(id);
-        inst.setStatus("REVOKED");
-        inst.setUpdateBy("system");
-        return instanceMapper.update(inst);
+    public int revoke(Long id, Long companyId, String operatorId) {
+        return updateStatusScoped(id, companyId, operatorId, "REVOKED");
+    }
+
+    /**
+     * 租户作用域的状态变更。Mapper 在 {@code WHERE} 同时约束 id 和 company_id,
+     * 因此 {@code rowsAffected == 0} 一律按「不存在 / 不属于该租户」处理 —— 抛 403。
+     *
+     * <p>为何不"先 load 再 check 再 update":有 TOCTOU 窗口 —— 在 load 与 update 之间
+     * 另一笔事务可能已删除/转让该实例;此外 load 本身也会泄漏"该 id 存在"的信息给攻击者,
+     * 而我们希望对越权请求统一返回 403。</p>
+     */
+    private int updateStatusScoped(Long id, Long companyId, String operatorId, String newStatus) {
+        if (id == null || companyId == null) {
+            throw new OpcException(400, "实例 id 与租户 id 必填", "AGENT");
+        }
+        int rows = instanceMapper.updateStatusByCompany(id, companyId, newStatus,
+                operatorId == null ? "system" : operatorId);
+        if (rows == 0) {
+            throw new OpcException(403, "无权操作该实例", "AGENT");
+        }
+        return rows;
     }
 
     @Override

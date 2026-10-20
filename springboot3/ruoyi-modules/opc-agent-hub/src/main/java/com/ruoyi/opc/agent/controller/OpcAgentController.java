@@ -76,19 +76,27 @@ public class OpcAgentController extends BaseController {
     @Operation(summary = "实例详情")
     @GetMapping("/instance/{id}")
     public AjaxResult instance(@PathVariable Long id) {
-        return success(instanceService.getById(id));
+        Long companyId = resolveCompanyId();
+        OpcAgentInstance inst = instanceService.getByIdAndCompany(id, companyId);
+        if (inst == null) {
+            // 不区分「不存在」与「不属于该租户」 — 越权探测也返回 403
+            throw new OpcException(403, "无权访问该实例", "AGENT");
+        }
+        return success(inst);
     }
 
     @Operation(summary = "暂停/恢复/退订")
     @PostMapping("/instance/{id}/action")
     public AjaxResult instanceAction(@PathVariable Long id, @RequestParam String action) {
+        Long companyId = resolveCompanyId();
+        String operatorId = String.valueOf(SecurityUtils.getUserId());
         // W48.5: 前端历史调用统一大写 PAUSE/RESUME/REVOKE,这里 toUpperCase 容错
         String act = action == null ? "" : action.toUpperCase();
         int n;
         switch (act) {
-            case "PAUSE" -> n = instanceService.pause(id);
-            case "RESUME" -> n = instanceService.resume(id);
-            case "REVOKE" -> n = instanceService.revoke(id);
+            case "PAUSE" -> n = instanceService.pause(id, companyId, operatorId);
+            case "RESUME" -> n = instanceService.resume(id, companyId, operatorId);
+            case "REVOKE" -> n = instanceService.revoke(id, companyId, operatorId);
             default -> throw new OpcException("未知动作：" + action);
         }
         return success(n > 0);
@@ -98,6 +106,12 @@ public class OpcAgentController extends BaseController {
     @GetMapping("/instance/{id}/tasks")
     public AjaxResult instanceTasks(@PathVariable Long id,
                                      @RequestParam(defaultValue = "20") Integer limit) {
+        Long companyId = resolveCompanyId();
+        // 必须先验证实例归属 — 否则 listByInstance(id) 会泄漏别家任务
+        OpcAgentInstance inst = instanceService.getByIdAndCompany(id, companyId);
+        if (inst == null) {
+            throw new OpcException(403, "无权访问该实例", "AGENT");
+        }
         return success(taskService.listByInstance(id, limit));
     }
 
@@ -105,7 +119,13 @@ public class OpcAgentController extends BaseController {
     @GetMapping("/instance/{id}/usage")
     public AjaxResult instanceUsage(@PathVariable Long id,
                                      @RequestParam(defaultValue = "20") Integer limit) {
-        return success(tokenUsageService.listByCompany(id, limit));
+        Long companyId = resolveCompanyId();
+        OpcAgentInstance inst = instanceService.getByIdAndCompany(id, companyId);
+        if (inst == null) {
+            throw new OpcException(403, "无权访问该实例", "AGENT");
+        }
+        // 修正 W80 之前的 bug:之前误把 instanceId 当 companyId 传入 listByCompany
+        return success(tokenUsageService.listByCompany(inst.getCompanyId(), limit));
     }
 
     @Operation(summary = "Token 每日汇总")
@@ -113,6 +133,11 @@ public class OpcAgentController extends BaseController {
     public AjaxResult dailyUsage(@RequestParam Long companyId,
                                   @RequestParam(required = false) String startDate,
                                   @RequestParam(required = false) String endDate) {
+        Long callerCompanyId = resolveCompanyId();
+        if (companyId == null || !companyId.equals(callerCompanyId)) {
+            // 公司越权探测 / 缺 companyId 一律 403 —— 不要让 service 拿到「其他公司 id」
+            throw new OpcException(403, "无权访问该租户数据", "AGENT");
+        }
         return success(tokenUsageService.aggregateDaily(companyId, startDate, endDate));
     }
 
@@ -120,14 +145,36 @@ public class OpcAgentController extends BaseController {
     @GetMapping("/usage/summary")
     public AjaxResult usageSummary(@RequestParam Long companyId,
                                     @RequestParam(required = false) String bizDate) {
+        Long callerCompanyId = resolveCompanyId();
+        if (companyId == null || !companyId.equals(callerCompanyId)) {
+            throw new OpcException(403, "无权访问该租户数据", "AGENT");
+        }
         return success(tokenUsageService.summary(companyId, bizDate));
     }
 
     @Operation(summary = "执行任务（同步）")
     @PostMapping("/task/run")
     public AjaxResult runTask(@RequestBody RunTaskRequest req) {
+        Long companyId = resolveCompanyId();
+        // 实例必须属于当前租户 — 否则「我能跑别家的 Agent」就是 RCE 兜底
+        OpcAgentInstance inst = instanceService.getByIdAndCompany(req.instanceId, companyId);
+        if (inst == null) {
+            throw new OpcException(403, "无权访问该实例", "AGENT");
+        }
         // TODO: 调 AgentRuntime.run 并写回 task 表
         return success(Map.of("taskCode", "RUNNING"));
+    }
+
+    /**
+     * 解析登录态的租户 id。{@code SecurityUtils.getCompanyId()} 在无公司时返回 null
+     * (绝不会返回 0);此处 fail-closed 用 403,绝不「默认 0」放行。
+     */
+    private Long resolveCompanyId() {
+        Long companyId = SecurityUtils.getCompanyId();
+        if (companyId == null) {
+            throw new OpcException(403, "当前账号未关联企业，请先加入或创建企业", "AGENT");
+        }
+        return companyId;
     }
 
     @lombok.Data

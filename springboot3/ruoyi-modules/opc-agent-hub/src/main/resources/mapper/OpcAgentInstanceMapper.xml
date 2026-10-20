@@ -41,6 +41,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         FROM opc_agent_instance WHERE id = #{id}
     </select>
 
+    <select id="selectByIdAndCompany" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_agent_instance WHERE id = #{id} AND company_id = #{companyId}
+    </select>
+
     <select id="selectByCode" resultMap="BaseResultMap">
         SELECT <include refid="Base_Columns" />
         FROM opc_agent_instance WHERE instance_code = #{instanceCode}
@@ -87,6 +92,17 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             update_time = NOW()
         </set>
         WHERE id = #{id}
+    </update>
+
+    <!-- 租户作用域的状态更新:WHERE 同时约束 id 和 company_id。
+         rowsAffected == 0 一律按 403 处理（不存在 / 不属于该租户）,
+         避免 load-then-check 的 TOCTOU 窗口。 -->
+    <update id="updateStatusByCompany">
+        UPDATE opc_agent_instance
+        SET status = #{status},
+            update_by = #{updateBy},
+            update_time = NOW()
+        WHERE id = #{id} AND company_id = #{companyId}
     </update>
 
     <update id="incrementTaskCount">

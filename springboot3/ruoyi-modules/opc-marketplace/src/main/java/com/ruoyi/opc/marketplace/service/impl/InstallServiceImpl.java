@@ -113,17 +113,22 @@ public class InstallServiceImpl implements InstallService {
             // 我们既丢了实例也丢了 mp_install 行 —— 仍按 best-effort revoke + log 处理
             if (instanceId != null) {
                 try {
-                    agentHubClient.revokeAgentInstance(instanceId);
+                    // body 必须含 tenantCompanyId —— server 端在 SQL 层校验
+                    // WHERE id = #{id} AND company_id = #{tenantCompanyId},
+                    // 0 行 → 403,避免跨租户误退订
+                    Map<String, Object> revokeBody = new HashMap<>();
+                    revokeBody.put("tenantCompanyId", tenantCompanyId);
+                    agentHubClient.revokeAgentInstance(instanceId, revokeBody);
                     log.warn("[Install] local write failed, attempted best-effort revoke: "
-                            + "publicationId={} userId={} instanceId={}",
-                            publicationId, userId, instanceId);
+                            + "publicationId={} userId={} instanceId={} tenantCompanyId={}",
+                            publicationId, userId, instanceId, tenantCompanyId);
                 } catch (RuntimeException revokeEx) {
                     // 两条路径都失败 —— 这是真实的孤儿状态,日志必须能定位
                     log.error("[Install] ORPHAN AgentInstance: local write failed AND revoke failed. "
-                                    + "publicationId={} userId={} instanceId={} "
+                                    + "publicationId={} userId={} instanceId={} tenantCompanyId={} "
                                     + "→ 需运维按 instanceId 手动清理 opc_agent_instance "
                                     + "(可按 agent_definition_id → mp_publication.agent_definition_id 反查)",
-                            publicationId, userId, instanceId, revokeEx);
+                            publicationId, userId, instanceId, tenantCompanyId, revokeEx);
                 }
             }
             throw ex;

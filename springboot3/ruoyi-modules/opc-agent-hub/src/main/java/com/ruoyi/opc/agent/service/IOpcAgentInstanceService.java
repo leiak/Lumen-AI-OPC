@@ -12,7 +12,17 @@ import java.util.List;
  */
 public interface IOpcAgentInstanceService {
 
+    /**
+     * 按主键查(无租户过滤 — 内部用,不暴露给 controller)。
+     * 公开入口请使用 {@link #getByIdAndCompany(Long, Long)}。
+     */
     OpcAgentInstance getById(Long id);
+
+    /**
+     * 租户作用域的主键查询。
+     * 返回 null 表示「不存在 / 不属于该租户」,调用方按 403 处理。
+     */
+    OpcAgentInstance getByIdAndCompany(Long id, Long companyId);
 
     OpcAgentInstance getByCode(String code);
 
@@ -23,13 +33,16 @@ public interface IOpcAgentInstanceService {
     /** 雇佣 Agent（创建实例） */
     OpcAgentInstance hire(Long companyId, Long definitionId, String hireType, Integer duration, String nickname);
 
-    /** 暂停/恢复 */
-    int pause(Long id);
+    /** 暂停(RUNNING→PAUSED) — 租户作用域,rowsAffected=0 抛 OpcException(403) */
+    int pause(Long id, Long companyId, String operatorId);
 
-    int resume(Long id);
+    int resume(Long id, Long companyId, String operatorId);
 
-    /** 退订 */
-    int revoke(Long id);
+    /**
+     * 退订(任何状态→REVOKED) — 租户作用域。
+     * @param companyId 租户公司 id（来自登录态或 marketplace 兜底时由调用方传入）
+     */
+    int revoke(Long id, Long companyId, String operatorId);
 
     /** 累加 Token 消耗 */
     void addTokenUsed(Long id, long delta);

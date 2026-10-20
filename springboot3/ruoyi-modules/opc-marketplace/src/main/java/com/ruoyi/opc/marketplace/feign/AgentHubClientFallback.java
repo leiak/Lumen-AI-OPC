@@ -38,9 +38,10 @@ public class AgentHubClientFallback implements FallbackFactory<AgentHubClient> {
             }
 
             @Override
-            public Map<String, Object> revokeAgentInstance(Long id) {
+            public Map<String, Object> revokeAgentInstance(Long id, Map<String, Object> body) {
                 // revoke 是 best-effort 清理路径,失败也只 log,不抛 503 把原始异常吃掉
-                log.error("[AgentHubClient] revokeAgentInstance failed (orphan not cleaned) instanceId={}", id, cause);
+                log.error("[AgentHubClient] revokeAgentInstance failed (orphan not cleaned) instanceId={} body={}",
+                        id, body, cause);
                 // 返回 null 让调用方走正常路径(本就没期望拿到响应体)
                 return null;
             }

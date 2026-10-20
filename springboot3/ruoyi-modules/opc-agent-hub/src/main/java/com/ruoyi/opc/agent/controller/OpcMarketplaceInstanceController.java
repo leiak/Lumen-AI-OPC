@@ -95,18 +95,32 @@ public class OpcMarketplaceInstanceController {
 
     /**
      * 退订（{@code REVOKED}）一个 Agent 实例 —— 仅供 opc-marketplace 做孤儿实例的
-     * best-effort 清理（远端成功 / 本地写失败时调用）。不校验实例归属 —— orphan 实例没有
-     * 关联的 mp_install 行,只能用「按 instanceId 退订」的最弱校验模式。
+     * best-effort 清理（远端成功 / 本地写失败时调用）。
+     *
+     * <p>需要传入 {@code tenantCompanyId}（请求体 JSON 字段）做租户作用域校验：
+     * <ul>
+     *   <li>{@code @InnerAuth} 已保证调用方是 marketplace Feign（不是公网直连）</li>
+     *   <li>{@code tenantCompanyId} 是 marketplace 安装时的「同租户公司 id」,
+     *       由 {@code InstallServiceImpl.createRemoteAgentInstance} 透传过来,
+     *       保证 cleanup 不会误退订别家实例</li>
+     *   <li>rowsAffected=0 → 403,不区分「不存在」与「不属于该租户」</li>
+     * </ul>
      */
     @Operation(summary = "Marketplace 退订一个 Agent 实例(orphan 清理用)")
     @InnerAuth
     @PostMapping("/revoke/{id}")
-    public R<Map<String, Object>> revoke(@PathVariable("id") Long id) {
+    public R<Map<String, Object>> revoke(@PathVariable("id") Long id, @RequestBody(required = false) Map<String, Object> body) {
         if (id == null) {
             throw new OpcException(400, "instance id 必填", "AGENT");
         }
-        int n = instanceService.revoke(id);
-        log.warn("[Marketplace] instance revoked (orphan cleanup) instanceId={} rows={}", id, n);
+        Long tenantCompanyId = body == null ? null : asLong(body, "tenantCompanyId");
+        if (tenantCompanyId == null) {
+            throw new OpcException(400, "tenantCompanyId 必填 — 防止跨租户误退订", "AGENT");
+        }
+        // operatorId 用 "marketplace" 以便审计日志能区分清理路径
+        int n = instanceService.revoke(id, tenantCompanyId, "marketplace");
+        log.warn("[Marketplace] instance revoked (orphan cleanup) instanceId={} tenantCompanyId={} rows={}",
+                id, tenantCompanyId, n);
         return R.ok(Map.of("id", id, "rowsAffected", n));
     }
 
