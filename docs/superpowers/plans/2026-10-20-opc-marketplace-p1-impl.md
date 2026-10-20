@@ -1405,7 +1405,9 @@ public class AuthorController {
 
     @GetMapping("/me")
     public R<AuthorVO> me() {
-        Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
+        Long companyId = SecurityUtils.getCompanyId();
+        // fail-closed: 未关联企业的账号不得进入租户维度操作,禁止用 0 兜底(见 Task6 前置说明)
+        if (companyId == null) throw new OpcException(400, "当前账号未关联企业,请先加入或创建企业", "MARKETPLACE");
         var author = authorService.getByCompanyId(companyId);
         if (author == null) return R.ok(null);
         return R.ok(authorService.toVO(author));
@@ -2000,7 +2002,9 @@ public class PublicationController {
      */
     @GetMapping("/my/{id}")
     public R<PublicationVO> myGet(@PathVariable Long id) {
-        Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
+        Long companyId = SecurityUtils.getCompanyId();
+        // fail-closed: 未关联企业的账号不得进入租户维度操作,禁止用 0 兜底(见 Task6 前置说明)
+        if (companyId == null) throw new OpcException(400, "当前账号未关联企业,请先加入或创建企业", "MARKETPLACE");
         MpAuthor author = authorService.getByCompanyId(companyId);
         if (author == null) {
             throw new com.ruoyi.opc.common.exception.OpcException(403, "请先申请成为作者", "MARKETPLACE");
@@ -2014,7 +2018,9 @@ public class PublicationController {
 
     @GetMapping("/my/list")
     public R<List<PublicationVO>> myList() {
-        Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
+        Long companyId = SecurityUtils.getCompanyId();
+        // fail-closed: 未关联企业的账号不得进入租户维度操作,禁止用 0 兜底(见 Task6 前置说明)
+        if (companyId == null) throw new OpcException(400, "当前账号未关联企业,请先加入或创建企业", "MARKETPLACE");
         MpAuthor author = authorService.getByCompanyId(companyId);
         if (author == null) return R.ok(List.of());
         // 走批量 VO 装配,避免 2N+1 (作者侧 listByAuthor 原本每行 author+category 各 1 次单查).
@@ -2023,7 +2029,9 @@ public class PublicationController {
 
     @PostMapping
     public R<PublicationVO> create(@Valid @RequestBody PublicationCreateRequest req) {
-        Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
+        Long companyId = SecurityUtils.getCompanyId();
+        // fail-closed: 未关联企业的账号不得进入租户维度操作,禁止用 0 兜底(见 Task6 前置说明)
+        if (companyId == null) throw new OpcException(400, "当前账号未关联企业,请先加入或创建企业", "MARKETPLACE");
         MpAuthor author = authorService.getByCompanyId(companyId);
         if (author == null) {
             throw new com.ruoyi.opc.common.exception.OpcException(403, "请先申请成为作者", "MARKETPLACE");
@@ -2035,7 +2043,9 @@ public class PublicationController {
 
     @PutMapping("/{id}")
     public R<PublicationVO> edit(@PathVariable Long id, @Valid @RequestBody PublicationEditRequest req) {
-        Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
+        Long companyId = SecurityUtils.getCompanyId();
+        // fail-closed: 未关联企业的账号不得进入租户维度操作,禁止用 0 兜底(见 Task6 前置说明)
+        if (companyId == null) throw new OpcException(400, "当前账号未关联企业,请先加入或创建企业", "MARKETPLACE");
         MpAuthor author = authorService.getByCompanyId(companyId);
         if (author == null) throw new com.ruoyi.opc.common.exception.OpcException(403, "非作者", "MARKETPLACE");
         var p = publicationService.edit(id, req, author.getId());
@@ -2044,7 +2054,9 @@ public class PublicationController {
 
     @PostMapping("/{id}/submit-audit")
     public R<PublicationVO> submitAudit(@PathVariable Long id) {
-        Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
+        Long companyId = SecurityUtils.getCompanyId();
+        // fail-closed: 未关联企业的账号不得进入租户维度操作,禁止用 0 兜底(见 Task6 前置说明)
+        if (companyId == null) throw new OpcException(400, "当前账号未关联企业,请先加入或创建企业", "MARKETPLACE");
         MpAuthor author = authorService.getByCompanyId(companyId);
         var p = publicationService.submitAudit(id, author.getId());
         return R.ok(publicationService.toVO(p));
@@ -2052,7 +2064,9 @@ public class PublicationController {
 
     @PostMapping("/{id}/online")
     public R<PublicationVO> online(@PathVariable Long id) {
-        Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
+        Long companyId = SecurityUtils.getCompanyId();
+        // fail-closed: 未关联企业的账号不得进入租户维度操作,禁止用 0 兜底(见 Task6 前置说明)
+        if (companyId == null) throw new OpcException(400, "当前账号未关联企业,请先加入或创建企业", "MARKETPLACE");
         MpAuthor author = authorService.getByCompanyId(companyId);
         var p = publicationService.online(id, author.getId());
         return R.ok(publicationService.toVO(p));
@@ -2060,7 +2074,9 @@ public class PublicationController {
 
     @PostMapping("/{id}/offline")
     public R<PublicationVO> offline(@PathVariable Long id) {
-        Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
+        Long companyId = SecurityUtils.getCompanyId();
+        // fail-closed: 未关联企业的账号不得进入租户维度操作,禁止用 0 兜底(见 Task6 前置说明)
+        if (companyId == null) throw new OpcException(400, "当前账号未关联企业,请先加入或创建企业", "MARKETPLACE");
         MpAuthor author = authorService.getByCompanyId(companyId);
         var p = publicationService.offline(id, author.getId());
         return R.ok(publicationService.toVO(p));
@@ -2357,14 +2373,18 @@ public class InstallController {
     @PostMapping("/{publicationId}")
     public R<MpInstall> install(@PathVariable Long publicationId) {
         Long userId = SecurityUtils.getUserId();
-        Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
+        Long companyId = SecurityUtils.getCompanyId();
+        // fail-closed: 未关联企业的账号不得进入租户维度操作,禁止用 0 兜底(见 Task6 前置说明)
+        if (companyId == null) throw new OpcException(400, "当前账号未关联企业,请先加入或创建企业", "MARKETPLACE");
         return R.ok(installService.install(publicationId, companyId, userId));
     }
 
     @DeleteMapping("/{publicationId}")
     public R<Void> uninstall(@PathVariable Long publicationId) {
         Long userId = SecurityUtils.getUserId();
-        Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
+        Long companyId = SecurityUtils.getCompanyId();
+        // fail-closed: 未关联企业的账号不得进入租户维度操作,禁止用 0 兜底(见 Task6 前置说明)
+        if (companyId == null) throw new OpcException(400, "当前账号未关联企业,请先加入或创建企业", "MARKETPLACE");
         installService.uninstall(publicationId, companyId, userId);
         return R.ok();
     }
@@ -2378,7 +2398,9 @@ public class InstallController {
     @GetMapping("/{publicationId}/status")
     public R<MpInstall> status(@PathVariable Long publicationId) {
         Long userId = SecurityUtils.getUserId();
-        Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
+        Long companyId = SecurityUtils.getCompanyId();
+        // fail-closed: 未关联企业的账号不得进入租户维度操作,禁止用 0 兜底(见 Task6 前置说明)
+        if (companyId == null) throw new OpcException(400, "当前账号未关联企业,请先加入或创建企业", "MARKETPLACE");
         return R.ok(installService.getInstallStatus(publicationId, companyId, userId));
     }
 
@@ -2584,7 +2606,9 @@ public class ReviewController {
     @PostMapping
     public R<MpReview> create(@Valid @RequestBody ReviewCreateRequest req) {
         Long userId = SecurityUtils.getUserId();
-        Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
+        Long companyId = SecurityUtils.getCompanyId();
+        // fail-closed: 未关联企业的账号不得进入租户维度操作,禁止用 0 兜底(见 Task6 前置说明)
+        if (companyId == null) throw new OpcException(400, "当前账号未关联企业,请先加入或创建企业", "MARKETPLACE");
         return R.ok(reviewService.create(req, userId, companyId));
     }
 
@@ -3845,7 +3869,7 @@ metadata:
 2. **productType 必填校验**：service 层强校验 AGENT 必带 agentDefinitionId / MODULE 必带 moduleId
 3. **Screenshots JSON 序列化**：Request DTO 用 List<String>, XML 用 String 字段, service 层 throw 异常 on JsonProcessingException
 4. **Avg rating 重算**：每次 create/update/delete review 都重新计算并 UPDATE mp_publication
-5. **B2B 作者入驻**：申请时 author_company_id = 当前用户的 companyId (来自 SecurityUtils.getLoginUser().getUser().getCompanyId())
+5. **B2B 作者入驻**：申请时 author_company_id = 当前用户的 companyId (来自 SecurityUtils.getCompanyId())
 
 ## 教训
 - **`@WebMvcTest` 失败模式**：必须显式 `@MockBean` 所有 Controller 依赖的 service，否则 Bean 找不到
