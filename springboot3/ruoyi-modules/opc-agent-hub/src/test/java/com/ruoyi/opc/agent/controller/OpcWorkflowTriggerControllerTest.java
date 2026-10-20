@@ -115,6 +115,7 @@ class OpcWorkflowTriggerControllerTest {
         assertEquals("LLM 调用超时", data.get("errorMessage"),
                 "Controller 不应吞掉 errorMessage");
         assertEquals(5000, data.get("durationMs"));
+        verify(triggerService).trigger(CODE, SOURCE);
         verifyNoMoreInteractions(triggerService);
     }
 
@@ -141,6 +142,7 @@ class OpcWorkflowTriggerControllerTest {
                 () -> controller.trigger("nope", SOURCE));
         assertTrue(ex.getMessage().contains("工作流不存在"));
         // Controller 不应包装成 R.fail
+        verify(triggerService).trigger("nope", SOURCE);
         verifyNoMoreInteractions(triggerService);
     }
 
@@ -153,6 +155,7 @@ class OpcWorkflowTriggerControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.trigger(CODE, SOURCE));
         assertTrue(ex.getMessage().contains("已停用"));
+        verify(triggerService).trigger(CODE, SOURCE);
         verifyNoMoreInteractions(triggerService);
     }
 
@@ -175,6 +178,7 @@ class OpcWorkflowTriggerControllerTest {
         assertEquals("RUNNING", data.get("status"));
         assertEquals("R20260905000001", data.get("runCode"));
         assertNull(data.get("durationMs"), "未完成的 RUNNING durationMs 应透传 null");
+        verify(triggerService).trigger(CODE, SOURCE);
         verifyNoMoreInteractions(triggerService);
     }
 

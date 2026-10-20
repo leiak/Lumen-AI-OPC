@@ -22,12 +22,13 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.Date;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -104,11 +105,12 @@ class OpcAgentControllerMvcTest {
     private OpcAgentDefinition sampleDefinition() {
         OpcAgentDefinition d = new OpcAgentDefinition();
         d.setId(DEFINITION_ID);
-        d.setCode("finance_daily_v1");
+        // agentCode / priceMonthly 与 DB 列 agent_code / price_monthly 对齐（schema 对齐重命名）
+        d.setAgentCode("finance_daily_v1");
         d.setName("财务日报 Agent");
         d.setCategory("finance");
         d.setStatus("PUBLISHED");
-        d.setMonthlyPrice(new BigDecimal("99.00"));
+        d.setPriceMonthly(new BigDecimal("99.00"));
         return d;
     }
 
@@ -116,11 +118,12 @@ class OpcAgentControllerMvcTest {
         OpcAgentInstance inst = new OpcAgentInstance();
         inst.setId(99L);
         inst.setCompanyId(COMPANY_ID);
-        inst.setUserId(USER_ID);
+        // opc_agent_instance 无 user_id 列：实例归属靠 opc_company_member join，操作者落到 create_by 审计列
+        inst.setCreateBy(String.valueOf(USER_ID));
         inst.setDefinitionId(DEFINITION_ID);
         inst.setHireType("MONTHLY");
         inst.setStatus("RUNNING");
-        inst.setHiredAt(LocalDateTime.now());
+        inst.setStartTime(new Date());
         return inst;
     }
 
@@ -135,7 +138,7 @@ class OpcAgentControllerMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data[0].code").value("finance_daily_v1"))
+                .andExpect(jsonPath("$.data[0].agentCode").value("finance_daily_v1"))
                 .andExpect(jsonPath("$.data[0].name").value("财务日报 Agent"))
                 .andExpect(jsonPath("$.data[0].category").value("finance"));
 
@@ -188,7 +191,7 @@ class OpcAgentControllerMvcTest {
         mockMvc.perform(get("/opc/agent/detail/{id}", DEFINITION_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.code").value("finance_daily_v1"))
+                .andExpect(jsonPath("$.data.agentCode").value("finance_daily_v1"))
                 .andExpect(jsonPath("$.data.name").value("财务日报 Agent"));
 
         verify(definitionService).getById(DEFINITION_ID);
@@ -232,7 +235,7 @@ class OpcAgentControllerMvcTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value(99))
                 .andExpect(jsonPath("$.data.companyId").value(COMPANY_ID))
-                .andExpect(jsonPath("$.data.userId").value(USER_ID))
+                .andExpect(jsonPath("$.data.createBy").value(String.valueOf(USER_ID)))
                 .andExpect(jsonPath("$.data.status").value("RUNNING"));
 
         verify(instanceService).hire(COMPANY_ID, DEFINITION_ID, "MONTHLY", 30, "我的财务助理");
