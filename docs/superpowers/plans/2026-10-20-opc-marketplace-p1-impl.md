@@ -690,8 +690,29 @@ public interface MpInstallMapper {
     List<MpInstall> selectByUser(Long userId);
     List<MpInstall> selectByTenant(Long tenantCompanyId);
     int updateStatus(Long id, String status, java.time.LocalDateTime uninstalledAt);
+    /** 重新安装：复活既有软删除行（uk_install 不含 deleted，重复 INSERT 会撞唯一键） */
+    int reactivate(@org.apache.ibatis.annotations.Param("id") Long id,
+                   @org.apache.ibatis.annotations.Param("agentInstanceId") Long agentInstanceId,
+                   @org.apache.ibatis.annotations.Param("installedAt") java.time.LocalDateTime installedAt,
+                   @org.apache.ibatis.annotations.Param("updateBy") String updateBy);
 }
 ```
+
+> ⚠️ **唯一键与软删除的交互**（Task 2 实现期发现）：
+> `uk_install(publication_id, tenant_company_id, user_id)` **不含** `deleted`（Task 1 审查 I1 修复，
+> 与 crm/hr/erp/community 同惯例——硬删除语义）。因此软删除行仍占用唯一键。
+> `selectUnique` / `selectByPublicationAndUser` **不能**加 `deleted = 0` 过滤，否则：
+> - 「卸载后再安装」查不到既有行 → INSERT 撞 1062
+> - 「已评价(被软删)」查不到 → 重复评价通过
+>
+> 对应地，`install()` 必须走**复活**分支而非 INSERT，`uninstall()` 必须校验 `ACTIVE`。
+> 复活时需能**清空** `uninstalled_at`——`updateStatus` 的 `<set>` 在参数为 null 时跳过该列，
+> 所以单独提供 `reactivate`（用 `<set>` + `<if>` 之外显式赋值 `uninstalled_at = NULL`）。
+>
+> **评价侧（Task 7）的对应结论**：`uk_review(publication_id, user_id)` 同样不含 `deleted`，
+> `selectByPublicationAndUser` 不过滤 `deleted`，因此**被软删（HIDDEN）的评价仍会挡住再次评价**。
+> 这是**有意的**——防止「删评价刷分」，`ReviewServiceImpl.create()` 的 `existing != null → 409` 保持不变，
+> 且 HIDDEN 评价不参与 `averageForPublication`（该查询按 `status = 'VISIBLE'` 过滤）。
 
 `MpReviewMapper.java`:
 ```java
@@ -880,7 +901,9 @@ Each XML has the same structure. `MpPublicationMapper.xml` (most complex):
 
 For other 5 XMLs, follow the same pattern. Truncated patterns:
 - `MpAuthorMapper.xml`: insert, selectById, selectByCompanyId, updateById, incrementTotalAgents
-- `MpInstallMapper.xml`: insert, selectById, selectUnique, selectByUser, selectByTenant, updateStatus
+- `MpInstallMapper.xml`: insert, selectById, selectUnique, selectByUser, selectByTenant, updateStatus, reactivate
+  - `reactivate` 必须显式写 `uninstalled_at = NULL`（`updateStatus` 的 `<set>` 无法清空该列）
+  - `selectUnique` / `selectByPublicationAndUser` **不加** `deleted = 0`（见上文唯一键交互说明）
 - `MpReviewMapper.xml`: insert, selectById, selectByPublicationAndUser, selectList, countList, averageForPublication, countForPublication, updateById, updateStatus
 - `MpCategoryMapper.xml`: selectAll, selectByProductType, selectByCode, selectById
 - `MpTagMapper.xml`: selectAll, selectByCategory
@@ -2048,6 +2071,17 @@ public class InstallServiceImpl implements InstallService {
             }
         }
 
+        // uk_install 不含 deleted → 既有行（含 UNINSTALLED 软删除）仍占唯一键，必须复活而非 INSERT
+        if (existing != null) {
+            installMapper.reactivate(existing.getId(), instanceId, LocalDateTime.now(), String.valueOf(userId));
+            existing.setAgentInstanceId(instanceId);
+            existing.setStatus("ACTIVE");
+            existing.setInstalledAt(LocalDateTime.now());
+            log.info("[Install] reinstalled (revived row) publicationId={} userId={} instanceId={}",
+                    publicationId, userId, instanceId);
+            return existing;
+        }
+
         MpInstall install = new MpInstall();
         install.setPublicationId(publicationId);
         install.setTenantCompanyId(tenantCompanyId);
@@ -2070,6 +2104,9 @@ public class InstallServiceImpl implements InstallService {
     public void uninstall(Long publicationId, Long tenantCompanyId, Long userId) {
         MpInstall existing = installMapper.selectUnique(publicationId, tenantCompanyId, userId);
         if (existing == null) throw new OpcException(404, "未安装", "MARKETPLACE");
+        if (!"ACTIVE".equals(existing.getStatus())) {
+            throw new OpcException(409, "该安装记录已卸载", "MARKETPLACE");
+        }
         installMapper.updateStatus(existing.getId(), "UNINSTALLED", LocalDateTime.now());
         log.info("[uninstall] publicationId={} userId={}", publicationId, userId);
     }
@@ -2688,6 +2725,32 @@ class InstallServiceTest {
         assertThatThrownBy(() -> installService.install(1L, 1L, 1L))
             .isInstanceOf(OpcException.class)
             .hasMessageContaining("已安装");
+    }
+
+    @Test
+    void install_revivesRow_whenPreviouslyUninstalled() {
+        // uk_install 不含 deleted → 卸载后再装必须 reactivate,不能 INSERT(否则 1062)
+        MpPublication p = MpPublication.builder().id(1L).status("PUBLISHED").productType("MODULE").build();
+        when(publicationMapper.selectById(1L)).thenReturn(p);
+        MpInstall existing = MpInstall.builder().id(99L).status("UNINSTALLED").build();
+        when(installMapper.selectUnique(1L, 1L, 1L)).thenReturn(existing);
+
+        MpInstall result = installService.install(1L, 1L, 1L);
+
+        assertThat(result.getId()).isEqualTo(99L);
+        assertThat(result.getStatus()).isEqualTo("ACTIVE");
+        verify(installMapper).reactivate(eq(99L), isNull(), any(LocalDateTime.class), eq("1"));
+        verify(installMapper, never()).insert(any(MpInstall.class));
+        verify(publicationMapper, never()).incrementInstallCount(anyLong());
+    }
+
+    @Test
+    void uninstall_409_whenAlreadyUninstalled() {
+        MpInstall existing = MpInstall.builder().id(99L).status("UNINSTALLED").build();
+        when(installMapper.selectUnique(1L, 1L, 1L)).thenReturn(existing);
+        assertThatThrownBy(() -> installService.uninstall(1L, 1L, 1L))
+            .isInstanceOf(OpcException.class)
+            .hasMessageContaining("已卸载");
     }
 
     @Test
