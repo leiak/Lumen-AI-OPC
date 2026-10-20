@@ -22,6 +22,19 @@ public interface MpPublicationMapper {
 
     MpPublication selectById(Long id);
 
+    /**
+     * 仅返回 PUBLISHED 的商品,供匿名公开详情端点使用。
+     * <p>
+     * {@code selectById} 不过滤 status,是作者侧(编辑/上下架/我的列表)所需,
+     * 切勿把 status 过滤塞进 {@code selectById} —— 那会打断作者对自己 DRAFT 的编辑。
+     * 网关白名单 {@code /opc/marketplace/publication/{id:[0-9]+}} 会绕过鉴权,
+     * 必须走本方法,以防匿名调用方遍历 id 枚举 DRAFT/PENDING/SUSPENDED 草稿。
+     *
+     * @param id 主键
+     * @return PUBLISHED 行;非 PUBLISHED 一律返回 {@code null},由 service 层映射为 404
+     */
+    MpPublication selectPublishedById(Long id);
+
     MpPublication selectByCode(String code);
 
     List<MpPublication> selectList(Map<String, Object> params);

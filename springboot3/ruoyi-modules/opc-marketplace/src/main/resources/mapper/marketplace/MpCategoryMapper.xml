@@ -44,4 +44,15 @@
         FROM mp_category WHERE id = #{id} AND deleted = 0
     </select>
 
+    <!--
+        批量按 (product_type, code) 查询类目,服务层负责短路空集合 —— MyBatis 不能生成 IN (),需在调用前过滤.
+        顺序由数据库决定(本查询未指定 ORDER BY);若调用方需要顺序,自行构建 Map<String, MpCategory>.
+    -->
+    <select id="selectByCodes" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_category
+        WHERE product_type = #{productType} AND deleted = 0 AND code IN
+        <foreach collection="codes" item="c" open="(" separator="," close=")">#{c}</foreach>
+    </select>
+
 </mapper>

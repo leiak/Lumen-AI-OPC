@@ -55,6 +55,16 @@
         FROM mp_publication WHERE id = #{id} AND deleted = 0
     </select>
 
+    <!--
+        公开详情专用:同时硬编码 status = 'PUBLISHED',防止匿名调用方遍历 id 枚举 DRAFT/PENDING/SUSPENDED。
+        selectById 保留不过滤 status 的语义,供作者侧(编辑/上下架/我的列表)使用。
+        非 PUBLISHED 行返回 null,由 service 层映射为 OpcException(404)。
+    -->
+    <select id="selectPublishedById" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM mp_publication WHERE id = #{id} AND status = 'PUBLISHED' AND deleted = 0
+    </select>
+
     <!-- mp_publication 生命周期走 status,本模块无软删除路径(无 deleted=1 写入),
          故此过滤仅为防御性。若将来新增软删除,须同步把 uk_pub_code 改为含 deleted,
          否则软删行仍占唯一键,重新发布会撞 1062。 -->
