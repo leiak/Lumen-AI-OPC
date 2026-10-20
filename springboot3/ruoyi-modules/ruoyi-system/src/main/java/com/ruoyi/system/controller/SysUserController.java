@@ -42,6 +42,7 @@ import com.ruoyi.system.service.ISysPermissionService;
 import com.ruoyi.system.service.ISysPostService;
 import com.ruoyi.system.service.ISysRoleService;
 import com.ruoyi.system.service.ISysUserService;
+import com.ruoyi.system.service.support.UserCompanyResolver;
 
 /**
  * 用户信息
@@ -72,6 +73,9 @@ public class SysUserController extends BaseController
 
     @Autowired
     private TokenService tokenService;
+
+    @Autowired
+    private UserCompanyResolver userCompanyResolver;
 
     /**
      * 获取用户列表
@@ -134,6 +138,9 @@ public class SysUserController extends BaseController
         sysUserVo.setSysUser(sysUser);
         sysUserVo.setRoles(roles);
         sysUserVo.setPermissions(permissions);
+        // 租户（公司）归属：登录时解析一次，随 token 下发给所有下游服务。
+        // 未加入任何公司时为 null，下游用 SecurityUtils.getCompanyId() 显式处理无租户场景。
+        sysUserVo.setCompanyId(userCompanyResolver.resolveCompanyId(sysUser.getUserId()));
         return R.ok(sysUserVo);
     }
 

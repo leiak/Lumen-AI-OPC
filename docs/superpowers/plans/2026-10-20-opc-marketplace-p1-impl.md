@@ -2122,6 +2122,29 @@ git commit -m "feat(marketplace): PublicationService + Controller + 18 tests (P1
 
 ---
 
+> ## ⚠️ 租户身份硬性约束 — Task 6 / 7 / 8 必读
+>
+> W80.1 起，平台登录态携带租户身份：`SecurityUtils.getCompanyId()`
+> （定义在 `ruoyi-common-security`，租户关系由登录时按 `opc_company_member` 解析后
+> 写入 `LoginUser.companyId`，Redis 下发给所有服务）。
+>
+> **`getCompanyId()` 返回 null 表示该账号未关联任何企业（未接受邀请）。**
+>
+> 所有租户维度的操作（install / review / 订阅）**必须在入口显式校验 companyId 非 null**，
+> 为 null 时返回 400「当前账号未关联企业，请先加入或创建企业」——
+>
+> **禁止用 0 或任何默认值兜底**，否则会静默写入跨租户脏数据
+> （`mp_install.tenant_company_id` 是 `NOT NULL`，兜底 0 会被 DB 接受，
+> 生成一条归属「公司 0」的比对不出来的记录，事后无法与真实公司对账）。
+>
+> 补充说明：
+> - `tenant_company_id` **一律取自 `SecurityUtils.getCompanyId()`，不得从请求体 / query 取值**。
+>   之前的设计里 `AuthorApplyRequest.authorCompanyId` 来自请求体，那是「申请成为作者」
+>   的业务字段，可以保留；但 install / review 的租户维度字段只能来自登录态。
+> - 「无租户」(null) 与「租户状态未知」(表缺失等) 两种情况在 resolver 里都会返回 null，
+>   靠 ERROR 日志区分；因此 400 的文案统一用「当前账号未关联企业」，排查时先看
+>   ruoyi-system 日志里有没有 `[UserCompanyResolver]` 的 ERROR。
+
 ### Task 6: InstallService + Feign + Controller
 
 **Files:**

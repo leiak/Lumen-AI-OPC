@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.SysUserCompanyMapper">
+
+    <select id="selectDefaultCompanyId" resultType="java.lang.Long">
+        select m.company_id
+        from opc_company_member m
+        inner join opc_company_profile p on p.id = m.company_id
+        where m.user_id = #{userId}
+          and m.status = 'ACTIVE'
+          and p.status = 'NORMAL'
+        order by (m.role = 'OWNER') desc, m.company_id asc
+        limit 1
+    </select>
+
+</mapper>

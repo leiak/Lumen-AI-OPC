@@ -5,6 +5,7 @@ import com.ruoyi.common.core.constant.SecurityConstants;
 import com.ruoyi.common.core.constant.TokenConstants;
 import com.ruoyi.common.core.constant.UserConstants;
 import com.ruoyi.common.core.context.SecurityContextHolder;
+import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.common.core.utils.ServletUtils;
 import com.ruoyi.common.core.utils.StringUtils;
 import com.ruoyi.system.api.model.LoginUser;
@@ -47,6 +48,30 @@ public class SecurityUtils
     public static LoginUser getLoginUser()
     {
         return SecurityContextHolder.get(SecurityConstants.LOGIN_USER, LoginUser.class);
+    }
+
+    /**
+     * 获取当前登录用户所属公司ID（租户ID）。
+     *
+     * <p><b>可能返回 null</b>：用户尚未加入任何公司时就是 null。
+     * 调用方必须显式处理无租户场景，<b>不要</b>用 0 或其他默认值兜底 ——
+     * 把「无公司」当成「公司 0」继续查库会造成越权或脏数据。</p>
+     *
+     * <p>与 {@link #getUserId()} 不同：{@code getUserId()} 在无登录上下文时返回 null，
+     * 本方法在<b>完全没有登录上下文</b>（未认证请求、定时任务、MQ 消费等）时
+     * 直接抛 {@link ServiceException}，避免业务代码在无身份的场景下继续执行。</p>
+     *
+     * @return 当前用户所属公司ID，未加入任何公司时为 null
+     * @throws ServiceException 当前线程没有登录上下文时抛出
+     */
+    public static Long getCompanyId()
+    {
+        LoginUser loginUser = getLoginUser();
+        if (StringUtils.isNull(loginUser))
+        {
+            throw new ServiceException("获取公司ID失败：当前请求没有登录上下文");
+        }
+        return loginUser.getCompanyId();
     }
 
     /**

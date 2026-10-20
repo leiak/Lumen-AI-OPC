@@ -734,7 +734,95 @@ ssh -L 8079:127.0.0.1:8079 \
 
 ---
 
-**Last updated:** 2026-09-22 (W79 — added §15 Remote SSH Bootstrap 文档, 5 阶段 + 8 子节 + 端口转发 + 常见错误表)
+## 16. 租户身份 companyId 上线后的「全员未关联企业」故障 (W80.1)
+
+> 2026-10-20 上线 `LoginUser.companyId` / `SecurityUtils.getCompanyId()` 之后，
+> **第一次部署完会命中一次**。先读这一节再排查，能省掉一次「以为数据丢了」的误判。
+
+### 16.1 症状
+
+部署 W80.1 之后，**所有用户**（包括之前一切正常的 admin）在调用 marketplace
+租户维度接口时立刻收到 400：
+
+```
+当前账号未关联企业，请先加入或创建企业
+```
+
+涉及 install / review / 订阅等入口。注意：登录本身是**正常**的，
+其他模块（billing / finance / crm ...）也**不受影响**——只有走
+`SecurityUtils.getCompanyId()` 的接口受影响。
+
+### 16.2 原因（不是数据 bug，千万别往数据方向查）
+
+租户字段 `companyId` 在**登录那一刻**解析，写进 `LoginUser`，缓存在 Redis 的
+`login_tokens:*` 里。而**上线前签发的 token，其缓存的 `LoginUser` 里没有
+`companyId` 这个 key**，反序列化出来就是 `null`。
+
+于是：`getCompanyId()` 返回 null → 入口校验判定「未关联企业」→ 400。
+
+**数据库里的 `opc_company_member` 是好的，用户的公司关系没丢**，
+只是旧 token 里没有这个字段而已。所以不要去查 `opc_company_member` / seed 数据。
+
+### 16.3 修复（二选一）
+
+```bash
+# 方案 A（推荐，无感，用户下次访问自动重新登录拿到新 token）
+#   让用户重新登录即可。若想立刻生效,直接执行方案 B。
+
+# 方案 B：清空登录 token 缓存,强制全员重新登录
+#   --scan 逐批扫描，不会阻塞 Redis；密码见 docker-compose.yml 的 --requirepass
+docker exec -i aiopc-redis sh -c \
+  "redis-cli -a 'Opc@2026!' --scan --pattern 'login_tokens:*' \
+   | xargs -r redis-cli -a 'Opc@2026!' DEL"
+```
+
+执行方案 B 的影响：所有在线用户被登出一次，需重新登录换 token。
+token TTL 本身也会自然过期（默认 30 min），所以不处理也能自愈，
+只是这段窗口期内用户会看到 400。
+
+### 16.4 如果重新登录后仍然是 400
+
+那就不是 token 过期问题，而是**租户表不可用**。查 ruoyi-system 日志：
+
+```bash
+docker logs aiopc-system 2>&1 | grep 'UserCompanyResolver'
+```
+
+看到 `[UserCompanyResolver] 无法确定用户所属公司（租户表不可用）` 的 ERROR，
+说明 `opc_company_member` / `opc_company_profile` 缺失或未灌数据。
+处理：
+
+```bash
+# 1. 确认表存在
+docker exec -i aiopc-mysql mysql -uroot -p'Opc@2026!' ry-vue-opc \
+  -e "show tables like 'opc_company%';"
+
+# 2. 缺表则灌主 schema（建 opc_company_profile + opc_company_member）
+docker exec -i aiopc-mysql mysql -uroot -p'Opc@2026!' ry-vue-opc \
+  < springboot3/deploy/mysql-initdb.d/05-opc-main-schema.sql
+
+# 3. 确保 admin 有公司 + 成员关系（示例一人公司 seed）
+docker exec -i aiopc-mysql mysql -uroot -p'Opc@2026!' ry-vue-opc \
+  < springboot3/sql/seed/opc_company_demo_seed.sql
+
+# 4. 确保登录反查索引在位（幂等,可重复执行）
+docker exec -i aiopc-mysql mysql -uroot -p'Opc@2026!' ry-vue-opc \
+  < springboot3/sql/migrations/V20261021__tenant_company_lookup_index.sql
+```
+
+⚠️ 注意：即使表补齐了，**已签发的 token 里仍然没有 companyId**，
+还得让用户重新登录（或再执行一次 §16.3 方案 B）。
+
+### 16.5 别做的事
+
+- ❌ 不要为了「让它先跑起来」把 `tenantCompanyId` 兜底成 0。
+  `mp_install.tenant_company_id` 是 `NOT NULL`，0 会被 DB 收下，
+  产生一条归属「公司 0」、事后对不上账的脏记录。
+- ❌ 不要把入口的 companyId 校验去掉改成可选。这正是租户越权防线。
+
+---
+
+**Last updated:** 2026-10-20 (W80.1 — added §16 租户 companyId 上线故障排查: 旧 token 无 companyId 导致全员 400 的症状/原因/修复, 以及租户表缺失时 ruoyi-system 的 ERROR 日志定位)
 
 
 ---

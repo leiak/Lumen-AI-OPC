@@ -34,6 +34,13 @@
             <artifactId>ruoyi-common-redis</artifactId>
         </dependency>
 
+        <!-- 测试依赖：SecurityUtils 工具类单测 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
 </project>
