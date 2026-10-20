@@ -213,7 +213,9 @@ security:
       #    (SecurityUtils.getCompanyId() == null → 400),不能依赖网关兜底。
       - /opc/marketplace/category/tree
       - /opc/marketplace/category/list
-      - /opc/marketplace/category/**
+      # 类目详情 GET /{id} — 用数字正则而非 `**`: 现状下两者都能匹配,
+      # 但 `**` 会把将来任何 POST/PUT /category/xxx 一并放行(网关不区分 method)。
+      - /opc/marketplace/category/{id:[0-9]+}
       - /opc/marketplace/tag/list
       - /opc/marketplace/publication/list
       - /opc/marketplace/publication/search
