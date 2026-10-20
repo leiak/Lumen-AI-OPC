@@ -73,3 +73,7 @@ springboot3/deploy/minio/data/
 springboot3/deploy/es/data/
 # MySQL 备份文件, 二进制不进 repo (需要长期保留请 cp 到网盘/Git LFS)
 springboot3/deploy/backups/
+# ===== Python (tmp_e2e/ 等验证脚本) =====
+# py_compile 会在脚本旁生成 __pycache__,别混进提交
+__pycache__/
+*.py[cod]
