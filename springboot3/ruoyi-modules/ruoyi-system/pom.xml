@@ -79,6 +79,20 @@
             <artifactId>ruoyi-common-swagger</artifactId>
         </dependency>
 
+        <!--
+          测试依赖:本模块此前完全没有 src/test。
+          引入的唯一原因是 SysUserCompanyMapperXmlTest —— SysUserCompanyMapper.xml
+          位于「登录时解析租户身份」这条安全关键链路上,而 mapper XML 解析通过却
+          statement id 与接口方法对不上(W48 的 Invalid bound statement)只在运行期
+          暴露,登录链路会整体失效。加 spring-boot-starter-test 是给这一个测试用的,
+          版本由根 pom 的 spring-boot-dependencies BOM 统一管理(无需写 version)。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
