@@ -14,9 +14,11 @@ import java.util.Map;
  * <p>用途：4 个 LLM 场景 — {@code content_short_drama} / {@code content_video_script} /
  * {@code content_article} / {@code content_platform_adapter}。
  *
- * <p>对端 controller 在 opc-ai-core 模块 (9301)，通过 {@code @InnerAuth} 走内部 Feign 通道，
- * 由 {@code @EnableRyFeignClients} 自动注入 {@code from-source: inner} header 绕过 gateway
- * AuthFilter。
+ * <p>对端 controller 在 opc-ai-core 模块 (9301)，通过 {@code @InnerAuth} 走内部 Feign 通道。
+ * {@code from-source: inner} header 由 ruoyi-common-security 的 {@code FeignRequestInterceptor}
+ * 注入 —— 该 bean 经 {@code FeignAutoConfiguration}（由 {@code @EnableCustomConfig} 导入）注册。
+ * {@code @EnableRyFeignClients} 本身不注册任何 header provider。对外不可伪造：gateway
+ * {@code AuthFilter} 会剥掉入站的该 header，外部客户端也走不到本拦截器。
  *
  * <p>降级策略：{@link OpcContentAiCoreGatewayFactory} —— LLM 失败应显式感知，
  * 返回 {@link R#fail(String)} 让业务层决定是否走缓存或人工兜底，绝不静默吞错。

@@ -21,6 +21,14 @@ public class FeignRequestInterceptor implements RequestInterceptor
     @Override
     public void apply(RequestTemplate requestTemplate)
     {
+        // 服务间调用标记。@InnerAuth 端点靠 from-source: inner 放行(InnerAuthAspect),
+        // 而本拦截器此前从不注入 —— 导致所有 Feign → @InnerAuth 调用抛 InnerAuthException,
+        // 被 fallback 静默吞掉。外部无法伪造:gateway AuthFilter:82 对入站流量 removeHeader(FROM_SOURCE),
+        // 且外部客户端走不到本拦截器。
+        // 注意必须放在下面的 if (httpServletRequest) 守卫之外:定时任务/Quartz/MQ 发起的调用
+        // 没有 servlet 请求上下文,而这类调用恰恰最容易命中 @InnerAuth 端点。
+        requestTemplate.header(SecurityConstants.FROM_SOURCE, SecurityConstants.INNER);
+
         HttpServletRequest httpServletRequest = ServletUtils.getRequest();
         if (StringUtils.isNotNull(httpServletRequest))
         {
