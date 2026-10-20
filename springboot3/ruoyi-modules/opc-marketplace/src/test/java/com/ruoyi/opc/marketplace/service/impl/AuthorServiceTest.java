@@ -10,16 +10,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -78,6 +81,9 @@ class AuthorServiceTest {
 
         assertThat(result.getId()).isEqualTo(99L);
         assertThat(result.getLevel()).isEqualTo("NORMAL");
+        // contactEmail 是 NOT NULL 列且 MpAuthorMapper.xml 的 INSERT 显式列出 contact_email
+        // （无 COALESCE）—— 少这一行 setter，任何未填邮箱的请求会撞 MySQL 1364
+        assertThat(result.getContactEmail()).isEqualTo("a@b.com");
     }
 
     @Test
@@ -109,6 +115,7 @@ class AuthorServiceTest {
 
     @Test
     @DisplayName("stats — 返回 author(脱敏)+ publicationCount,且 countList 带 status=PUBLISHED 过滤")
+    @SuppressWarnings("unchecked")
     void stats_returnsAuthorAndPublicationCount() {
         MpAuthor a = MpAuthor.builder().id(1L).authorCompanyId(2L)
                 .contactEmail("secret@example.com").totalRevenue(new BigDecimal("999.99")).build();
@@ -123,5 +130,13 @@ class AuthorServiceTest {
         // 嵌套档案同样走脱敏闸门 —— 否则任意登录用户都能读到别家企业的邮箱与营收
         assertThat(nested.getContactEmail()).isNull();
         assertThat(nested.getTotalRevenue()).isNull();
+
+        // 参数必须逐键断言 —— countList(any()) 匹配一切，改成 PENDING 不会被发现。
+        // 漏掉 status 会把 DRAFT/SUSPENDED 商品也计进 publicationCount（榜单虚高）
+        ArgumentCaptor<Map<String, Object>> q = ArgumentCaptor.forClass(Map.class);
+        verify(publicationMapper).countList(q.capture());
+        assertThat(q.getValue())
+                .containsEntry("status", "PUBLISHED")
+                .containsEntry("authorId", 1L);
     }
 }

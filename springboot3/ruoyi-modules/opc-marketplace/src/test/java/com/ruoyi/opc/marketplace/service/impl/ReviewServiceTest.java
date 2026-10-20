@@ -19,8 +19,12 @@ import org.mockito.quality.Strictness;
 import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -101,7 +105,7 @@ class ReviewServiceTest {
     }
 
     @Test
-    @DisplayName("create — 正常路径:落库 VISIBLE 行并把 AVG 归一到 2 位小数回写商品")
+    @DisplayName("create — 正常路径:落库 VISIBLE 行并把 AVG 按 HALF_UP 归一到 2 位小数回写商品")
     void create_success_updatesAvgRating() {
         when(publicationMapper.selectById(1L)).thenReturn(publishedPub());
         when(reviewMapper.selectByPublicationAndUser(1L, 1L)).thenReturn(null);
@@ -110,7 +114,11 @@ class ReviewServiceTest {
             r.setId(50L);
             return 1;
         });
-        when(reviewMapper.averageForPublication(1L)).thenReturn(new BigDecimal("4.5"));
+        // 4.005 是「恰好落在中点」的 AVG —— HALF_UP 舍入到 4.01，而 DOWN/FLOOR 截到 4.00。
+        // 旧的 fixture 用 4.5（补 0 即可），HALF_UP→DOWN→CEILING 三种模式结果相同，
+        // 换掉它才能让截断型变异露出来。与 delete_updatesAvgRating 的 4.004 配对使用，
+        // 两者合起来才把 HALF_UP / DOWN / CEILING 三者唯一确定（见该用例注释）。
+        when(reviewMapper.averageForPublication(1L)).thenReturn(new BigDecimal("4.005"));
         when(reviewMapper.countForPublication(1L)).thenReturn(3);
 
         MpReview result = reviewService.create(
@@ -118,7 +126,7 @@ class ReviewServiceTest {
 
         assertThat(result.getId()).isEqualTo(50L);
         assertThat(result.getStatus()).isEqualTo("VISIBLE");
-        verify(publicationMapper).updateRating(1L, new BigDecimal("4.50"), 3);
+        verify(publicationMapper).updateRating(1L, new BigDecimal("4.01"), 3);
     }
 
     @Test
@@ -136,16 +144,51 @@ class ReviewServiceTest {
     }
 
     @Test
+    @DisplayName("delete — 非本人评价 → 403「本人」,不软删、不重算(否则任意用户可隐藏他人评价)")
+    void delete_403_whenNotOwner() {
+        MpReview r = MpReview.builder().id(1L).userId(99L).publicationId(10L).build();
+        when(reviewMapper.selectById(1L)).thenReturn(r);
+
+        assertThatThrownBy(() -> reviewService.delete(1L, 1L))
+                .isInstanceOf(OpcException.class)
+                .hasMessageContaining("本人");
+
+        verify(reviewMapper, never()).updateStatus(anyLong(), anyString());
+        verify(publicationMapper, never()).updateRating(anyLong(), any(), anyInt());
+    }
+
+    @Test
     @DisplayName("delete — 软删 HIDDEN 后必须重算 avg/count(C1 回归:否则商品聚合永久陈旧)")
     void delete_updatesAvgRating() {
         MpReview r = MpReview.builder().id(1L).userId(1L).publicationId(10L).build();
         when(reviewMapper.selectById(1L)).thenReturn(r);
         when(reviewMapper.countForPublication(10L)).thenReturn(2);
-        when(reviewMapper.averageForPublication(10L)).thenReturn(new BigDecimal("4.5"));
+        // 4.004 配对 create_success_updatesAvgRating 的 4.005：
+        //   4.005 → HALF_UP=CEILING=4.01，DOWN=4.00   （杀 DOWN / FLOOR）
+        //   4.004 → HALF_UP=DOWN=4.00，     CEILING=4.01（杀 CEILING / UP）
+        // 单个取值无法同时区分三种模式（HALF_UP 与 DOWN 在「小于半」、与 CEILING 在
+        // 「大于等于半」各有一段重合），两个取值合起来才把 HALF_UP 唯一确定下来。
+        when(reviewMapper.averageForPublication(10L)).thenReturn(new BigDecimal("4.004"));
 
         reviewService.delete(1L, 1L);
 
         verify(reviewMapper).updateStatus(1L, "HIDDEN");
-        verify(publicationMapper).updateRating(10L, new BigDecimal("4.50"), 2);
+        verify(publicationMapper).updateRating(10L, new BigDecimal("4.00"), 2);
+    }
+
+    @Test
+    @DisplayName("delete — 删掉最后一条 VISIBLE 评价:count=0 → 跳过回写(AVG 返 null,setScale 会 NPE)")
+    void delete_lastReview_skipsWriteback() {
+        MpReview r = MpReview.builder().id(1L).userId(1L).publicationId(10L).build();
+        when(reviewMapper.selectById(1L)).thenReturn(r);
+        // SQL AVG() 对零行返 null —— 没有 count>0 守门,avg.setScale 直接 NPE → 500
+        when(reviewMapper.countForPublication(10L)).thenReturn(0);
+
+        assertThatNoException().isThrownBy(() -> reviewService.delete(1L, 1L));
+
+        // 软删本身照常发生,只是不动商品的 avg/count(保留既有值,不 null out)
+        verify(reviewMapper).updateStatus(1L, "HIDDEN");
+        verify(reviewMapper, never()).averageForPublication(anyLong());
+        verify(publicationMapper, never()).updateRating(anyLong(), any(), anyInt());
     }
 }
