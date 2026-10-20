@@ -149,6 +149,21 @@ class CategoryControllerTest {
         verify(categoryService, never()).tree();
     }
 
+    @Test
+    @DisplayName("list — productType 为空串(?productType=): 同样回落全量, 不打 product_type='' 查询")
+    void list_emptyStringParam_fallsBackToAll() throws Exception {
+        when(categoryService.tree()).thenReturn(samples());
+
+        mvc.perform(get("/opc/marketplace/category/list").param("productType", ""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.length()").value(3));
+
+        // 「清空筛选」不能退化成 WHERE product_type='' 的空结果
+        verify(categoryService).tree();
+        verify(categoryService, never()).listByType(any());
+    }
+
     // ==================== GET /{id} ====================
 
     @Test
