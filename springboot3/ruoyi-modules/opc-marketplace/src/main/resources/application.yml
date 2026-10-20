@@ -1,0 +1,71 @@
+# OPC Marketplace 默认配置（Nacos 中可覆盖）
+# 端口: 9317
+server:
+  port: ${SERVER_PORT:9317}
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+  tomcat:
+    uri-encoding: UTF-8
+
+spring:
+  application:
+    name: opc-marketplace
+  profiles:
+    # 默认 dev；prod 通过 -Dspring.profiles.active=prod 或 SPRING_PROFILES_ACTIVE=prod 切换
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  main:
+    allow-bean-definition-overriding: true
+  cloud:
+    # Spring Cloud OpenFeign 的 FeignClient 注册跑在 bootstrap 阶段，优先于
+    # spring.main.allow-bean-definition-overriding 加载，所以这里必须独立声明。
+    allow-bean-definition-overriding: true
+  datasource:
+    dynamic:
+      primary: master
+      datasource:
+        master:
+          # Docker 容器里 127.0.0.1 是容器本身，必须用 Docker DNS 名 'mysql'
+          url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/${MYSQL_DB:ry-vue-opc}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+          username: ${MYSQL_USER:root}
+          password: ${MYSQL_PASSWORD:Opc@2026!}
+  redis:
+    host: ${REDIS_HOST:redis}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+
+  # Spring Boot 3.5: Lettuce 只读 spring.data.redis.* (旧 spring.redis.* 已废弃)
+  data:
+    redis:
+      host: ${REDIS_HOST:aiopc-redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:Opc@2026!}
+      timeout: 10s
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    # W52 修复中文 mojibake：null 字段不序列化
+    default-property-inclusion: non_null
+  http:
+    encoding:
+      charset: UTF-8
+      force: true
+
+jasypt:
+  encryptor:
+    password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
+    algorithm: PBEWithMD5AndDES
+
+# MyBatis
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.opc.marketplace.domain
+  configuration:
+    map-underscore-to-camel-case: true
+
+# Marketplace 业务配置（容器内 Docker DNS 名）
+opc:
+  marketplace:
+    base-url: http://aiopc-marketplace:9317

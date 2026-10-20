@@ -26,6 +26,7 @@
         <module>opc-hr</module>
         <module>opc-erp</module>
         <module>opc-content</module>
+        <module>opc-marketplace</module>
     </modules>
 
     <artifactId>ruoyi-modules</artifactId>
