@@ -139,8 +139,19 @@
         WHERE id = #{id} AND deleted = 0
     </update>
 
+    <!-- 浏览量:刻意**不**显式写 update_time(一次浏览不是一次内容编辑)。
+         ⚠️ 但这一行改动本身**不足以**让 update_time 保持不变 —— DDL
+         (V20261020__opc_marketplace_schema.sql) 上 mp_publication.update_time 是
+         `NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)`,
+         MySQL 会对任何改动了其它列的 UPDATE 自动刷新它,所以浏览一次 update_time 照样会动,
+         显式赋值只是不再**重复**刷一次(效果与自动刷新基本一致)。
+         要真正做到「浏览不改更新时间」,需要一条 migration 去掉 mp_publication.update_time 的
+         ON UPDATE 子句 —— 本 mapper 的其余写路径(updateById / incrementInstallCount /
+         updateRating / updateStatus)都显式写 update_time = NOW(3),去掉后仍能正确更新。
+         在那条 migration 落地前,别把这里当成「已经不会刷了」。
+         incrementInstallCount 相反:每次安装都是真实业务动作,刷 update_time 是对的。 -->
     <update id="incrementViewCount">
-        UPDATE mp_publication SET view_count = view_count + 1, update_time = NOW(3)
+        UPDATE mp_publication SET view_count = view_count + 1
         WHERE id = #{id} AND deleted = 0
     </update>
 

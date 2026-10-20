@@ -215,6 +215,13 @@ public class PublicationServiceImpl implements PublicationService {
         return p;
     }
 
+    @Override
+    public void recordView(Long id) {
+        // mapper 的 WHERE 带了 deleted = 0,行不存在/已删除时返回 0 —— 不计数、不报错,
+        // 这正是调用方在 200 路径上想要的语义(商品还在,才值得记一次浏览)。
+        publicationMapper.incrementViewCount(id);
+    }
+
     // ==================== VO ====================
 
     @Override

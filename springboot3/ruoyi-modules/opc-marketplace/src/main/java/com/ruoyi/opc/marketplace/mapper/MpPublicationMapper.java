@@ -49,6 +49,15 @@ public interface MpPublicationMapper {
 
     int incrementInstallCount(Long id);
 
+    /**
+     * <b>刻意不接线，直到 P2。</b>
+     *
+     * <p>P1 没有「订阅」这个产品动作 —— 没有任何代码路径会写 {@code subscription_count}，
+     * 前端也<b>刻意不展示</b>它（详情页统计条只有 安装数 / 浏览量 / 评分数，见
+     * {@code detail.vue}）。别把它当成漏接线顺手接上：那会让计数器统计一个产品上不存在的
+     * 行为，页面上出现一个永远不动、或比真实情况虚高的数字，比不显示更糟。
+     * P2 真做订阅时，这里连同 UI 一起补。
+     */
     int incrementSubscriptionCount(Long id);
 
     int updateRating(@Param("id") Long id, @Param("avg") BigDecimal avg, @Param("count") Integer count);

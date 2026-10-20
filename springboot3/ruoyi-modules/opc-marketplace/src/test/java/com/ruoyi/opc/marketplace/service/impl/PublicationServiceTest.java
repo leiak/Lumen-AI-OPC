@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
@@ -56,6 +57,8 @@ import static org.mockito.Mockito.when;
  *       不落指向空 {@code mp_category} 行的外键</li>
  *   <li><b>{@code update_by} 只记 operatorId</b>：authorId(档案 id) 与 operatorId(用户 id)
  *       是两个值，审计列里出现 authorId 就是回归</li>
+ *   <li><b>浏览量计数</b>：{@code recordView} 单独委托 mapper 的自增，
+ *       <b>不从读路径里冒出来</b> —— 否则「查一下详情」也变成一次写</li>
  * </ol>
  *
  * @author OAC
@@ -428,6 +431,27 @@ class PublicationServiceTest {
         when(publicationMapper.selectPublishedById(1L)).thenReturn(pub(1L, 10L, "PUBLISHED", "AGENT", "office"));
 
         assertThat(service.getPublishedById(1L).getStatus()).isEqualTo("PUBLISHED");
+    }
+
+    // ==================== 浏览量计数 ====================
+
+    @Test
+    @DisplayName("recordView — 只委托 mapper 的自增,读路径 getPublishedById 保持纯读(否则「查一下」也变成写)")
+    void recordView_delegatesToMapper_only() {
+        service.recordView(1L);
+
+        verify(publicationMapper).incrementViewCount(1L);
+        // 关键断言:计数不从读路径里冒出来,读一次详情不能顺带 +1
+        verify(publicationMapper, never()).selectPublishedById(1L);
+        verify(publicationMapper, never()).updateById(any());
+    }
+
+    @Test
+    @DisplayName("recordView — 行不存在/已删除时 mapper 返回 0,service 静默忽略不抛异常")
+    void recordView_zeroRows_ignored() {
+        when(publicationMapper.incrementViewCount(999L)).thenReturn(0);
+
+        assertThatNoException().isThrownBy(() -> service.recordView(999L));
     }
 
     // ==================== VO 装配 ====================

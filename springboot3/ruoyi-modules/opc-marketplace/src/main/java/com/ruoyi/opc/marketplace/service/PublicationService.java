@@ -107,6 +107,22 @@ public interface PublicationService {
     MpPublication getPublishedById(Long id);
 
     /**
+     * 浏览量 +1 —— 公开详情端点 {@code GET /{id}} 在成功返回后单独调它。
+     *
+     * <p><b>刻意与 {@link #getPublishedById} 分开</b>：读路径必须保持纯读（好测试、好缓存、
+     * 可重复执行）。把计数塞进读方法会让「查一下」也变成写，「同一条详情查两次」就 +2。
+     * 分离之后，调用方能只在 <b>200 路径</b>上触发它 —— 404/403 不计数。
+     *
+     * <p><b>调用方必须自己 catch 住异常</b>：驱动这个方法的是白名单里的匿名 GET，
+     * 一次浏览不该因为 UPDATE 的锁等待超时 / 连接池耗尽而把公开读变成 500。
+     * 计数的正确性优先级低于详情页可读性。
+     *
+     * <p>行不存在或已删除时 mapper 返回 0，本方法静默忽略（与「不存在」的语义一致，
+     * 不抛异常干扰调用方）。
+     */
+    void recordView(Long id);
+
+    /**
      * domain → VO（单条路径：author + category 各 1 次 DB 命中）。
      * <p>列表路径请走实现类内部的批量重载，<b>不要</b>在循环里调本方法，否则退化成 2N+1。
      */

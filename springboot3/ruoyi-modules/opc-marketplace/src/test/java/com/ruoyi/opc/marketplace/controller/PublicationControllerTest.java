@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -63,6 +64,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>作者读自己的 DRAFT 走 {@code /my/{id}}，且非本人 403</li>
  *   <li>所有租户维度入口在 {@code companyId == null} 时 fail-closed（400），不用 0 兜底</li>
  *   <li>未入驻（非作者）时一律 403，绝不让 author 为 null 变成 500</li>
+ *   <li>浏览量只在公开详情的<b>成功路径</b>自增；404 不计数，自增抛异常也不影响 200
+ *       （该端点白名单放行匿名流量，一次浏览不能因为计数失败变成 500）</li>
  *   <li>写操作把 <b>authorId（=10，来自 companyId 解析）</b>与 <b>operatorId（=1，来自
  *       {@code SecurityUtils.getUserId()}）</b>分两个参数传下去 —— 混用会让审计列失真</li>
  * </ul>
@@ -192,6 +195,51 @@ class PublicationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(404))
                 .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    // ==================== 浏览量计数(成功路径才触发) ====================
+
+    @Test
+    @DisplayName("get — 公开详情成功返回后记一次浏览量(此前 mapper 无人调用,计数器永远是 0)")
+    void get_incrementsViewCount_onSuccess() throws Exception {
+        MpPublication p = pub(1L, 10L, "PUBLISHED");
+        when(publicationService.getPublishedById(1L)).thenReturn(p);
+        when(publicationService.toVO(p)).thenReturn(vo(1L, "PUBLISHED"));
+
+        mvc.perform(get("/opc/marketplace/publication/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(publicationService).recordView(1L);
+    }
+
+    @Test
+    @DisplayName("get — 404 一律不计数(否则匿名遍历 id 就能把计数器刷上去)")
+    void get_404_doesNotIncrementViewCount() throws Exception {
+        when(publicationService.getPublishedById(999L))
+                .thenThrow(new OpcException(404, "商品不存在: 999", "MARKETPLACE"));
+
+        mvc.perform(get("/opc/marketplace/publication/999"))
+                .andExpect(jsonPath("$.code").value(404));
+
+        verify(publicationService, never()).recordView(any());
+    }
+
+    @Test
+    @DisplayName("get — 浏览量自增抛异常(锁等待超时/连接池耗尽)必须被吞掉,公开详情仍返回 200")
+    void get_recordViewFailure_doesNotBreakPublicRead() throws Exception {
+        MpPublication p = pub(1L, 10L, "PUBLISHED");
+        when(publicationService.getPublishedById(1L)).thenReturn(p);
+        when(publicationService.toVO(p)).thenReturn(vo(1L, "PUBLISHED"));
+        // 该端点在网关白名单里(匿名可访问),浏览量的可用性优先级低于详情本身
+        doThrow(new RuntimeException("Lock wait timeout exceeded")).when(publicationService).recordView(1L);
+
+        mvc.perform(get("/opc/marketplace/publication/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value(1));
+
+        verify(publicationService).recordView(1L);
     }
 
     // ==================== 作者读 ====================

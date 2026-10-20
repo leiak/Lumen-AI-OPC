@@ -291,9 +291,10 @@ class AuthorControllerTest {
 
         // 断言「泄露的值不在响应里」而非只断言「安全字段在场」—— 只查 $.data.authorName
         // 的用例在泄露发生时依然会通过。
-        // 注意:不断言 "contactEmail" 这个键名本身消失 —— 本仓 Jackson 未开 NON_NULL,
-        // 脱敏后的字段会序列化成 "contactEmail":null;jsonPath(...).doesNotExist() 已覆盖
-        // 「值为 null 或键不存在」两种情形。
+        // 上面的 jsonPath(...).doesNotExist() 同时覆盖两种序列化结果：本模块
+        // application.yml:50 开了 default-property-inclusion: non_null，脱敏后的字段会被
+        // **整个键省略**；万一将来那个开关被关掉，它又会变成 "contactEmail":null ——
+        // 两种形状 doesNotExist() 都判通过，所以这个断言不会因为配置漂移而误报。
         assertThat(body)
                 .as("公开作者资料不得包含企业邮箱")
                 .doesNotContain("secret-boss@example.com")

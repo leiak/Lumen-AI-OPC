@@ -13,6 +13,7 @@ import com.ruoyi.opc.marketplace.service.AuthorService;
 import com.ruoyi.opc.marketplace.service.PublicationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -54,6 +55,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/opc/marketplace/publication")
 @RequiredArgsConstructor
+@Slf4j
 public class PublicationController {
 
     private static final String NOT_AUTHOR = "请先申请成为作者";
@@ -79,11 +81,27 @@ public class PublicationController {
      * 因此<b>必须</b>走 {@code getPublishedById}（SQL 层 {@code status='PUBLISHED'}），
      * 否则匿名调用方遍历 id 就能枚举 DRAFT / PENDING / SUSPENDED 草稿。
      * 作者要读自己的 DRAFT 请走 {@code GET /my/{id}}。
+     *
+     * <p><b>浏览量计数的三个约束</b>：
+     * <ol>
+     *   <li>只在成功路径计数 —— {@code getPublishedById} 抛 404 时压根到不了计数那一行，
+     *       所以 404 / 未发布 / 遍历 id 枚举草稿都不会把计数器刷上去。</li>
+     *   <li>失败只记日志、不重抛 —— 驱动这个端点的是<b>匿名</b>流量，一次浏览不该因为
+     *       UPDATE 的锁等待超时或连接池耗尽而变成 500。计数的正确性优先级低于详情页可读性。</li>
+     *   <li>计数是<b>匿名调用方</b>驱动的，量级与频次都不受鉴权保护。按用户去重 / 限频
+     *       是独立的加固项，当前刻意不做（会引入会话态依赖，与「纯匿名可读」冲突）。</li>
+     * </ol>
      */
     @GetMapping("/{id}")
     public R<PublicationVO> get(@PathVariable Long id) {
         MpPublication p = publicationService.getPublishedById(id);
-        return R.ok(publicationService.toVO(p));
+        PublicationVO vo = publicationService.toVO(p);
+        try {
+            publicationService.recordView(id);
+        } catch (Exception e) {
+            log.warn("[Publication] 浏览量自增失败(忽略,不影响详情返回) id={}: {}", id, e.getMessage());
+        }
+        return R.ok(vo);
     }
 
     // ==================== 作者读（需登录 + 校验归属） ====================
