@@ -392,7 +392,7 @@ Expected: 6 tables listed (`mp_author`, `mp_publication`, `mp_install`, `mp_revi
 - [ ] **Step 8: Verify module compiles**
 
 ```bash
-cd springboot3
+cd springboot3/ruoyi-modules
 mvn -pl opc-marketplace -am clean compile -DskipTests
 ```
 
@@ -890,7 +890,7 @@ For other 5 XMLs, follow the same pattern. Truncated patterns:
 - [ ] **Step 5: Verify compile**
 
 ```bash
-cd springboot3
+cd springboot3/ruoyi-modules
 mvn -pl opc-marketplace -am clean compile -DskipTests
 ```
 
@@ -1187,7 +1187,7 @@ public class ReviewVO implements Serializable {
 - [ ] **Step 3: Verify compile**
 
 ```bash
-cd springboot3
+cd springboot3/ruoyi-modules
 mvn -pl opc-marketplace -am clean compile -DskipTests
 ```
 
@@ -1501,7 +1501,7 @@ class AuthorControllerTest {
 - [ ] **Step 5: Run test to verify it passes**
 
 ```bash
-cd springboot3
+cd springboot3/ruoyi-modules
 mvn -pl opc-marketplace test -Dtest=AuthorControllerTest
 ```
 
@@ -1901,7 +1901,7 @@ Test cases using JUnit5 + Mockito (mock all mappers):
 - [ ] **Step 6: Run all publication tests**
 
 ```bash
-cd springboot3
+cd springboot3/ruoyi-modules
 mvn -pl opc-marketplace test -Dtest='PublicationControllerTest,PublicationServiceTest'
 ```
 
@@ -2165,7 +2165,7 @@ Tests using `@WebMvcTest` + `MockedStatic<SecurityUtils>` + `@MockBean InstallSe
 - [ ] **Step 6: Run all install tests**
 
 ```bash
-cd springboot3
+cd springboot3/ruoyi-modules
 mvn -pl opc-marketplace test -Dtest=InstallControllerTest
 ```
 
@@ -2861,7 +2861,7 @@ Append to existing `AuthorControllerTest.java`:
 - [ ] **Step 5: Run all tests**
 
 ```bash
-cd springboot3
+cd springboot3/ruoyi-modules
 mvn -pl opc-marketplace test
 ```
 
@@ -2885,7 +2885,7 @@ git commit -m "test(marketplace): 19 more tests → 63 total (P1)"
 - [ ] **Step 1: Verify application starts locally**
 
 ```bash
-cd springboot3
+cd springboot3/ruoyi-modules
 mvn -pl opc-marketplace package -DskipTests
 java -cp "ruoyi-modules/opc-marketplace/target/opc-marketplace.jar:ruoyi-modules/opc-marketplace/target/dependency/*" \
   com.ruoyi.opc.marketplace.OpcMarketplaceApplication
@@ -2967,30 +2967,49 @@ In `opc.security.whitelist` list, add public GET paths:
 
 - [ ] **Step 2: Create Nacos config**
 
-`opc-marketplace-dev.yml`:
+`opc-marketplace-dev.yml`（**沿用 opc-community-dev.yml 的 dynamic-datasource 模式**，不要用单 datasource，否则项目里的 dynamic-datasource starter 兼容性问题）:
+
 ```yaml
+# ============================================================
+# OPC Marketplace Nacos dev 配置 (W80 P1)
+# 端口: 9317
+# 结构与 opc-community-dev.yml 完全一致 (避免 dynamic-datasource 兼容问题)
+# ============================================================
+
 server:
   port: 9317
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+  tomcat:
+    uri-encoding: UTF-8
 spring:
+  application:
+    name: opc-marketplace
   datasource:
-    url: jdbc:mysql://aiopc-mysql:3306/opc?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: opc
-    password: opc
-    driver-class-name: com.mysql.cj.jdbc.Driver
-  data:
-    redis:
-      host: aiopc-redis
-      port: 6379
-      password: opc
-      database: 0
-  cloud:
-    nacos:
-      discovery:
-        server-addr: nacos1:8848
-        namespace: opc-dev
+    dynamic:
+      primary: master
+      datasource:
+        master:
+          url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/${MYSQL_DB:ry-vue-opc}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+          username: ${MYSQL_USER:root}
+          password: ${MYSQL_PASSWORD:Opc@2026!}
+
+# OPC Marketplace 业务配置
 opc:
-  jwt:
-    secret: OpcEncrypt!2026
+  marketplace:
+    base-url: http://aiopc-marketplace:9317
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.opc.marketplace.domain
+  configuration:
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    com.ruoyi.opc.marketplace: debug
 ```
 
 Then import to Nacos:
@@ -3581,8 +3600,8 @@ Expected: All commits pushed, remote main updated.
 
 | 指标 | 目标 | 验证方式 |
 |---|---|---|
-| 编译 | BUILD SUCCESS | `mvn -pl opc-marketplace -am clean package -DskipTests` |
-| 单测 | 63 全 PASS | `mvn -pl opc-marketplace test` |
+| 编译 | BUILD SUCCESS | `cd springboot3/ruoyi-modules && mvn -pl opc-marketplace -am clean package -DskipTests` |
+| 单测 | 63 全 PASS | `cd springboot3/ruoyi-modules && mvn -pl opc-marketplace test` |
 | 健康检查 | 43 项 PASS (22 旧 + 21 新) | `bash springboot3/deploy/scripts/health-check.sh` |
 | e2e | 12 步 PASS | `python tmp_e2e/e2e_marketplace.py` |
 | Helm | dev=18 / staging=28 / prod=29 | `helm template test springboot3/deploy/helm/opc | grep '^kind:' | sort | uniq -c` |
