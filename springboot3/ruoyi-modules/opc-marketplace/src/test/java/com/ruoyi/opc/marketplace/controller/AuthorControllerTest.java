@@ -5,6 +5,7 @@ import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.marketplace.domain.MpAuthor;
 import com.ruoyi.opc.marketplace.dto.AuthorApplyRequest;
+import com.ruoyi.opc.marketplace.dto.AuthorListQuery;
 import com.ruoyi.opc.marketplace.dto.AuthorVO;
 import com.ruoyi.opc.marketplace.feign.AgentHubClient;
 import com.ruoyi.opc.marketplace.mapper.MpAuthorMapper;
@@ -30,6 +31,8 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -47,7 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * {@link AuthorController} 集成测试（{@code @WebMvcTest}）— P1 Task 4
  *
- * <p>覆盖 9 个场景：
+ * <p>覆盖 13 个场景：
  * <ul>
  *   <li>{@code apply_returnsAuthor} — POST /apply 正常路径（200 + JSON code=200）</li>
  *   <li>{@code apply_ignoresBodyAuthorCompanyId_usesLoginTenant} — 越权回归：请求体冒名别家公司无效，只按登录态申请</li>
@@ -57,7 +60,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>{@code me_ignoresRequestParamCompanyId_usesLoginTenant} — IDOR 回归：请求里带 {@code ?companyId=} 无效，只用登录态</li>
  *   <li>{@code me_failsClosed_whenNoCompany} — 无公司上下文 → code=400 fail-closed</li>
  *   <li>{@code me_returnsNull_whenNotAuthorYet} — 已登录但未入驻 → code=200 + data 缺失</li>
+ *   <li>{@code me_returnsAuthor_whenExists} — 已入驻 → code=200 + 档案有内容</li>
  *   <li>{@code apply_409_whenAlreadyAuthor} — service 抛 OpcException(409) → GlobalExceptionHandler → HTTP 200 + JSON code=409（W7 修复：OpcException 继承 ServiceException 后尊重 code 字段）</li>
+ *   <li>{@code list_returnsPage} — GET /list query 绑定并透传 rows/total 结构</li>
+ *   <li>{@code stats_returnsMap} — GET /{id}/stats 透出 author + publicationCount</li>
+ *   <li>{@code get_404_whenNotFound} — 作者不存在 → HTTP 200 + JSON code=404</li>
  * </ul>
  *
  * <p>关键模式：
@@ -367,5 +374,77 @@ class AuthorControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(409))
                 .andExpect(jsonPath("$.msg").value("该企业已是作者，不可重复申请"));
+    }
+
+    // ==================== GET /me — 已入驻的正常路径 ====================
+
+    @Test
+    @DisplayName("me — 已入驻: 返回该公司的作者档案(code=200 + data 有内容),companyId 取自登录态")
+    void me_returnsAuthor_whenExists() throws Exception {
+        securityUtils.when(SecurityUtils::getCompanyId).thenReturn(100L);
+        MpAuthor a = sampleAuthor();
+        AuthorVO vo = new AuthorVO();
+        vo.setId(10L);
+        vo.setAuthorCompanyId(100L);
+        vo.setAuthorName("TestAuthor");
+        when(authorService.getByCompanyId(100L)).thenReturn(a);
+        when(authorService.toVO(a)).thenReturn(vo);
+
+        mvc.perform(get("/opc/marketplace/author/me"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value(10))
+                .andExpect(jsonPath("$.data.authorCompanyId").value(100));
+
+        verify(authorService).getByCompanyId(100L);
+    }
+
+    // ==================== GET /list ====================
+
+    @Test
+    @DisplayName("list — 作者分页列表: query 绑定成功并原样透传给 service,响应为 rows/total 结构")
+    void list_returnsPage() throws Exception {
+        when(authorService.list(any())).thenReturn(Map.of("rows", List.of(), "total", 0));
+
+        mvc.perform(get("/opc/marketplace/author/list").param("page", "2").param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.total").value(0));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(AuthorListQuery.class);
+        verify(authorService).list(captor.capture());
+        assertThat(captor.getValue().getPage()).isEqualTo(2);
+        assertThat(captor.getValue().getPageSize()).isEqualTo(20);
+    }
+
+    // ==================== GET /{id}/stats ====================
+
+    @Test
+    @DisplayName("stats — 作者统计: 档案 + PUBLISHED 商品数原样透出")
+    void stats_returnsMap() throws Exception {
+        when(authorService.stats(10L)).thenReturn(Map.of("author", new AuthorVO(), "publicationCount", 5));
+
+        mvc.perform(get("/opc/marketplace/author/10/stats"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.publicationCount").value(5));
+
+        verify(authorService).stats(10L);
+    }
+
+    // ==================== GET /{id} — 404 ====================
+
+    @Test
+    @DisplayName("get — 作者不存在: service 抛 OpcException(404) → advice → HTTP 200 + JSON code=404")
+    void get_404_whenNotFound() throws Exception {
+        when(authorService.getById(999L))
+                .thenThrow(new OpcException(404, "作者不存在: 999", "MARKETPLACE"));
+
+        mvc.perform(get("/opc/marketplace/author/999"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(404))
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        verify(authorService, never()).toPublicVO(any());
     }
 }
