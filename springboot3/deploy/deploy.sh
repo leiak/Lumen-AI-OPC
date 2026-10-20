@@ -179,7 +179,8 @@ cmd_rebuild() {
 
   if [[ "${target}" == "all" ]]; then
     for m in opc-crm opc-notification opc-ai-core opc-user-center \
-             opc-agent-hub opc-billing opc-finance opc-insight; do
+             opc-agent-hub opc-billing opc-finance opc-insight \
+             opc-marketplace; do
       build_one "${m}"
     done
   else

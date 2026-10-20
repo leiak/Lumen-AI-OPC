@@ -124,6 +124,14 @@ spring:
               predicates:
                 - Path=/opc/content/**
 
+            # === W80 P1: OPC Marketplace (模块市场 / 应用商店) ===
+            # 不 StripPrefix: 后端 @RequestMapping 用的就是全路径 /opc/marketplace/**
+            # (同 opc-notification / opc-crm / opc-community 约定)
+            - id: opc-marketplace
+              uri: http://aiopc-marketplace:9317
+              predicates:
+                - Path=/opc/marketplace/**
+
 security:
   ignore:
     whites:
@@ -197,6 +205,35 @@ security:
       - /opc/content/script/recent
       - /opc/content/script/**
       - /opc/content/platform-account/list
+
+      # W80: OPC Marketplace 公开浏览 (应用商店 — 商品/分类/标签/评价/作者资料)
+      # ⚠️ AuthFilter 只按 URL 路径匹配 (AuthFilter.java:50 `StringUtils.matches(url, whites)`),
+      #    **不区分 HTTP method**。所以下面带 `/**` 或 `{id:[0-9]+}` 的条目
+      #    对该路径下的 POST/PUT/DELETE 同样放行。service 层必须 fail-closed
+      #    (SecurityUtils.getCompanyId() == null → 400),不能依赖网关兜底。
+      - /opc/marketplace/category/tree
+      - /opc/marketplace/category/list
+      - /opc/marketplace/category/**
+      - /opc/marketplace/tag/list
+      - /opc/marketplace/publication/list
+      - /opc/marketplace/publication/search
+      # 公开详情 — 仅返回 PUBLISHED (selectPublishedById 在 SQL 层硬过滤);
+      # 匿名调用方遍历 id 只能看到 PUBLISHED 行,DRAFT/PENDING/SUSPENDED 一律 404
+      # ⚠️ 该条目同样放行 PUT /opc/marketplace/publication/{id} (编辑商品)。
+      #    目前靠 PublicationController.currentAuthorId() → requireCompanyId() 的
+      #    400 fail-closed 兜住; 一旦哪天去掉该守卫就是全网可改任意商品。
+      - /opc/marketplace/publication/{id:[0-9]+}
+      - /opc/marketplace/review/list/**
+      # 公开作者资料 — service 层 toPublicVO 已清空 contactEmail / contactPhone / totalRevenue。
+      # `[0-9]+` 是必须的: 它保证 "me" 不匹配, 于是 /me 仍需登录态。
+      # ⚠️ 若该端点改回 toVO, 这条白名单 = 全网可读任意企业邮箱与营收。
+      - /opc/marketplace/author/{id:[0-9]+}
+      - /opc/marketplace/author/list
+      # 注: /opc/marketplace/publication/my/{id} 与 /my/list 不加白名单 —— 需登录且校验 author 归属
+      # 注: /opc/marketplace/author/{id}/stats 也不加白名单 —— 但 service 已对嵌套 author 脱敏
+      # 注: /opc/marketplace/author/{id}/publications 与 /{id}/stats 是多段路径,
+      #     `{id:[0-9]+}` 只匹配单段, 两者均不会被上面的白名单覆盖
+      # 注: /opc/marketplace/install/** (安装/卸载/我的安装) 不在白名单 —— 全部需登录
 
 # 文档参考
 logging:
