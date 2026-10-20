@@ -1024,8 +1024,9 @@ import lombok.Data;
 
 @Data
 public class AuthorApplyRequest {
-    @NotNull
-    private Long authorCompanyId;          // current user's company (from SecurityUtils)
+    // authorCompanyId 已移除:一律取 SecurityUtils.getCompanyId()。
+    // 原设计从请求体接收,任何登录用户可代他人申请,而 uk_author_company 是硬唯一键,
+    // 受害者将永远拿不到自己的作者资格。Task4 实施期发现并修正。
 
     @NotBlank @Size(max = 128)
     private String authorName;
@@ -1521,12 +1522,11 @@ class AuthorControllerTest {
                 .id(10L).authorCompanyId(100L).authorName("TestAuthor")
                 .level("NORMAL").totalAgents(0).totalSubscribers(0)
                 .totalRevenue(BigDecimal.ZERO).status("ACTIVE").build();
-        when(authorService.apply(any(), anyLong())).thenReturn(a);
+        when(authorService.apply(any(), anyLong(), anyLong())).thenReturn(a);
         when(authorService.toVO(any())).thenReturn(new AuthorVO());
 
         String body = """
             {
-              "authorCompanyId": 100,
               "authorName": "TestAuthor",
               "contactEmail": "a@b.com"
             }
@@ -1550,11 +1550,11 @@ class AuthorControllerTest {
 
     @Test
     void apply_409_whenAlreadyAuthor() throws Exception {
-        when(authorService.apply(any(), anyLong()))
+        when(authorService.apply(any(), anyLong(), anyLong()))
             .thenThrow(new com.ruoyi.opc.common.exception.OpcException(409, "已申请", "MARKETPLACE"));
 
         String body = """
-            {"authorCompanyId": 100, "authorName": "X", "contactEmail": "a@b.com"}
+            {"authorName": "X", "contactEmail": "a@b.com"}
             """;
 
         mvc.perform(post("/opc/marketplace/author/apply")
@@ -2876,7 +2876,8 @@ class AuthorServiceTest {
     void apply_409_whenCompanyAlreadyAuthor() {
         when(authorMapper.selectByCompanyId(100L)).thenReturn(MpAuthor.builder().id(1L).build());
         assertThatThrownBy(() -> authorService.apply(
-            AuthorApplyRequest.builder().authorCompanyId(100L).build(), 1L))
+            AuthorApplyRequest.builder().authorName("X").contactEmail("a@b.com").build(),
+            100L, 1L))
             .isInstanceOf(OpcException.class)
             .hasMessageContaining("已是作者");
     }
@@ -2890,8 +2891,8 @@ class AuthorServiceTest {
             return 1;
         });
         MpAuthor result = authorService.apply(
-            AuthorApplyRequest.builder().authorCompanyId(200L).authorName("X")
-                .contactEmail("a@b.com").build(), 1L);
+            AuthorApplyRequest.builder().authorName("X")
+                .contactEmail("a@b.com").build(), 200L, 1L);
         assertThat(result.getId()).isEqualTo(99L);
         assertThat(result.getLevel()).isEqualTo("NORMAL");
     }
@@ -3830,11 +3831,12 @@ def run():
     
     print("Step 2: Apply as author")
     r = post_json("/opc/marketplace/author/apply",
-                  {"authorCompanyId": 1, "authorName": "TestAuthor",
+                  {"authorName": "TestAuthor",
                    "contactEmail": "test@example.com", "intro": "Test"},
                   token=admin_token)
     print(f"  apply author: code={r['code']}")
     # may already be author from previous run; accept both 200 and 409
+    # 若 code=400 且 msg 含「未关联企业」,说明该账号在 opc_company_member 无 ACTIVE 成员行 —— 需先建公司
 
     print("Step 3: Get my author")
     r = get_json("/opc/marketplace/author/me", token=admin_token)
