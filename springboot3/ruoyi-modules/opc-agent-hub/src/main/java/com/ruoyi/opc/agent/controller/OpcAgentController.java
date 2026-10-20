@@ -58,8 +58,19 @@ public class OpcAgentController extends BaseController {
         Long userId = SecurityUtils.getUserId();
         if (userId == null) throw new OpcException("未登录");
 
+        // 租户 id 必须来自登录态,不能信请求体。
+        // W80 修复:此前直接 `instanceService.hire(req.companyId, ...)` ——
+        // A 公司登录后 POST {"companyId": B} 就能把实例行插进 B 的租户命名空间,
+        // 且 companyId=null 时也不 fail-closed(违反"禁止 0/null 兜底"约定)。
+        // 一旦下面的 billing TODO 落地,这次雇佣还会记到 B 头上。
+        // 语义与 dailyUsage/usageSummary 一致: 请求体带了不一致的 companyId 一律 403。
+        Long callerCompanyId = resolveCompanyId();
+        if (req.companyId != null && !req.companyId.equals(callerCompanyId)) {
+            throw new OpcException(403, "无权访问该租户数据", "AGENT");
+        }
+
         OpcAgentInstance inst = instanceService.hire(
-                req.companyId, req.definitionId, req.hireType, req.duration, req.nickname);
+                callerCompanyId, req.definitionId, req.hireType, req.duration, req.nickname);
 
         // TODO: 调用 opc-billing 扣费
 
@@ -179,6 +190,12 @@ public class OpcAgentController extends BaseController {
 
     @lombok.Data
     public static class HireRequest {
+        /**
+         * 兼容字段,<b>不作为租户来源</b>。
+         * 实际落库的 companyId 取自登录态 {@code SecurityUtils.getCompanyId()}。
+         * 传 null 视为不指定;传了且与登录态不一致 → 403。
+         * 保留它只为不打断仍在发送该字段的老前端 —— 新调用方应直接省略。
+         */
         public Long companyId;
         public Long definitionId;
         public String hireType;

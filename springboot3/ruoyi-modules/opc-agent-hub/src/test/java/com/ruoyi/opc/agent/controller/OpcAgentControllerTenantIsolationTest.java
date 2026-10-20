@@ -362,4 +362,65 @@ class OpcAgentControllerTenantIsolationTest {
                     name + " 的第三个参数必须是 String (operatorId)");
         }
     }
+
+    // ==================== hire 端点 (W80 修复) ====================
+    //
+    // 背景: hire 曾是本类里唯一不走 resolveCompanyId() 的方法 —— 它把请求体的
+    // companyId 直接透传给 instanceService.hire()。于是 A 公司登录后
+    // POST {"companyId": B} 就能把实例行插进 B 的租户命名空间, 且 companyId
+    // 缺省时也不 fail-closed。一旦 hire 里那个 billing TODO 落地, 这次雇佣还会
+    // 记到 B 头上。修复后与 dailyUsage/usageSummary 同语义: 请求体带了不一致的
+    // companyId 一律 403, 落库一律用登录态的租户。
+
+    private OpcAgentController.HireRequest hireReq(Long companyId) {
+        OpcAgentController.HireRequest req = new OpcAgentController.HireRequest();
+        req.companyId = companyId;
+        req.definitionId = 42L;
+        req.hireType = "MONTHLY";
+        req.duration = 30;
+        req.nickname = "财务助理";
+        return req;
+    }
+
+    @Test
+    @DisplayName("hire — 请求体 companyId = B 公司: 403,且 instanceService.hire 永远不被调(不产生越权写入)")
+    void hire_403_whenBodyCompanyIdIsOtherCompany() {
+        OpcException ex = assertThrows(OpcException.class,
+                () -> controller.hire(hireReq(OTHER_COMPANY)));
+
+        assertEquals(403, ex.getCode());
+        // 关键断言:一行都不能写进 B 的租户 —— 越权点在「构造 instance 行」
+        verify(instanceService, never()).hire(anyLong(), anyLong(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("hire — 请求体不带 companyId: 用登录态租户落库,不退化成 null")
+    void hire_usesCallerCompany_whenBodyCompanyIdOmitted() {
+        AjaxResult r = controller.hire(hireReq(null));
+
+        assertNotNull(r);
+        // 租户必须来自登录态(A),而不是请求体的 null
+        verify(instanceService).hire(eq(CALLER_COMPANY), eq(42L), eq("MONTHLY"), eq(30), eq("财务助理"));
+    }
+
+    @Test
+    @DisplayName("hire — 请求体 companyId 与登录态一致: 正常放行(不误伤老前端)")
+    void hire_ok_whenBodyCompanyIdMatchesCaller() {
+        AjaxResult r = controller.hire(hireReq(CALLER_COMPANY));
+
+        assertNotNull(r);
+        verify(instanceService).hire(eq(CALLER_COMPANY), eq(42L), eq("MONTHLY"), eq(30), eq("财务助理"));
+    }
+
+    @Test
+    @DisplayName("hire — 调用方无租户(getCompanyId null): fail-closed 403,绝不用 0/null 兜底")
+    void hire_403_whenCallerHasNoCompany() {
+        securityUtils.when(SecurityUtils::getCompanyId).thenReturn(null);
+
+        OpcException ex = assertThrows(OpcException.class,
+                () -> controller.hire(hireReq(null)));
+
+        assertEquals(403, ex.getCode());
+        verify(instanceService, never()).hire(anyLong(), anyLong(), any(), any(), any());
+    }
 }
