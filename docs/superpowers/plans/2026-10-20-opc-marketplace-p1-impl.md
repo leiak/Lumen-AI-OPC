@@ -22,7 +22,7 @@ springboot3/ruoyi-modules/opc-marketplace/
     ├── java/com/ruoyi/opc/marketplace/
     │   ├── OpcMarketplaceApplication.java            # Task 1
     │   ├── controller/                               # Task 7-9 (6 controllers)
-    │   │   ├── PublicationController.java            # 9 endpoints
+    │   │   ├── PublicationController.java            # 10 endpoints (list/search/get/my/{id}/my/list/create/edit/submit-audit/online/offline)
     │   │   ├── InstallController.java                # 5 endpoints
     │   │   ├── AuthorController.java                 # 6 endpoints
     │   │   ├── ReviewController.java                 # 4 endpoints
@@ -1576,10 +1576,30 @@ public interface PublicationService {
     MpPublication submitAudit(Long id, Long authorId);
     MpPublication online(Long id, Long authorId);   // P1: auto-publish (no audit yet)
     MpPublication offline(Long id, Long authorId);
+    /**
+     * 作者侧任意状态读取:不过滤 status,用于编辑/上下架/我的列表.
+     * 调用方需自行校验 authorId 与 author 归属 (见 edit/submitAudit/online/offline).
+     */
     MpPublication getById(Long id);
+    /**
+     * 匿名公开详情用:非 PUBLISHED 一律按 404 处理,不泄露草稿存在性。
+     * 与 {@code getById} 语义不同 —— 网关白名单 {@code /opc/marketplace/publication/{id:[0-9]+}}
+     * 会绕过鉴权,必须走本方法.
+     */
+    MpPublication getPublishedById(Long id);
     PublicationVO toVO(MpPublication p);
     Map<String, Object> list(PublicationListQuery query);
+    /**
+     * 作者自己的全部状态行(供 /my/list 等内部用) —— 不过滤 status.
+     * 返回原始行,不做 VO 装配;VO 装配请走 {@link #listByAuthorVOs(Long)}.
+     */
     List<MpPublication> listByAuthor(Long authorId);
+    /**
+     * 作者自己全部状态的 VO 列表,一次性批量填充 authorName + categoryName (避免 N+1).
+     * 走 {@link MpAuthorMapper#selectByIds} + {@link MpCategoryMapper#selectByCodes} 两次查询,
+     * 替代原本每行 2 次单查.
+     */
+    List<PublicationVO> listByAuthorVOs(Long authorId);
 }
 ```
 
@@ -1745,6 +1765,13 @@ public class PublicationServiceImpl implements PublicationService {
     }
 
     @Override
+    public MpPublication getPublishedById(Long id) {
+        MpPublication p = publicationMapper.selectPublishedById(id);
+        if (p == null) throw new OpcException(404, "商品不存在: " + id, "MARKETPLACE");
+        return p;
+    }
+
+    @Override
     public PublicationVO toVO(MpPublication p) {
         PublicationVO vo = new PublicationVO();
         vo.setId(p.getId());
@@ -1786,15 +1813,44 @@ public class PublicationServiceImpl implements PublicationService {
     }
 
     /**
-     * 列表路径专用 VO 转换 — 作者批量预加载 (1+N → 1).
-     * categoryName 仍按需单查 (category 行数有限,缓存命中后实际开销小);P3 视情况改为批量.
+     * 列表路径专用 VO 转换 — 作者 + 类目 都批量预加载 (2N → 2).
+     * categoryName 通过 {@code Map<String, MpCategory>} 一次批量加载 (按 productType+code 索引),
+     * 替代单行 {@code selectByCode} 的 N 次查询.
      */
-    private PublicationVO toVO(MpPublication p, Map<Long, MpAuthor> authors) {
-        PublicationVO vo = toVO(p);  // 单查 categoryName + 拷贝基础字段
+    private PublicationVO toVO(MpPublication p, Map<Long, MpAuthor> authors,
+                                Map<String, MpCategory> categories) {
+        PublicationVO vo = new PublicationVO();
+        vo.setId(p.getId());
+        vo.setProductType(p.getProductType());
+        vo.setAgentDefinitionId(p.getAgentDefinitionId());
+        vo.setModuleId(p.getModuleId());
+        vo.setAuthorId(p.getAuthorId());
+        vo.setCode(p.getCode());
+        vo.setName(p.getName());
+        vo.setCategoryCode(p.getCategoryCode());
+        vo.setSubCategoryCode(p.getSubCategoryCode());
+        vo.setSummary(p.getSummary());
+        vo.setLongDescription(p.getLongDescription());
+        vo.setIconUrl(p.getIconUrl());
+        vo.setScreenshots(p.getScreenshots());
+        vo.setTags(p.getTags());
+        vo.setStatus(p.getStatus());
+        vo.setPublishedAt(p.getPublishedAt());
+        vo.setViewCount(p.getViewCount());
+        vo.setInstallCount(p.getInstallCount());
+        vo.setSubscriptionCount(p.getSubscriptionCount());
+        vo.setAvgRating(p.getAvgRating());
+        vo.setRatingCount(p.getRatingCount());
+        vo.setCreateTime(p.getCreateTime());
+
         MpAuthor a = authors.get(p.getAuthorId());
         if (a != null) {
             vo.setAuthorName(a.getAuthorName());
             vo.setAuthorAvatar(a.getAvatarUrl());
+        }
+        if (p.getProductType() != null && p.getCategoryCode() != null) {
+            MpCategory cat = categories.get(p.getProductType() + "|" + p.getCategoryCode());
+            if (cat != null) vo.setCategoryName(cat.getName());
         }
         return vo;
     }
@@ -1816,21 +1872,38 @@ public class PublicationServiceImpl implements PublicationService {
         List<MpPublication> rows = publicationMapper.selectList(params);
         int total = publicationMapper.countList(params);
 
-        // 一次性批量加载作者,避免 N+1
+        // 一次性批量加载作者 + 类目,避免 2N+1 (N 行 author/category 各 1 次单查)
         Map<Long, MpAuthor> authors = Collections.emptyMap();
+        Map<String, MpCategory> categories = Collections.emptyMap();
         if (!rows.isEmpty()) {
             Set<Long> authorIds = new HashSet<>();
+            // 类目按 productType 分桶,每桶 1 次 IN 查询(避免 AGENT+MODULE code 冲突)
+            Map<String, Set<String>> codesByType = new HashMap<>();
             for (MpPublication p : rows) {
                 if (p.getAuthorId() != null) authorIds.add(p.getAuthorId());
+                if (p.getProductType() != null && p.getCategoryCode() != null) {
+                    codesByType.computeIfAbsent(p.getProductType(), k -> new HashSet<>())
+                            .add(p.getCategoryCode());
+                }
             }
             if (!authorIds.isEmpty()) {
                 authors = authorMapper.selectByIds(authorIds).stream()
                         .collect(Collectors.toMap(MpAuthor::getId, a -> a));
             }
+            if (!codesByType.isEmpty()) {
+                Map<String, MpCategory> catMap = new HashMap<>();
+                for (Map.Entry<String, Set<String>> e : codesByType.entrySet()) {
+                    List<MpCategory> cats = categoryMapper.selectByCodes(e.getKey(), e.getValue());
+                    for (MpCategory c : cats) {
+                        catMap.put(e.getKey() + "|" + c.getCode(), c);
+                    }
+                }
+                categories = catMap;
+            }
         }
 
         Map<String, Object> data = new HashMap<>();
-        data.put("rows", rows.stream().map(p -> toVO(p, authors)).collect(Collectors.toList()));
+        data.put("rows", rows.stream().map(p -> toVO(p, authors, categories)).collect(Collectors.toList()));
         data.put("total", total);
         data.put("page", query.getPage());
         data.put("pageSize", query.getPageSize());
@@ -1840,6 +1913,35 @@ public class PublicationServiceImpl implements PublicationService {
     @Override
     public List<MpPublication> listByAuthor(Long authorId) {
         return publicationMapper.selectByAuthorId(authorId);
+    }
+
+    @Override
+    public List<PublicationVO> listByAuthorVOs(Long authorId) {
+        List<MpPublication> rows = publicationMapper.selectByAuthorId(authorId);
+        if (rows.isEmpty()) return List.of();
+
+        // 一次性批量加载作者 + 类目,替代原本每行 2 次单查 (2N → 2)
+        Set<Long> authorIds = new HashSet<>();
+        Map<String, Set<String>> codesByType = new HashMap<>();
+        for (MpPublication p : rows) {
+            if (p.getAuthorId() != null) authorIds.add(p.getAuthorId());
+            if (p.getProductType() != null && p.getCategoryCode() != null) {
+                codesByType.computeIfAbsent(p.getProductType(), k -> new HashSet<>())
+                        .add(p.getCategoryCode());
+            }
+        }
+
+        Map<Long, MpAuthor> authors = authorMapper.selectByIds(authorIds).stream()
+                .collect(Collectors.toMap(MpAuthor::getId, a -> a));
+        Map<String, MpCategory> categories = new HashMap<>();
+        for (Map.Entry<String, Set<String>> e : codesByType.entrySet()) {
+            List<MpCategory> cats = categoryMapper.selectByCodes(e.getKey(), e.getValue());
+            for (MpCategory c : cats) {
+                categories.put(e.getKey() + "|" + c.getCode(), c);
+            }
+        }
+
+        return rows.stream().map(p -> toVO(p, authors, categories)).collect(Collectors.toList());
     }
 }
 ```
@@ -1885,7 +1987,28 @@ public class PublicationController {
 
     @GetMapping("/{id}")
     public R<PublicationVO> get(@PathVariable Long id) {
-        var p = publicationService.getById(id);
+        // 公开 GET(网关白名单 /opc/marketplace/publication/{id:[0-9]+} 允许匿名),
+        // 必须走 status='PUBLISHED' 过滤版本,否则匿名调用方可遍历 id 枚举 DRAFT/PENDING/SUSPENDED 草稿.
+        // 作者要读自己 DRAFT 用于编辑,请走 GET /my/{id} (见下).
+        var p = publicationService.getPublishedById(id);
+        return R.ok(publicationService.toVO(p));
+    }
+
+    /**
+     * 作者读取自己任一状态商品(含 DRAFT/PENDING/SUSPENDED)用于编辑表单填充。
+     * 需登录,不在白名单中,且会校验 authorId 归属,非作者本人 → 403.
+     */
+    @GetMapping("/my/{id}")
+    public R<PublicationVO> myGet(@PathVariable Long id) {
+        Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
+        MpAuthor author = authorService.getByCompanyId(companyId);
+        if (author == null) {
+            throw new com.ruoyi.opc.common.exception.OpcException(403, "请先申请成为作者", "MARKETPLACE");
+        }
+        MpPublication p = publicationService.getById(id);
+        if (!p.getAuthorId().equals(author.getId())) {
+            throw new com.ruoyi.opc.common.exception.OpcException(403, "只能读取自己的商品", "MARKETPLACE");
+        }
         return R.ok(publicationService.toVO(p));
     }
 
@@ -1894,8 +2017,8 @@ public class PublicationController {
         Long companyId = SecurityUtils.getLoginUser().getUser().getCompanyId();
         MpAuthor author = authorService.getByCompanyId(companyId);
         if (author == null) return R.ok(List.of());
-        return R.ok(publicationService.listByAuthor(author.getId()).stream()
-                .map(publicationService::toVO).toList());
+        // 走批量 VO 装配,避免 2N+1 (作者侧 listByAuthor 原本每行 author+category 各 1 次单查).
+        return R.ok(publicationService.listByAuthorVOs(author.getId()));
     }
 
     @PostMapping
@@ -1951,17 +2074,20 @@ Pattern: 正常 / 鉴权失败 / 业务异常三类. 复制 AuthorControllerTest
 
 Test cases:
 - `list_returnsPage` — list returns only PUBLISHED (硬编码,见 Task3 review Critical#1)
-- `get_returnsVO` — get existing id
-- `get_404_whenNotFound` — id=999
+- `get_returnsVO` — get existing PUBLISHED id
+- `get_404_whenNotFound` — id=999 (selectPublishedById 返回 null → service 抛 404)
 - `create_returnsVO` — create request valid
 - `create_403_whenNotAuthor` — author null
 - `create_409_whenCodeExists` — code dup
 - `submitAudit_returnsPublished` — DRAFT → PUBLISHED
 - `offline_returnsDeprecated` — PUBLISHED → DEPRECATED
+- `myGet_returnsVO` — 作者读取自己的 DRAFT (走 getById,不受 PUBLISHED 过滤)
+- `myGet_403_whenNotOwner` — 别人家的 DRAFT → 403
+- `myList_returnsVOs` — 作者列表 (走 listByAuthorVOs 批量填充)
 
 (Generate all 8 tests by mirroring AuthorControllerTest structure. Each test 15-30 lines.)
 
-- [ ] **Step 5: Write 8 unit tests for PublicationService**
+- [ ] **Step 5: Write 10 unit tests for PublicationService**
 
 Test cases using JUnit5 + Mockito (mock all mappers):
 - `create_success_AGENT`
@@ -1972,8 +2098,10 @@ Test cases using JUnit5 + Mockito (mock all mappers):
 - `edit_403_whenNotAuthor`
 - `submitAudit_success`
 - `submitAudit_400_whenNotDraft`
+- `getPublishedById_404_whenMissing` — selectPublishedById 返回 null → service 抛 404 (P1 review 新增)
+- `listByAuthorVOs_batchesAuthorAndCategory` — 验证 selectByIds + selectByCodes 各 1 次,不再 N+1 (P1 review 新增)
 
-(Generate these 8 tests by following opc-community W52 `ModuleServiceImplTest` pattern. Each test 20-40 lines.)
+(Generate these 10 tests by following opc-community W52 `ModuleServiceImplTest` pattern. Each test 20-40 lines.)
 
 - [ ] **Step 6: Run all publication tests**
 
@@ -1982,14 +2110,14 @@ cd springboot3/ruoyi-modules
 mvn -pl opc-marketplace test -Dtest='PublicationControllerTest,PublicationServiceTest'
 ```
 
-Expected: 16 tests pass.
+Expected: 18 tests pass.
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-marketplace/src/main/java/com/ruoyi/opc/marketplace/{service/PublicationService.java,service/impl/PublicationServiceImpl.java,controller/PublicationController.java}
 git add springboot3/ruoyi-modules/opc-marketplace/src/test/java/com/ruoyi/opc/marketplace/{controller/PublicationControllerTest.java,service/impl/PublicationServiceTest.java}
-git commit -m "feat(marketplace): PublicationService + Controller + 16 tests (P1)"
+git commit -m "feat(marketplace): PublicationService + Controller + 18 tests (P1)"
 ```
 
 ---
@@ -2982,13 +3110,13 @@ cd springboot3/ruoyi-modules
 mvn -pl opc-marketplace test
 ```
 
-Expected: 63 tests pass (44 之前 + 5 AuthorService + 5 InstallService + 4 ReviewService + 5 AuthorController 扩充).
+Expected: 68 tests pass (63 之前 + 2 PublicationService 扩充 [getPublishedById_404_whenMissing, listByAuthorVOs_batchesAuthorAndCategory] + 3 PublicationController 扩充 [myGet_returnsVO, myGet_403_whenNotOwner, myList_returnsVOs]).
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-marketplace/src/test
-git commit -m "test(marketplace): 19 more tests → 63 total (P1)"
+git commit -m "test(marketplace): 5 more tests → 68 total (P1)"
 ```
 
 ---
@@ -3074,10 +3202,13 @@ In `opc.security.whitelist` list, add public GET paths:
 /opc/marketplace/tag/list
 /opc/marketplace/publication/list
 /opc/marketplace/publication/search
+# 公开详情 — 仅返回 PUBLISHED (selectPublishedById 在 SQL 层硬过滤);
+# 匿名调用方遍历 id 只能看到 PUBLISHED 行,DRAFT/PENDING/SUSPENDED 一律 404
 /opc/marketplace/publication/{id:[0-9]+}
 /opc/marketplace/review/list/**
 /opc/marketplace/author/{id:[0-9]+}
 /opc/marketplace/author/list
+# 注: /opc/marketplace/publication/my/{id} 与 /my/list 不加白名单 —— 需登录且校验 author 归属
 ```
 
 (POST/PUT/DELETE 不加白名单，需要 token)
@@ -3319,6 +3450,11 @@ export const searchPublications = (params: any) =>
 export const getPublication = (id: number) =>
   request({ url: `/opc/marketplace/publication/${id}`, method: 'get' })
 
+// 作者读取自己任一状态商品(含 DRAFT)用于编辑表单填充 —— 不走公开 GET (会 404).
+// 走 getPublication 加载 DRAFT 会失败,因为 /{id} 在公开详情场景下被 selectPublishedById 过滤.
+export const myPublication = (id: number) =>
+  request({ url: `/opc/marketplace/publication/my/${id}`, method: 'get' })
+
 export const createPublication = (data: any) =>
   request({ url: '/opc/marketplace/publication', method: 'post', data })
 
@@ -3406,6 +3542,12 @@ export const listTags = (category?: string) =>
 - 顶部：作者信息 (avatar/name/total agents)
 - 主体：tabs (我的作品 / 新建商品 / 数据看板)
 - 新建商品：表单 → `createPublication()` → 跳转列表
+- **编辑 DRAFT**: 我的作品 tab 中点击「编辑」按钮 → 弹窗/内嵌表单加载 DRAFT 数据.
+  ⚠️ **不要调用 `getPublication(id)`**,它走公开 `GET /publication/{id}` 端点,
+  SQL 层过滤 `status='PUBLISHED'`,DRAFT/PENDING/SUSPENDED 会返回 404 (见 `selectPublishedById`).
+  **必须调用 `myPublication(id)`** —— 后端走 `GET /publication/my/{id}`(无 PUBLISHED 过滤,
+  且校验 authorId 归属). 数据已在 `myPublications()` 列表内时可省一次请求,但若需拉最新
+  (后台被别人改过),就用 `myPublication(id)` 重新拉取.
 
 `author-apply.vue`:
 - 申请表单：企业名 / 邮箱 / 简介 → `applyAuthor()`
@@ -3667,8 +3809,8 @@ metadata:
 - mp_category: 类目树 (product_type + code UNIQUE, 6 个种子)
 - mp_tag: 标签 (10 个种子)
 
-## 28 个 endpoint
-- PublicationController 9: list/search/get/my/create/edit/submit-audit/online/offline
+## 29 个 endpoint
+- PublicationController 10: list/search/get/my/{id}/my/list/create/edit/submit-audit/online/offline
 - InstallController 5: install/uninstall/my/status/upgrade
 - AuthorController 6: apply/me/get/list/publications/stats
 - ReviewController 4: create/list/update/delete
