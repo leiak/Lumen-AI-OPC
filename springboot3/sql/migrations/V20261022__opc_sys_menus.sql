@@ -11,11 +11,15 @@
 -- OPC paths and the whole business sidebar is invisible to operators.
 --
 -- Route convention verified against
---   ruoyi-system .../service/impl/SysMenuServiceImpl.java#buildMenus
---     - parent_id=0 + menu_type='M' + is_frame=1  -> routerPath '/'+path, component 'Layout'
---     - child dir (parent_id!=0, type='M')       -> relative path, component 'Layout'
---     - leaf  (parent_id!=0, type='C')            -> component taken verbatim from column
--- so a child `path` MUST be relative to its parent dir (path 'index', NOT
+--   ruoyi-system .../service/impl/SysMenuServiceImpl.java
+--     - getRouterPath:459  parent_id=0 + menu_type='M' + is_frame='1' -> '/'+path
+--     - getComponent:487   parent_id=0, component 空        -> 'Layout'
+--                         parent_id!=0 + menu_type='M'      -> 'ParentView'  (isParentView:523)
+--     - leaf (menu_type='C')                                -> component 列原样取值
+-- ⚠️ 本 fork 的 UserConstants.NO_FRAME = "1"(:46),与上游 RuoYi 的 "0" 相反 ——
+--    is_frame='1' 才是「非外链」,下面所有行统一用 1,与 ry_20260417.sql:164-166
+--    的内置目录 (系统管理/系统监控/系统工具) 完全一致。
+-- 所以 child `path` MUST be relative to its parent dir (path 'index', NOT
 -- 'marketplace/index', which would render /opc/marketplace/marketplace/index).
 --
 -- `component` must exactly equal a file under views/ -- the frontend
