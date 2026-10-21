@@ -63,82 +63,6 @@
         </el-row>
       </el-col>
     </el-row>
-    <el-divider />
-    <el-row :gutter="20">
-      <el-col :xs="24" :sm="24" :md="12" :lg="8">
-        <el-card class="update-log">
-          <template v-slot:header>
-            <div class="clearfix">
-              <span>联系信息</span>
-            </div>
-          </template>
-          <div class="body">
-            <p>
-              <i class="el-icon-s-promotion"></i> 官网：<el-link
-                href="https://opc.cloud"
-                target="_blank"
-                >https://opc.cloud</el-link
-              >
-            </p>
-            <p>
-              <i class="el-icon-document"></i> 文档：<el-link
-                href="https://opc.cloud/docs"
-                target="_blank"
-                >https://opc.cloud/docs</el-link
-              >
-            </p>
-            <p>
-              <i class="el-icon-folder"></i> 仓库：<el-link
-                href="https://gitee.com/lumen-opc/opc-cloud"
-                target="_blank"
-                >https://gitee.com/lumen-opc/opc-cloud</el-link
-              >
-            </p>
-            <p>
-              <i class="el-icon-user-solid"></i> QQ群：<a
-                href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=jR7HqTiLzuLocIH6aNNtTW3LlCV8UQ6d&authKey=GJZj%2Bnwmsvk6j%2FWrX7FKstAaRjgUC1WL%2F%2B8aVTaPbHX5wOimH5q9igaOSXP7cF9L&noverify=0&group_code=112869560"
-                target="_blank"
-                >112869560</a
-              >
-            </p>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="24" :md="12" :lg="8">
-        <el-card class="update-log">
-          <template v-slot:header>
-            <div class="clearfix">
-              <span>更新日志</span>
-            </div>
-          </template>
-          <div class="body">
-            <p>OPC 业务迭代日志与每周发布条目见项目仓库:</p>
-            <p>
-              <el-link href="https://gitee.com/lumen-opc/opc-cloud" target="_blank">https://gitee.com/lumen-opc/opc-cloud</el-link>
-            </p>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="24" :md="12" :lg="8">
-        <el-card class="update-log">
-          <template v-slot:header>
-            <div class="clearfix">
-              <span>捐赠支持</span>
-            </div>
-          </template>
-          <div class="body">
-            <img
-              src="@/assets/images/pay.png"
-              alt="donate"
-              style="width:100%"
-            />
-            <span style="display: inline-block; height: 30px; line-height: 30px"
-              >你可以请作者喝杯咖啡表示鼓励</span
-            >
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
   </div>
 </template>
 
@@ -199,18 +123,6 @@ function goTarget(url: string): void {
 
     b {
       font-weight: 700;
-    }
-  }
-
-  .update-log {
-    ol {
-      display: block;
-      list-style-type: decimal;
-      margin-block-start: 1em;
-      margin-block-end: 1em;
-      margin-inline-start: 0;
-      margin-inline-end: 0;
-      padding-inline-start: 40px;
     }
   }
 }
