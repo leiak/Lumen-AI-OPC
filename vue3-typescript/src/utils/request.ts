@@ -111,14 +111,18 @@ service.interceptors.response.use((res: any) => {
       })
     }
       return Promise.reject(new ApiError('无效的会话，或者会话已过期，请重新登录。'))
+    } else if (code === 601) {
+      // W12.2 修复死分支:此分支此前排在 `code >= 500` 之后,而 601 >= 500 恒成立,
+      // 所以它永远不可达,所有 601 都落进下面的 5xx 分支弹 type:'error'。
+      // 后端 HttpStatus.WARN = 601 声明的语义是「业务警告」,不是错误 ——
+      // 把更具体的分支提到更宽的分支之前。
+      ElMessage({ message: msg, type: 'warning' })
+      return Promise.reject(new ApiError(msg))
     } else if (code >= 500) {
       // W7.1 修复：原 `code === 500` 仅匹配默认错误，OpcException(400/403) 修复后会落到
       // 下方的 `code !== 200` 分支（ElNotification），与 5xx 区分开。
       // 改为 `code >= 500` 覆盖所有服务端错误（5xx），保持 ElMessage(error) UX。
       ElMessage({ message: msg, type: 'error' })
-      return Promise.reject(new ApiError(msg))
-    } else if (code === 601) {
-      ElMessage({ message: msg, type: 'warning' })
       return Promise.reject(new ApiError(msg))
     } else if (code !== 200) {
       ElNotification.error({ title: msg })

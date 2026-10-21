@@ -444,17 +444,22 @@ describe('H. response interceptor: server / business errors', () => {
     await expect(service.get('/503')).rejects.toThrow('Service Unavailable')
   })
 
-  it('H3. code=601 is currently caught by the code>=500 branch (601-branch is DEAD code)', async () => {
-    // KNOWN BEHAVIOR (potentially a bug in request.ts): the if/else chain is
+  it('H3. code=601 (WARN) takes the warning branch, not the error branch', async () => {
+    // W12.2 修复死分支。此前 if/else 链是
     //   else if (code >= 500)  -> type:'error'
-    //   else if (code === 601) -> type:'warning'   <-- never reached
-    // Because 601 satisfies `code >= 500`, the 601 branch is dead. We pin the
-    // actual behavior here so a future refactor that reorders the branches
-    // (making the 601 branch live) gets flagged.
+    //   else if (code === 601) -> type:'warning'   <-- 永远不可达
+    // 601 >= 500 恒成立,于是 601 全落进 5xx 分支。后端
+    // ruoyi-common-core HttpStatus.java:93 `public static final int WARN = 601`
+    // 把它定义为「业务警告」,用 error 弹窗呈现是语义错误。
+    // 现在更具体的 601 分支排在更宽的 >=500 之前。
     mock.onGet('/api/x').reply(200, { code: 601, msg: 'Business warning' })
 
     await expect(service.get('/api/x')).rejects.toThrow('Business warning')
     expect(ElMessageSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'warning' }),
+    )
+    // 5xx 分支仍然是 error —— 601 是被单独提出来的,不是把 error 变成了 warning。
+    expect(ElMessageSpy).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: 'error' }),
     )
   })
