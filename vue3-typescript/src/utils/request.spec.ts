@@ -541,8 +541,31 @@ describe('J. download() helper', () => {
 
     expect(mocks.saveAs).not.toHaveBeenCalled()
     // download() uses the ElMessage.error() shortcut (not the callable),
-    // passing through errorCode[code] or rspObj.msg or errorCode['default'].
+    // chain is `rspObj.msg || errorCode[rspObj.code] || errorCode['default']`
+    // — i.e. the SAME order as the response interceptor at request.ts:93
+    // (backend msg first, errorCode table only as fallback).
+    // NOTE this case is order-insensitive: errorCode has no '500' entry, so
+    // both orders print 'export failed'. J3b below is the order-sensitive pin.
     expect((ElMessageSpy as any).error).toHaveBeenCalledWith('export failed')
+  })
+
+  it('J3b. JSON error blob code=403: ElMessage.error shows the BACKEND msg, not errorCode[403]', async () => {
+    // W12.2 下载路径的优先级翻转 pin。此前是
+    //   errorCode[rspObj.code] || rspObj.msg || errorCode['default']
+    // 让 '当前操作没有权限' 压过后端给的 '无权下载该租户数据'——后端明明已经
+    // 知道是哪一层租户/哪张表越权,通用文案把真实原因吃掉了。
+    // 翻转后与响应拦截器 L93 同序:后端 msg 优先,errorCode 表只作兜底。
+    // 403 是本 case 的关键:errorCode 表里 403 确实有条目,两种顺序结果不同。
+    const errJson = JSON.stringify({ code: 403, msg: '无权下载该租户数据' })
+    const jsonBlob = new Blob([errJson], { type: 'application/json' })
+    mock.onPost('/api/export').reply(200, jsonBlob)
+
+    await download('/api/export', {}, 'report.xlsx')
+
+    expect(mocks.saveAs).not.toHaveBeenCalled()
+    expect((ElMessageSpy as any).error).toHaveBeenCalledWith('无权下载该租户数据')
+    // 旧顺序下这里会是 '当前操作没有权限'——显式反断言,防止只断言了"调用过"。
+    expect((ElMessageSpy as any).error).not.toHaveBeenCalledWith('当前操作没有权限')
   })
 
   it('J3. network error during download: ElMessage.error("下载文件出现错误...") + close loading', async () => {

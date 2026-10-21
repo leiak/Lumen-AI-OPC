@@ -90,6 +90,7 @@ service.interceptors.response.use((res: any) => {
     // W12.2 翻转:原顺序 `errorCode[code] || res.data.msg || default` 让 errorCode 表的
     // 通用文案(如 '403'→'当前操作没有权限')压过后端给的真实原因(如 '无权访问该租户数据')。
     // 后端 msg 优先,只在为 null/undefined/空字符串时回落;null/空串都是 falsy,自然穿透。
+    // 翻转只影响 401/403/404——5xx 因 errorCode 表里没有条目,原本就走 res.data.msg。
     const msg = res.data.msg || errorCode[code] || errorCode['default']
     // 二进制数据则直接返回
     if (res.request.responseType ===  'blob' || res.request.responseType ===  'arraybuffer') {
@@ -155,7 +156,8 @@ export function download(url: string, params: any, filename: string, config?: an
     } else {
       const resText = await data.text()
       const rspObj = JSON.parse(resText)
-      const errMsg = errorCode[rspObj.code] || rspObj.msg || errorCode['default']
+      // W12.2 与响应拦截器 L93 同序:后端 msg 优先,errorCode 表只作兜底。
+      const errMsg = rspObj.msg || errorCode[rspObj.code] || errorCode['default']
       ElMessage.error(errMsg)
     }
     downloadLoadingInstance.close()

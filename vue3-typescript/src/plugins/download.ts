@@ -38,7 +38,8 @@ export default {
   async printErrMsg(data: any) {
     const resText = await data.text()
     const rspObj = JSON.parse(resText)
-    const errMsg = errorCode[rspObj.code] || rspObj.msg || errorCode['default']
+    // W12.2 与 utils/request.ts:93 同序:后端 msg 优先,errorCode 表只作兜底。
+    const errMsg = rspObj.msg || errorCode[rspObj.code] || errorCode['default']
     ElMessage.error(errMsg)
   }
 }
