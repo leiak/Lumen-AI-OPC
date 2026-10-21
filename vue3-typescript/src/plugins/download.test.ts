@@ -2,7 +2,7 @@
 // one, which is why the `errorCode[code] || msg || default` precedence bug in
 // printErrMsg() survived the response-interceptor flip in utils/request.ts.
 // Section P pins printErrMsg(); section Q (added later) pins zip().
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ---------------------------------------------------------------------------
 // Module mocks — must come before importing @/plugins/download
@@ -37,14 +37,27 @@ vi.mock('@/utils/auth', async () => {
 
 import downloadPlugin from '@/plugins/download'
 import { ElMessage } from 'element-plus'
+import axios from 'axios'
+import MockAdapter from 'axios-mock-adapter'
 
 const ElMessageSpy = vi.mocked(ElMessage)
 const elMessageError = () => (ElMessageSpy as any).error
 
+let mock: MockAdapter
+let consoleErrorSpy: any
+
 beforeEach(() => {
+  mock = new MockAdapter(axios)
   mocks.saveAs.mockReset()
   mocks.getToken.mockReset().mockReturnValue(undefined)
   ;(ElMessageSpy as any).error.mockReset()
+  // The .catch path deliberately logs; keep the run output readable.
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+})
+
+afterEach(() => {
+  mock.restore()
+  consoleErrorSpy.mockRestore()
 })
 
 // Build the minimal stand-in for the non-blob `res.data` that printErrMsg
@@ -85,5 +98,69 @@ describe('P. printErrMsg(): backend msg beats the errorCode table', () => {
     await downloadPlugin.printErrMsg(fakeBody(JSON.stringify({ code: 500, msg: null })))
 
     expect(elMessageError()).toHaveBeenCalledWith('系统未知错误，请反馈给管理员')
+  })
+})
+
+// ============================================================================
+// Q. zip() — .catch shape + the un-awaited printErrMsg
+// ============================================================================
+
+describe('Q. zip(): error surfacing', () => {
+  it('Q1. valid zip blob: saveAs is called with the blob and the given name', async () => {
+    const zipBlob = new Blob(['PK'], { type: 'application/octet-stream' })
+    mock.onGet(/.*/).reply(200, zipBlob)
+
+    downloadPlugin.zip('/api/export/bundle', 'bundle.zip')
+    await vi.waitFor(() => expect(mocks.saveAs).toHaveBeenCalledTimes(1))
+
+    const [blobArg, nameArg] = mocks.saveAs.mock.calls[0]
+    expect(blobArg).toBeInstanceOf(Blob)
+    expect(nameArg).toBe('bundle.zip')
+  })
+
+  it('Q2. JSON error body: printErrMsg runs and shows the backend msg', async () => {
+    const errBlob = new Blob(
+      [JSON.stringify({ code: 403, msg: '无权下载该租户数据' })],
+      { type: 'application/json' },
+    )
+    mock.onGet(/.*/).reply(200, errBlob)
+
+    downloadPlugin.zip('/api/export/bundle', 'bundle.zip')
+    await vi.waitFor(() => expect(elMessageError()).toHaveBeenCalled())
+
+    expect(elMessageError()).toHaveBeenCalledWith('无权下载该租户数据')
+    expect(mocks.saveAs).not.toHaveBeenCalled()
+  })
+
+  it('Q3. non-JSON body (nginx 502 HTML page): surfaces an ElMessage instead of silently rejecting', async () => {
+    // W12.2 printErrMsg 此前在 L26 被无 await 调用。响应体不是 JSON 时
+    // JSON.parse 抛 SyntaxError 到一个无主的 promise —— unhandled rejection,
+    // 用户看不到任何提示。改为 `await this.printErrMsg(res.data)` 后异常落进
+    // .catch,SyntaxError 没有 .msg,于是显示硬编码兜底。
+    // (真机上上游代理 502 时就是 application/json 的 content-type 配 HTML body。)
+    const htmlBlob = new Blob(['<html><head><title>502 Bad Gateway</title></head></html>'], {
+      type: 'application/json',
+    })
+    mock.onGet(/.*/).reply(200, htmlBlob)
+
+    downloadPlugin.zip('/api/export/bundle', 'bundle.zip')
+
+    // 这条断言本身就是 pin:没有 await 时这里永远等不到任何 ElMessage,
+    // 而 SyntaxError 会以 "Unhandled Rejection" 的形式把整个测试运行打红。
+    await vi.waitFor(() =>
+      expect(elMessageError()).toHaveBeenCalledWith('下载文件出现错误，请联系管理员！'),
+    )
+    expect(mocks.saveAs).not.toHaveBeenCalled()
+  })
+
+  it('Q4. transport failure: axios error has no .msg, so the hardcoded fallback shows', async () => {
+    mock.onGet(/.*/).networkError()
+
+    downloadPlugin.zip('/api/export/bundle', 'bundle.zip')
+
+    // axios 的网络错误是裸 Error,没有 .msg —— 兜底分支必须留着。
+    await vi.waitFor(() =>
+      expect(elMessageError()).toHaveBeenCalledWith('下载文件出现错误，请联系管理员！'),
+    )
   })
 })

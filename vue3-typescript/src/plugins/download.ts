@@ -17,18 +17,23 @@ export default {
       url: downloadUrl,
       responseType: 'blob',
       headers: { 'Authorization': 'Bearer ' + getToken() }
-    }).then((res: any) => {
+    }).then(async (res: any) => {
       const isBlob = blobValidate(res.data)
       if (isBlob) {
         const blob = new Blob([res.data], { type: 'application/zip' })
         this.saveAs(blob, name)
       } else {
-        this.printErrMsg(res.data)
+        // W12.2 此前是 `await this.printErrMsg(res.data)` 不带 await:若响应体不是 JSON
+        // (nginx 的 502 HTML 页),JSON.parse 在一个无主的 promise 里抛错 ->
+        // unhandled rejection,用户看不到任何提示。await 让它落进下面的 .catch。
+        await this.printErrMsg(res.data)
       }
       downloadLoadingInstance.close()
     }).catch((r: any) => {
       console.error(r)
-      ElMessage.error('下载文件出现错误，请联系管理员！')
+      // W12.2 与 utils/request.ts 的下载 .catch 同形:优先显示真实原因,
+      // r 没有 .msg 时才落回硬编码兜底。
+      ElMessage.error(r?.msg || '下载文件出现错误，请联系管理员！')
       downloadLoadingInstance.close()
     })
   },

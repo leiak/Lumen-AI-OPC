@@ -270,6 +270,52 @@ describe('D. request interceptor: repeat-submit guard', () => {
     // sessionObj should NOT have been written because the guard was skipped.
     expect(sessionStorage.getItem('sessionObj')).toBeNull()
   })
+
+  // W12.2 — 去重守卫此前 reject 的是裸 Error,只有 .message 没有 .msg。
+  // 可达路径:views/opc/crm/CustomerList.vue:261 `catch (e: any) { ElMessage.error(e?.msg || '保存失败') }`
+  // 配合 api/opc/crm.ts:40 的 POST。
+  //
+  // 重要修正(实测):把 :74 改回 `new Error(message)` 本用例照样通过 —— 因为
+  // axios 把响应拦截器的 onRejected 也串进了同一条链,请求拦截器抛出的裸 Error
+  // 会被 response error handler(request.ts:130)接住并重新 wrap 成 ApiError。
+  // 所以 :74 的改动对调用方不可见,它锁的是不变量而非用户可见行为。
+  // 真正 pin 住 :74 那一行的是下面的 D8(白盒直调请求拦截器)。
+  it('D7. repeat-submit rejection reaches the caller as ApiError with the real reason in .msg', async () => {
+    mock.onPost('/api/save').reply(200, { code: 200 })
+
+    await service.post('/api/save', { x: 1 }) // prime sessionObj
+
+    const promise = service.post('/api/save', { x: 1 })
+    await expect(promise).rejects.toBeInstanceOf(ApiError)
+
+    let captured: any
+    try {
+      await promise
+    } catch (e) {
+      captured = e
+    }
+    // 视图侧的 e?.msg 必须读得到真实原因,而不是回落到硬编码的 '保存失败'。
+    expect(captured.msg).toBe('数据正在处理，请勿重复提交')
+    expect(captured.message).toBe(captured.msg)
+    expect(mock.history.post.length).toBe(1) // rejected before the adapter ran
+  })
+
+  it('D8. dedupe guard itself throws ApiError (white-box: invokes the request interceptor directly)', async () => {
+    // axios 实例把已注册的拦截器挂在 interceptors.request.handlers 上,
+    // 这里跳过整条 axios 链直调 fulfilled,让 :74 的返回值本身成为被测对象 ——
+    // 否则响应拦截器的重新 wrap 会把裸 Error 掩盖掉(D7 的教训)。
+    const guard = (service.interceptors.request as any).handlers[0].fulfilled
+    const config = () => ({ url: '/api/save', method: 'post', data: { x: 1 }, headers: {} })
+
+    expect(guard(config())).toMatchObject({ url: '/api/save' }) // 第一次:放行并写 sessionObj
+    const rejected = guard(config()) // 第二次:1 秒内同 url 同 data -> 拒绝
+
+    await expect(rejected).rejects.toBeInstanceOf(ApiError)
+    await expect(rejected).rejects.toMatchObject({
+      name: 'ApiError',
+      msg: '数据正在处理，请勿重复提交',
+    })
+  })
 })
 
 // ============================================================================
@@ -568,17 +614,36 @@ describe('J. download() helper', () => {
     expect((ElMessageSpy as any).error).not.toHaveBeenCalledWith('当前操作没有权限')
   })
 
-  it('J3. network error during download: ElMessage.error("下载文件出现错误...") + close loading', async () => {
+  it('J3. network error during download: ElMessage.error surfaces r.msg, not the hardcoded string', async () => {
     mock.onPost('/api/export').networkError()
 
     await download('/api/export', {}, 'report.xlsx')
 
-    // Response interceptor also fires ElMessage({message:'后端接口连接异常'}).
-    // download()'s own .catch then fires ElMessage.error('下载文件出现错误...').
-    expect((ElMessageSpy as any).error).toHaveBeenCalledWith(
-      expect.stringContaining('下载文件出现错误'),
+    // W12.2 — download() 的 .catch 此前无条件弹 '下载文件出现错误，请联系管理员！',
+    // 把响应拦截器已经算好的真实原因丢掉。响应拦截器把 Network Error 归一成
+    // ApiError('后端接口连接异常'),.catch 现在优先显示 r.msg。
+    expect((ElMessageSpy as any).error).toHaveBeenCalledWith('后端接口连接异常')
+    expect((ElMessageSpy as any).error).not.toHaveBeenCalledWith(
+      '下载文件出现错误，请联系管理员！',
     )
     expect(mocks.saveAs).not.toHaveBeenCalled()
+  })
+
+  it('J5. download .catch keeps the hardcoded fallback when r has no .msg', async () => {
+    // `|| '下载文件出现错误，请联系管理员！'` 不能被上一条删掉:请求拦截器之外的
+    // 异常(这里用 file-saver 抛错模拟磁盘/配额失败)是不带 .msg 的裸 Error,
+    // 没有兜底就会变成静默失败。这里锁住两半都要的形状。
+    mocks.saveAs.mockImplementationOnce(() => {
+      throw new Error('QuotaExceededError')
+    })
+    const blob = new Blob(['x'], { type: 'application/octet-stream' })
+    mock.onPost('/api/export').reply(200, blob)
+
+    await download('/api/export', {}, 'report.xlsx')
+
+    expect((ElMessageSpy as any).error).toHaveBeenCalledWith(
+      '下载文件出现错误，请联系管理员！',
+    )
   })
 
   it('J4. ElLoading opens BEFORE the request resolves (verified by call order)', async () => {

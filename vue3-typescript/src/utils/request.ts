@@ -11,8 +11,10 @@ let downloadLoadingInstance: ReturnType<typeof ElLoading.service>
 // 是否显示重新登录
 export const isRelogin = { show: false }
 
-// 同时带 .message(Error 原生) 与 .msg(本仓 request.ts 调用点的既有约定),
+// 同时带 .message(Error 原生) 与 .msg(视图 catch 端的既有约定,如
+// `catch (e: any) { ElMessage.error(e?.msg || '加载失败') }`),
 // 让 e?.message 与 e?.msg 两种写法都能读到同一段文案,避免 40+ 视图站点改 `e?.msg`。
+// 不变量:本拦截器所有 reject 必须是 ApiError——视图侧的 `e?.msg` 才拿得到。
 export class ApiError extends Error {
   msg: string
   constructor(message: string) {
@@ -71,7 +73,7 @@ service.interceptors.request.use((config: any) => {
       if (s_data === requestObj.data && requestObj.time - s_time < interval && s_url === requestObj.url) {
         const message = '数据正在处理，请勿重复提交'
         console.warn(`[${s_url}]: ` + message)
-        return Promise.reject(new Error(message))
+        return Promise.reject(new ApiError(message))
       } else {
         cache.session.setJSON('sessionObj', requestObj)
       }
@@ -163,7 +165,9 @@ export function download(url: string, params: any, filename: string, config?: an
     downloadLoadingInstance.close()
   }).catch((r: any) => {
     console.error(r)
-    ElMessage.error('下载文件出现错误，请联系管理员！')
+    // W12.2 与拒绝形状统一:`r` 通常已是 ApiError(响应拦截器 wrap 过),带 .msg,
+    // 优先显示真实原因;网络层抛出的裸错误没有 .msg,才落回硬编码兜底。
+    ElMessage.error(r?.msg || '下载文件出现错误，请联系管理员！')
     downloadLoadingInstance.close()
   })
 }
