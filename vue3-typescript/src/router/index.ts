@@ -24,6 +24,26 @@ import Layout from '@/layout/index.vue'
   }
  */
 
+/**
+ * 造一条不进侧边栏的 OPC 隐藏路由(详情页 / 新建页)。
+ *
+ * parent 用**绝对 path** 独占一段,child 用 `path: ''` —— vue-router 4 的
+ * normalizeRoutePath 把空 child 解析成「与父路径相同」,于是详情页 URL 仍是
+ * /opc/crm/customers/123。这样每条隐藏路由自成一个 Layout 分支,不必挂在某个
+ * '/opc' parent 下面,也就不会和 sys_menu 树里的 '/opc' 撞名(撞名的后果见下方
+ * OPC 路由注释)。
+ *
+ * parent 必须 hidden:true —— SidebarItem.vue:2 的 `v-if="!item.hidden"` 只看
+ * 最外层那一层,child 上的 hidden 管不到。
+ */
+function opcHiddenRoute(path: string, component: () => Promise<any>, name: string, meta: Record<string, any>) {
+  return {
+    path,
+    component: Layout,
+    hidden: true,
+    children: [{ path: '', component, name, meta, hidden: true }]
+  }
+}
 // 公共路由
 export const constantRoutes = [
   {
@@ -96,305 +116,36 @@ export const constantRoutes = [
       }
     ]
   },
-  // ================ OPC 路由（动态加载） ================
-  {
-    path: '/opc',
-    component: Layout,
-    redirect: '/opc/index',
-    meta: { title: 'OPC 社区', icon: 'guide' },
-    children: [
-      {
-        path: 'index',
-        component: () => import('@/views/opc/index.vue'),
-        name: 'OpcHome',
-        meta: { title: 'OPC 首页', icon: 'home', affix: true }
-      },
-      {
-        path: 'community/market',
-        component: () => import('@/views/opc/community/Market.vue'),
-        name: 'OpcCommunityMarket',
-        meta: { title: '模块市场', icon: 'shop' }
-      },
-      {
-        path: 'marketplace/index',
-        component: () => import('@/views/opc/marketplace/index.vue'),
-        name: 'OpcMarketplaceIndex',
-        meta: { title: '智能体市场', icon: 'shopping', affix: true }
-      },
-      {
-        path: 'marketplace/detail/:id(\\d+)',
-        component: () => import('@/views/opc/marketplace/detail.vue'),
-        name: 'OpcMarketplaceDetail',
-        meta: { title: '商品详情', activeMenu: '/opc/marketplace/index' },
-        hidden: true
-      },
-      {
-        path: 'marketplace/author-center',
-        component: () => import('@/views/opc/marketplace/author-center.vue'),
-        name: 'OpcMarketplaceAuthorCenter',
-        meta: { title: '作者后台', icon: 'skill' }
-      },
-      {
-        path: 'marketplace/author-apply',
-        component: () => import('@/views/opc/marketplace/author-apply.vue'),
-        name: 'OpcMarketplaceAuthorApply',
-        meta: { title: '申请作者', icon: 'form' }
-      },
-      {
-        path: 'user/profile',
-        component: () => import('@/views/opc/user/profile.vue'),
-        name: 'OpcUserProfile',
-        meta: { title: '用户画像', icon: 'user' }
-      },
-      {
-        path: 'user/invitations',
-        component: () => import('@/views/opc/invitations.vue'),
-        name: 'OpcInvitations',
-        meta: { title: '我的邀请', icon: 'promotion' }
-      },
-      {
-        path: 'agent/market',
-        component: () => import('@/views/opc/agent/market.vue'),
-        name: 'AgentMarket',
-        meta: { title: 'Agent 商店', icon: 'shopping' }
-      },
-      {
-        path: 'agent/detail/:id(\\d+)',
-        component: () => import('@/views/opc/agent/detail.vue'),
-        name: 'AgentDetail',
-        meta: { title: 'Agent 详情', activeMenu: '/opc/agent/market' },
-        hidden: true
-      },
-      {
-        path: 'agent/instances',
-        component: () => import('@/views/opc/agent/instances.vue'),
-        name: 'AgentInstances',
-        meta: { title: '我的实例', icon: 'list' }
-      },
-      {
-        path: 'agent/instance/:id(\\d+)',
-        component: () => import('@/views/opc/agent/instance.vue'),
-        name: 'AgentInstance',
-        meta: { title: '实例详情', activeMenu: '/opc/agent/instances' },
-        hidden: true
-      },
-      {
-        path: 'finance/vouchers',
-        component: () => import('@/views/opc/finance/vouchers.vue'),
-        name: 'FinanceVouchers',
-        meta: { title: '凭证中心', icon: 'document' }
-      },
-      {
-        path: 'finance/flows',
-        component: () => import('@/views/opc/finance/flows.vue'),
-        name: 'FinanceFlows',
-        meta: { title: '银行流水', icon: 'money' }
-      },
-      {
-        path: 'finance/tax-reports',
-        component: () => import('@/views/opc/finance/tax-reports.vue'),
-        name: 'FinanceTaxReports',
-        meta: { title: '税务报表', icon: 'postcard' }
-      },
-      {
-        path: 'billing/wallet',
-        component: () => import('@/views/opc/billing/wallet.vue'),
-        name: 'BillingWallet',
-        meta: { title: '钱包与账单', icon: 'wallet' }
-      },
-      {
-        path: 'llm/chat',
-        component: () => import('@/views/opc/llm/chat.vue'),
-        name: 'LlmChat',
-        meta: { title: 'AI 对话', icon: 'chat' }
-      },
-      {
-        path: 'inbox',
-        component: () => import('@/views/opc/inbox.vue'),
-        name: 'OpcInbox',
-        meta: { title: '通知中心', icon: 'bell' }
-      },
-      {
-        path: 'crm/customers',
-        component: () => import('@/views/opc/crm/CustomerList.vue'),
-        name: 'OpcCustomerList',
-        meta: { title: '客户管理', icon: 'user' }
-      },
-      {
-        path: 'crm/customers/:id(\\d+)',
-        component: () => import('@/views/opc/crm/CustomerDetail.vue'),
-        name: 'OpcCustomerDetail',
-        meta: { title: '客户详情', activeMenu: '/opc/crm/customers' },
-        hidden: true
-      },
-      {
-        path: 'crm/opportunities',
-        component: () => import('@/views/opc/crm/OpportunityKanban.vue'),
-        name: 'OpcOpportunityKanban',
-        meta: { title: '商机看板', icon: 'trend-charts' }
-      },
-      {
-        path: 'crm/follow-ups',
-        component: () => import('@/views/opc/crm/FollowUpTimeline.vue'),
-        name: 'OpcFollowUpTimeline',
-        meta: { title: '跟进记录', icon: 'time' }
-      },
-      {
-        path: 'hr/dashboard',
-        component: () => import('@/views/opc/hr/dashboard.vue'),
-        name: 'OpcHrDashboard',
-        meta: { title: 'HR 仪表盘', icon: 'data-analysis' }
-      },
-      {
-        path: 'hr/job',
-        component: () => import('@/views/opc/hr/job/index.vue'),
-        name: 'OpcHrJobList',
-        meta: { title: 'JD 列表', icon: 'briefcase' }
-      },
-      {
-        path: 'hr/job/:id(\\d+)',
-        component: () => import('@/views/opc/hr/job/detail.vue'),
-        name: 'OpcHrJobDetail',
-        meta: { title: 'JD 详情', activeMenu: '/opc/hr/job' },
-        hidden: true
-      },
-      {
-        path: 'hr/candidate',
-        component: () => import('@/views/opc/hr/candidate/index.vue'),
-        name: 'OpcHrCandidateList',
-        meta: { title: '候选人', icon: 'user' }
-      },
-      {
-        path: 'hr/candidate/:id(\\d+)',
-        component: () => import('@/views/opc/hr/candidate/detail.vue'),
-        name: 'OpcHrCandidateDetail',
-        meta: { title: '候选人详情', activeMenu: '/opc/hr/candidate' },
-        hidden: true
-      },
-      {
-        path: 'erp/product',
-        component: () => import('@/views/opc/erp/product/index.vue'),
-        name: 'OpcErpProductList',
-        meta: { title: '商品管理', icon: 'goods' }
-      },
-      {
-        path: 'erp/product/:id(\\d+)',
-        component: () => import('@/views/opc/erp/product/detail.vue'),
-        name: 'OpcErpProductDetail',
-        meta: { title: '商品详情', activeMenu: '/opc/erp/product' },
-        hidden: true
-      },
-      {
-        path: 'erp/purchase',
-        component: () => import('@/views/opc/erp/purchase/index.vue'),
-        name: 'OpcErpPurchaseList',
-        meta: { title: '采购单', icon: 'shopping-cart' }
-      },
-      {
-        path: 'erp/purchase/new',
-        component: () => import('@/views/opc/erp/purchase/new.vue'),
-        name: 'OpcErpPurchaseNew',
-        meta: { title: '新建采购单', activeMenu: '/opc/erp/purchase' },
-        hidden: true
-      },
-      {
-        path: 'erp/sale',
-        component: () => import('@/views/opc/erp/sale/index.vue'),
-        name: 'OpcErpSaleList',
-        meta: { title: '销售单', icon: 'sell' }
-      },
-      {
-        path: 'erp/sale/new',
-        component: () => import('@/views/opc/erp/sale/new.vue'),
-        name: 'OpcErpSaleNew',
-        meta: { title: '新建销售单', activeMenu: '/opc/erp/sale' },
-        hidden: true
-      },
-      {
-        path: 'erp/return',
-        component: () => import('@/views/opc/erp/return/index.vue'),
-        name: 'OpcErpReturnList',
-        meta: { title: '退货单', icon: 'refresh' }
-      },
-      {
-        path: 'erp/inventory',
-        component: () => import('@/views/opc/erp/inventory/index.vue'),
-        name: 'OpcErpInventory',
-        meta: { title: '库存查询', icon: 'box' }
-      },
-      {
-        path: 'content/dashboard',
-        component: () => import('@/views/opc/content/dashboard.vue'),
-        name: 'OpcContentDashboard',
-        meta: { title: '内容仪表盘', icon: 'data-board' }
-      },
-      {
-        path: 'content/script',
-        component: () => import('@/views/opc/content/script/index.vue'),
-        name: 'OpcContentScriptList',
-        meta: { title: '脚本管理', icon: 'document' }
-      },
-      {
-        path: 'content/script/:id(\\d+)',
-        component: () => import('@/views/opc/content/script/detail.vue'),
-        name: 'OpcContentScriptDetail',
-        meta: { title: '脚本详情', activeMenu: '/opc/content/script' },
-        hidden: true
-      },
-      {
-        path: 'content/script/:id(\\d+)/adapt',
-        component: () => import('@/views/opc/content/script/adapt.vue'),
-        name: 'OpcContentScriptAdapt',
-        meta: { title: '平台适配', activeMenu: '/opc/content/script' },
-        hidden: true
-      },
-      {
-        path: 'content/platform-account',
-        component: () => import('@/views/opc/content/platform-account/index.vue'),
-        name: 'OpcContentPlatformAccount',
-        meta: { title: '平台账号', icon: 'user' }
-      },
-      {
-        path: 'content/publish',
-        component: () => import('@/views/opc/content/publish/index.vue'),
-        name: 'OpcContentPublishList',
-        meta: { title: '发布记录', icon: 'upload' }
-      }
-    ]
-  },
-  // ================ 数据洞察（Task 14） ================
-  {
-    path: '/opc/insight',
-    component: Layout,
-    redirect: '/opc/insight/dashboard',
-    meta: { title: '数据洞察', icon: 'chart' },
-    children: [
-      {
-        path: 'dashboard',
-        component: () => import('@/views/opc/insight/dashboard.vue'),
-        name: 'InsightDashboard',
-        meta: { title: '驾驶舱', icon: 'dashboard' }
-      },
-      {
-        path: 'alerts',
-        component: () => import('@/views/opc/insight/alerts.vue'),
-        name: 'InsightAlerts',
-        meta: { title: '异常预警', icon: 'bell' }
-      },
-      {
-        path: 'daily',
-        component: () => import('@/views/opc/insight/daily.vue'),
-        name: 'InsightDaily',
-        meta: { title: '财务日报', icon: 'date' }
-      },
-      {
-        path: 'advice',
-        component: () => import('@/views/opc/insight/advice.vue'),
-        name: 'InsightAdvice',
-        meta: { title: '决策建议', icon: 'message' }
-      }
-    ]
-  }
+  // ================ OPC 路由 ================
+  // sys_menu 是 OPC 侧边栏的**唯一**事实源:V20261022 + V20261023 共注册了
+  // OPC业务 → 13 个模块目录 → 33 个页面。所以这里**不再有** `path: '/opc'`
+  // 这个 Layout parent。
+  //
+  // 为什么必须删:它会与 sys_menu menu_id=2000 撞成两条同路径记录 ——
+  // getRouterPath(SysMenuServiceImpl.java:459) 给顶级目录补前导 '/' 得到 '/opc',
+  // 而 permission.ts:51 把 constantRoutes 和后端路由树**都** addRoute。
+  // vue-router 按注册顺序匹配,先注册进来的 constantRoutes 会遮蔽后端那棵树,
+  // 症状是「菜单看得见、一点就 404」。同理 /opc/crm/customers 这类路径,
+  // 两边各有一条记录且 name 还不同(sys_menu 叫 OpcCrmCustomers,原来叫
+  // OpcCustomerList),匹配到哪条不确定。
+  //
+  // 下面只剩 sys_menu 不覆盖的 11 个详情页 / 新建页:它们靠页内 router.push
+  // 到达,不该出现在侧边栏,故各挂自己的绝对路径 + hidden:true。
+  //
+  // route_name 保留原值是有硬约束的:marketplace/index.vue:249 与
+  // marketplace/author-center.vue:595 用的是按名跳转
+  // `router.push({ name: 'OpcMarketplaceDetail', params: { id } })`。
+  opcHiddenRoute('/opc/marketplace/detail/:id(\\d+)', () => import('@/views/opc/marketplace/detail.vue'), 'OpcMarketplaceDetail', { title: '商品详情', activeMenu: '/opc/marketplace/index' }),
+  opcHiddenRoute('/opc/agent/detail/:id(\\d+)', () => import('@/views/opc/agent/detail.vue'), 'AgentDetail', { title: 'Agent 详情', activeMenu: '/opc/agent/market' }),
+  opcHiddenRoute('/opc/agent/instance/:id(\\d+)', () => import('@/views/opc/agent/instance.vue'), 'AgentInstance', { title: '实例详情', activeMenu: '/opc/agent/instances' }),
+  opcHiddenRoute('/opc/crm/customers/:id(\\d+)', () => import('@/views/opc/crm/CustomerDetail.vue'), 'OpcCustomerDetail', { title: '客户详情', activeMenu: '/opc/crm/customers' }),
+  opcHiddenRoute('/opc/hr/job/:id(\\d+)', () => import('@/views/opc/hr/job/detail.vue'), 'OpcHrJobDetail', { title: 'JD 详情', activeMenu: '/opc/hr/job' }),
+  opcHiddenRoute('/opc/hr/candidate/:id(\\d+)', () => import('@/views/opc/hr/candidate/detail.vue'), 'OpcHrCandidateDetail', { title: '候选人详情', activeMenu: '/opc/hr/candidate' }),
+  opcHiddenRoute('/opc/erp/product/:id(\\d+)', () => import('@/views/opc/erp/product/detail.vue'), 'OpcErpProductDetail', { title: '商品详情', activeMenu: '/opc/erp/product' }),
+  opcHiddenRoute('/opc/erp/purchase/new', () => import('@/views/opc/erp/purchase/new.vue'), 'OpcErpPurchaseNew', { title: '新建采购单', activeMenu: '/opc/erp/purchase' }),
+  opcHiddenRoute('/opc/erp/sale/new', () => import('@/views/opc/erp/sale/new.vue'), 'OpcErpSaleNew', { title: '新建销售单', activeMenu: '/opc/erp/sale' }),
+  opcHiddenRoute('/opc/content/script/:id(\\d+)', () => import('@/views/opc/content/script/detail.vue'), 'OpcContentScriptDetail', { title: '脚本详情', activeMenu: '/opc/content/script' }),
+  opcHiddenRoute('/opc/content/script/:id(\\d+)/adapt', () => import('@/views/opc/content/script/adapt.vue'), 'OpcContentScriptAdapt', { title: '平台适配', activeMenu: '/opc/content/script' })
 ]
 
 // 动态路由，基于用户权限动态去加载
