@@ -62,7 +62,7 @@ vi.mock('@/utils/auth', async () => {
   }
 })
 
-import service, { isRelogin, download } from '@/utils/request'
+import service, { isRelogin, download, ApiError } from '@/utils/request'
 import { ElMessage, ElMessageBox, ElLoading, ElNotification } from 'element-plus'
 
 // Type the spied element-plus exports for assertions.
@@ -325,9 +325,13 @@ describe('G. response interceptor: 401 login-expired', () => {
     ElMessageBoxSpy.confirm.mockResolvedValue(undefined)
     mock.onGet('/api/x').reply(200, { code: 401 })
 
-    await expect(service.get('/api/x')).rejects.toBe(
-      '无效的会话，或者会话已过期，请重新登录。',
-    )
+    // W12.2 — 拒绝值现在统一为 ApiError 实例,同时带 .message 与 .msg,
+    // 视图侧 `e?.msg` 才能拿到真实文案(此前是裸字符串,e?.msg === undefined)。
+    await expect(service.get('/api/x')).rejects.toMatchObject({
+      name: 'ApiError',
+      message: '无效的会话，或者会话已过期，请重新登录。',
+      msg: '无效的会话，或者会话已过期，请重新登录。',
+    })
     expect(ElMessageBoxSpy.confirm).toHaveBeenCalledTimes(1)
     // Wait microtask flush for logOut promise chain.
     await new Promise((r) => setTimeout(r, 0))
@@ -339,9 +343,10 @@ describe('G. response interceptor: 401 login-expired', () => {
     ElMessageBoxSpy.confirm.mockRejectedValue(new Error('cancel'))
     mock.onGet('/api/x').reply(200, { code: 401 })
 
-    await expect(service.get('/api/x')).rejects.toBe(
-      '无效的会话，或者会话已过期，请重新登录。',
-    )
+    await expect(service.get('/api/x')).rejects.toBeInstanceOf(ApiError)
+    await expect(service.get('/api/x')).rejects.toMatchObject({
+      msg: '无效的会话，或者会话已过期，请重新登录。',
+    })
     await new Promise((r) => setTimeout(r, 0))
     expect(mocks.logOut).not.toHaveBeenCalled()
     expect(isRelogin.show).toBe(false) // .catch branch resets the flag
@@ -351,9 +356,10 @@ describe('G. response interceptor: 401 login-expired', () => {
     isRelogin.show = true
     mock.onGet('/api/x').reply(200, { code: 401 })
 
-    await expect(service.get('/api/x')).rejects.toBe(
-      '无效的会话，或者会话已过期，请重新登录。',
-    )
+    await expect(service.get('/api/x')).rejects.toMatchObject({
+      name: 'ApiError',
+      msg: '无效的会话，或者会话已过期，请重新登录。',
+    })
     expect(ElMessageBoxSpy.confirm).not.toHaveBeenCalled()
   })
 
@@ -361,8 +367,12 @@ describe('G. response interceptor: 401 login-expired', () => {
     ElMessageBoxSpy.confirm.mockResolvedValue(undefined)
     mock.onGet('/api/x').reply(200, { code: 401 })
 
+    // W12.2: 不再是裸字符串;统一 ApiError 形状,让 catch(e) { e?.msg } 也能拿到。
     const promise = service.get('/api/x')
-    await expect(promise).rejects.toBe('无效的会话，或者会话已过期，请重新登录。')
+    await expect(promise).rejects.toBeInstanceOf(ApiError)
+    await expect(promise).rejects.toMatchObject({
+      msg: '无效的会话，或者会话已过期，请重新登录。',
+    })
   })
 })
 
@@ -403,22 +413,45 @@ describe('H. response interceptor: server / business errors', () => {
     )
   })
 
-  it('H4. code=403 shows ElNotification.error and rejects with "error"', async () => {
+  it('H4. code=403 shows ElNotification.error and rejects with ApiError(errorCode[403])', async () => {
+    // 当前(Commit 1 前置)行为:errorCode 表的 '403' 优先于后端 msg,标题='当前操作没有权限'。
+    // W12.2 后续 Commit 2 会把顺序翻成 `res.data.msg || errorCode[code] || default`,
+    // 此时本测试会变成「backend msg 优先」,H4 的标题断言会被迁移到 W14 series。
     mock.onGet('/api/x').reply(200, { code: 403, msg: 'No permission' })
 
-    await expect(service.get('/api/x')).rejects.toBe('error')
+    await expect(service.get('/api/x')).rejects.toBeInstanceOf(ApiError)
     expect(ElNotificationSpy.error).toHaveBeenCalledWith(
       expect.objectContaining({ title: '当前操作没有权限' }),
     )
   })
 
-  it('H5. code=404 shows ElNotification.error and rejects with "error"', async () => {
+  it('H5. code=404 shows ElNotification.error and rejects with ApiError(errorCode[404])', async () => {
     mock.onGet('/api/x').reply(200, { code: 404, msg: 'Not found' })
 
-    await expect(service.get('/api/x')).rejects.toBe('error')
+    await expect(service.get('/api/x')).rejects.toBeInstanceOf(ApiError)
     expect(ElNotificationSpy.error).toHaveBeenCalledWith(
       expect.objectContaining({ title: '访问资源不存在' }),
     )
+  })
+
+  // W12.2 — 这条是新 contract 的核心:拒绝值带 .message 与 .msg 同名同值。
+  // 视图侧 40+ 处 `e?.msg` 因此能拿到真实原因,而不是丢回『加载失败』之类的硬编码。
+  it('H6. rejected ApiError exposes both .message and .msg with the same string', async () => {
+    mock.onGet('/api/x').reply(200, { code: 500, msg: '数据库连接失败' })
+
+    const promise = service.get('/api/x')
+    await expect(promise).rejects.toBeInstanceOf(ApiError)
+    let captured: any
+    try {
+      await promise
+    } catch (e) {
+      captured = e
+    }
+    expect(captured).toBeInstanceOf(ApiError)
+    expect(captured.message).toBe('数据库连接失败')
+    expect(captured.msg).toBe('数据库连接失败')
+    expect(captured.message).toBe(captured.msg) // 同一字符串,两种访问都拿到
+    expect(captured.name).toBe('ApiError')
   })
 })
 
