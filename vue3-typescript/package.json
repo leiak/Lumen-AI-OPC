@@ -1,8 +1,8 @@
 {
   "name": "lumen-opc",
   "version": "1.0.0",
-  "description": "若依管理系统",
-  "author": "若依",
+  "description": "OPC 管理后台",
+  "author": "fang",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -18,7 +18,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://gitee.com/y_project/RuoYi-Cloud.git"
+    "url": "https://gitee.com/lumen-opc/opc-cloud"
   },
   "dependencies": {
     "@element-plus/icons-vue": "2.3.2",
