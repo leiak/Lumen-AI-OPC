@@ -413,24 +413,23 @@ describe('H. response interceptor: server / business errors', () => {
     )
   })
 
-  it('H4. code=403 shows ElNotification.error and rejects with ApiError(errorCode[403])', async () => {
-    // 当前(Commit 1 前置)行为:errorCode 表的 '403' 优先于后端 msg,标题='当前操作没有权限'。
-    // W12.2 后续 Commit 2 会把顺序翻成 `res.data.msg || errorCode[code] || default`,
-    // 此时本测试会变成「backend msg 优先」,H4 的标题断言会被迁移到 W14 series。
+  it('H4. code=403 with backend msg: ElNotification uses backend msg, not errorCode[403]', async () => {
+    // W12.2 优先级翻转后的行为:后端 msg 优先,errorCode 表只作为兜底。
+    // 此前 'No permission' 会被错误地丢弃,统一显示 '当前操作没有权限',误导用户。
     mock.onGet('/api/x').reply(200, { code: 403, msg: 'No permission' })
 
     await expect(service.get('/api/x')).rejects.toBeInstanceOf(ApiError)
     expect(ElNotificationSpy.error).toHaveBeenCalledWith(
-      expect.objectContaining({ title: '当前操作没有权限' }),
+      expect.objectContaining({ title: 'No permission' }),
     )
   })
 
-  it('H5. code=404 shows ElNotification.error and rejects with ApiError(errorCode[404])', async () => {
+  it('H5. code=404 with backend msg: ElNotification uses backend msg, not errorCode[404]', async () => {
     mock.onGet('/api/x').reply(200, { code: 404, msg: 'Not found' })
 
     await expect(service.get('/api/x')).rejects.toBeInstanceOf(ApiError)
     expect(ElNotificationSpy.error).toHaveBeenCalledWith(
-      expect.objectContaining({ title: '访问资源不存在' }),
+      expect.objectContaining({ title: 'Not found' }),
     )
   })
 
@@ -452,6 +451,37 @@ describe('H. response interceptor: server / business errors', () => {
     expect(captured.msg).toBe('数据库连接失败')
     expect(captured.message).toBe(captured.msg) // 同一字符串,两种访问都拿到
     expect(captured.name).toBe('ApiError')
+  })
+
+  // W12.2 — 优先级翻转的兜底分支。后端有时不返 msg 或返 null/空串,
+  // 此种情况下应该 fall through 到 errorCode[code],再不行就到 default。
+  it('H7. code=403 with NO backend msg: falls back to errorCode[403] = "当前操作没有权限"', async () => {
+    mock.onGet('/api/x').reply(200, { code: 403 }) // 故意不传 msg
+
+    await expect(service.get('/api/x')).rejects.toBeInstanceOf(ApiError)
+    expect(ElNotificationSpy.error).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '当前操作没有权限' }),
+    )
+  })
+
+  it('H8. code=403 with empty-string backend msg: still falls through to errorCode[403]', async () => {
+    mock.onGet('/api/x').reply(200, { code: 403, msg: '' })
+
+    await expect(service.get('/api/x')).rejects.toBeInstanceOf(ApiError)
+    expect(ElNotificationSpy.error).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '当前操作没有权限' }),
+    )
+  })
+
+  it('H9. code=500 (no errorCode entry) with null backend msg: falls all the way through to errorCode.default', async () => {
+    // errorCode 表只有 401/403/404/default,500 没有专属条目;当后端 msg 也是 null 时,
+    // 必须落回 '系统未知错误,请反馈给管理员',不能 undefined / 抛错。
+    mock.onGet('/api/x').reply(200, { code: 500, msg: null })
+
+    await expect(service.get('/api/x')).rejects.toBeInstanceOf(ApiError)
+    expect(ElMessageSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ message: '系统未知错误，请反馈给管理员' }),
+    )
   })
 })
 

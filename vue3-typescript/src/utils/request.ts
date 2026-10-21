@@ -87,8 +87,10 @@ service.interceptors.request.use((config: any) => {
 service.interceptors.response.use((res: any) => {
     // 未设置状态码则默认成功状态
     const code = res.data.code || 200
-    // 获取错误信息
-    const msg = errorCode[code] || res.data.msg || errorCode['default']
+    // W12.2 翻转:原顺序 `errorCode[code] || res.data.msg || default` 让 errorCode 表的
+    // 通用文案(如 '403'→'当前操作没有权限')压过后端给的真实原因(如 '无权访问该租户数据')。
+    // 后端 msg 优先,只在为 null/undefined/空字符串时回落;null/空串都是 falsy,自然穿透。
+    const msg = res.data.msg || errorCode[code] || errorCode['default']
     // 二进制数据则直接返回
     if (res.request.responseType ===  'blob' || res.request.responseType ===  'arraybuffer') {
       return res.data
