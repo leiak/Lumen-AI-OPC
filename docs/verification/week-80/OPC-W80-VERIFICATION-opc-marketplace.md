@@ -327,7 +327,7 @@ marketplace 在三环境渲染出的取值,与其余 business 层服务一致:
 | 4 | `GET /review/list/{id}` 返回分页结构 `{rows,total,page,pageSize}`,但 rows 是裸 `MpReview` 而非 `ReviewVO` | 无 `userName`,UI 只能回退显示 `User #<id>` | 需要引入 `ReviewVO` + 关联用户名的查询。P1 选择暴露真实结构,而不是先造一个只有 id 的假 VO |
 | 5 | `GET /category/tree` 在 P1 是平铺的 | 不按 `parent_id` 分组 | 分类层级树是 P2 范围。平铺是诚实的当前状态 |
 | 6 | `utils/request.ts` 用裸字符串 `'error'` reject;其 `errorCode` 表让通用的 `'403' → '当前操作没有权限'` 覆盖掉后端返回的真实原因 | **全局性**,影响每一个视图,不止 marketplace | 属全局请求层改动,影响面远超 P1 单模块,刻意划在 P1 范围之外 |
-| 7 | `springboot3/deploy/nacos/opc-routes.json` 已过期(6 条路由,缺 8 个服务) | 该文件不可作为路由事实来源 | 实际生效的路由来自网关的 `application.yml`(见 §3.2),该文件不参与运行时。**属既有问题,不是 P1 引入的回归** |
+| 7 | `springboot3/deploy/nacos/` 下有一份过期路由 JSON(6 条路由,缺 8 个服务),**已在本报告之后删除** | 若被当作路由事实来源,会用 6 条剥前缀的旧清单顶掉现行的 14 条,打掉 8 个服务的入口 | 实际生效的路由来自网关的 `application.yml`(见 §3.2),该文件从不参与运行时,故删除无运行时影响。**属既有问题,不是 P1 引入的回归** |
 
 **这 7 项都不是"忘了修",而是逐条做过取舍后留下的**(理由见末列)。其中 #3 (`GET /author/{id}/publications`) 同时也是前端未绑定的 5 个端点之一(§2.2)——后端的缺口和前端的缺口**是同一件事的两个侧面**:既然 UI 够不着这个桩,就没有必要给它补实现,否则会做出一个"有 API 没入口、或有入口没实现"的半吊子。#5 (`/category/tree` 平铺)则相反:它**是**被绑定的,只是 P1 尚未做层级分组,P2 补树结构即可,前端调用点无需改动。
 
@@ -373,7 +373,7 @@ python -m py_compile tmp_e2e/e2e_marketplace.py
 | 部署脚本 | `springboot3/deploy/deploy.sh`(`rebuild all` 含 `opc-marketplace`) |
 | 健康检查 | `springboot3/deploy/scripts/health-check.sh`(`check_marketplace()`,step 11) |
 | Helm chart | `springboot3/deploy/helm/opc/` |
-| 过期的路由 JSON | `springboot3/deploy/nacos/opc-routes.json` |
+| ~~过期的路由 JSON~~ | 已删除 —— 勿再作为路由来源(真源见上一行 Gateway 路由) |
 | 前端页面 | `vue3-typescript/src/views/opc/marketplace/{index,detail,author-center,author-apply}.vue` |
 | 前端 API | `vue3-typescript/src/api/opc/marketplace.ts` |
 | 前端路由 | `vue3-typescript/src/router/index.ts` |

@@ -31,7 +31,7 @@
 │      ├─ k8s/opc-ai-core.yaml          # 含 HPA(2-8) + 健康探针 + Secrets
 │      ├─ k8s/opc-agent-hub.yaml
 │      ├─ nacos/application-dev.yml
-│      ├─ nacos/opc-routes.json         # 网关路由
+│      │  └─ (网关路由不在本目录:见 ruoyi-gateway/src/main/resources/application.yml)
 │      ├─ runbooks/incident-response.md # F-01..F-07 故障手册
 │      └─ README.md                     # 部署指南
 │
