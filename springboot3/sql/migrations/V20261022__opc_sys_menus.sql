@@ -46,7 +46,15 @@
 -- Idempotent: INSERT IGNORE on both tables (PKs menu_id and (role_id, menu_id)).
 -- Safe to re-apply after `flyway repair`. Id range 2000-2032 sits above the
 -- highest existing menu_id (1060) and inside the reserved 2001-2099 block.
+--
+-- ⚠️ SET NAMES utf8mb4 is REQUIRED here: the client charset defaults to
+-- latin1 on many setups, which reads these UTF-8 Chinese literals as latin1
+-- and stores them double-encoded (menu_name bytes C3A4C2B8... instead of
+-- E4B89A...). Verified on 2026-10-21 — without this line the whole menu tree
+-- renders as mojibake in the sidebar. Matches V20261020, which sets it too.
 -- ============================================================
+
+SET NAMES utf8mb4;
 
 -- ------------------------------------------------------------
 -- 1) OPC 业务 top-level directory (8 module dirs)
