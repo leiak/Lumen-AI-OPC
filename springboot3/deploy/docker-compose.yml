@@ -21,7 +21,7 @@ services:
       - NACOS_PREFER_HOST_MODE=hostname
       - MYSQL_SERVICE_HOST=mysql
       - MYSQL_SERVICE_PORT=3306
-      - MYSQL_SERVICE_DB_NAME=ry-vue-opc
+      - MYSQL_SERVICE_DB_NAME=ry-config  # W48.6 实际把 nacos schema 放在了 ry-config 库 (02-ry-config-schema.sql)
       - MYSQL_SERVICE_USER=root
       - MYSQL_SERVICE_PASSWORD=Opc@2026!
       - MYSQL_SERVICE_DB_PARAM=characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useUnicode=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
@@ -63,6 +63,7 @@ services:
     image: rabbitmq:3.13-management
     container_name: aiopc-rabbitmq
     ports: ["5672:5672", "15672:15672"]
+    restart: unless-stopped
     networks: [aiopc-net]
 
   # ============ Qdrant 向量库 ============
@@ -72,6 +73,7 @@ services:
     ports: ["6333:6333", "6334:6334"]
     volumes:
       - ./qdrant/data:/qdrant/storage
+    restart: unless-stopped
     networks: [aiopc-net]
 
   # ============ MinIO 对象存储 ============
@@ -85,6 +87,7 @@ services:
     command: server /data --console-address ":9001"
     volumes:
       - ./minio/data:/data
+    restart: unless-stopped
     networks: [aiopc-net]
 
   # ============ Elasticsearch（日志检索）============
@@ -98,6 +101,7 @@ services:
       - ES_JAVA_OPTS=-Xms2g -Xmx2g
     volumes:
       - ./es/data:/usr/share/elasticsearch/data
+    restart: unless-stopped
     networks: [aiopc-net]
 
   # ============ Prometheus + Grafana ============
@@ -107,6 +111,7 @@ services:
     ports: ["9090:9090"]
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    restart: unless-stopped
     networks: [aiopc-net]
 
   grafana:
@@ -117,6 +122,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=Opc@2026!
     volumes:
       - ./grafana/dashboards:/var/lib/grafana/dashboards
+    restart: unless-stopped
     networks: [aiopc-net]
 
   # ============ SkyWalking 链路追踪 ============
@@ -124,6 +130,7 @@ services:
     image: apache/skywalking-oap-server:9.7.0
     container_name: aiopc-skywalking-oap
     ports: ["11800:11800", "12800:12800"]
+    restart: unless-stopped
     networks: [aiopc-net]
 
   skywalking-ui:
@@ -133,6 +140,7 @@ services:
     environment:
       - SW_OAP_ADDRESS=http://aiopc-skywalking-oap:12800
     depends_on: [skywalking-oap]
+    restart: unless-stopped
     networks: [aiopc-net]
 
   # ============ AIOPC Insight（AI 数据洞察 MVP）============

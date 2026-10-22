@@ -1,5 +1,16 @@
 # OPC Marketplace Nacos 配置（服务发现 + 配置中心）
 spring:
+  # 这两个属性必须在 bootstrap 阶段就可见：
+  # 下方 config.import 里的 ${spring.application.name} / ${spring.profiles.active}
+  # 在配置导入时解析，此时 application.yml 还没被读取，缺失会导致
+  # Nacos 收到字面量 "${spring.application.name}" 作为 dataId →
+  # IllegalArgumentException: illegal URI → 启动直接失败。
+  # 与其他 OPC 模块 (opc-content / opc-crm / ...) 的 bootstrap.yml 保持一致。
+  application:
+    name: opc-marketplace
+  profiles:
+    # 默认 dev；prod 通过 SPRING_PROFILES_ACTIVE=prod 切换
+    active: ${SPRING_PROFILES_ACTIVE:dev}
   cloud:
     nacos:
       # ====== 服务发现 ======
@@ -26,6 +37,7 @@ spring:
     import:
       - nacos:application-${spring.profiles.active}.${spring.config.file-extension}
       - nacos:${spring.application.name}-${spring.profiles.active}.${spring.config.file-extension}
+      - nacos:opc-common-${spring.profiles.active}.${spring.config.file-extension}
 
 # Jasypt（Nacos 配置里的 ENC(...) 解密，必须在 bootstrap 阶段可用）
 jasypt:
