@@ -27,8 +27,9 @@ public class AlertController {
     @PostMapping("/{id}/ack")
     public R<Void> ack(@PathVariable Long id) { anomalyService.acknowledge(id); return R.ok(); }
     private Long resolveCompanyId() {
-        Long id = SecurityUtils.getUserId();
-        if (id == null) throw new OpcException("请先登录");
+        // 原为 getUserId():把 user_id 当 company_id 用,详见 DashboardController 同名方法注释
+        Long id = SecurityUtils.getCompanyId();
+        if (id == null) throw new OpcException("当前账号未关联企业，请先加入或创建企业");
         return id;
     }
 }

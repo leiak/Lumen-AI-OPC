@@ -33,8 +33,12 @@ public class DashboardController {
     }
 
     private Long resolveCompanyId() {
-        Long userId = SecurityUtils.getUserId();
-        if (userId == null) throw new OpcException("请先登录");
-        return userId;
+        // 这里原本错用了 getUserId(),把 user_id 当 company_id 传给下游查询,
+        // 导致 opc_insight_* 的数据只有 company_id 恰好等于 user_id 时才查得到,
+        // 且 user_id=1 的 admin 能看到所有公司的洞察数据(跨租户)。
+        // 其余 OPC 模块(marketplace / agent-hub)一律用 getCompanyId(),这里对齐。
+        Long id = SecurityUtils.getCompanyId();
+        if (id == null) throw new OpcException("当前账号未关联企业，请先加入或创建企业");
+        return id;
     }
 }
