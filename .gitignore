@@ -46,6 +46,10 @@ hs_err_pid*.log
 .env
 .env.*
 !.env.example
+# 构建配置,不含密钥,必须入库:缺了 VITE_APP_BASE_API 会变 undefined,
+# 前端退回裸路径调接口,又和 SPA 页面路由撞名(刷新 /opc/**、/system/** 白屏)
+!vue3-typescript/.env.production
+!vue3-typescript/.env.development
 *.pem
 *.key
 credentials*
