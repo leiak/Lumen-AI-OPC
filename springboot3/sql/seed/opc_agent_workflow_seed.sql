@@ -13,6 +13,12 @@
 -- 幂等：workflow_code 上有 uk_workflow_code，重复执行只刷新定义，不清零 run_count。
 -- =============================================================================
 
+-- ⚠️ SET NAMES utf8mb4 是必需的:客户端字符集默认 latin1 时,
+--    下面这些 UTF-8 中文字面量会被双重编码入库
+--    (utf8 字节 E4B89A… 存成 C3A4C2B8…),页面显示为乱码。
+--    参照 V20261022__opc_sys_menus.sql 的处理。
+SET NAMES utf8mb4;
+
 INSERT INTO `opc_agent_workflow` (
     `workflow_code`, `name`, `company_id`, `definition_id`,
     `trigger_type`, `trigger_config`, `dag_json`, `enabled`,

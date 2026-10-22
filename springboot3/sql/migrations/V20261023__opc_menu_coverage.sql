@@ -42,6 +42,12 @@
 -- ------------------------------------------------------------
 -- 1) 5 个新模块目录 + OPC 首页
 -- ------------------------------------------------------------
+-- ⚠️ SET NAMES utf8mb4 是必需的:客户端字符集默认 latin1 时,
+--    下面这些 UTF-8 中文字面量会被双重编码入库
+--    (utf8 字节 E4B89A… 存成 C3A4C2B8…),页面显示为乱码。
+--    参照 V20261022__opc_sys_menus.sql 的处理。
+SET NAMES utf8mb4;
+
 INSERT IGNORE INTO sys_menu
   (menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name,
    is_frame, is_cache, menu_type, visible, status, perms, icon,

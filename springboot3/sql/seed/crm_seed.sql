@@ -1,6 +1,12 @@
 -- crm_seed.sql
 -- Seed for opc-crm dev environment
 
+-- ⚠️ SET NAMES utf8mb4 是必需的:客户端字符集默认 latin1 时,
+--    下面这些 UTF-8 中文字面量会被双重编码入库
+--    (utf8 字节 E4B89A… 存成 C3A4C2B8…),页面显示为乱码。
+--    参照 V20261022__opc_sys_menus.sql 的处理。
+SET NAMES utf8mb4;
+
 INSERT INTO opc_crm_customer (name, source, tags, owner_id, level, phone, email, remark) VALUES
 ('北京华联贸易有限公司', 'REFERRAL', 'VIP,大客户', 1, 'A', '010-66668888', 'contact@hualian.cn', '老客户推荐'),
 ('上海星辉科技', 'AD', '科技,SaaS', 1, 'B', '021-55556666', 'info@xinghui.com', '试用中'),

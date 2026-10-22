@@ -16,6 +16,12 @@
 -- 幂等：sys_job 无 invoke_target 唯一键，这里用 NOT EXISTS 保证可重复执行。
 -- =============================================================================
 
+-- ⚠️ SET NAMES utf8mb4 是必需的:客户端字符集默认 latin1 时,
+--    下面这些 UTF-8 中文字面量会被双重编码入库
+--    (utf8 字节 E4B89A… 存成 C3A4C2B8…),页面显示为乱码。
+--    参照 V20261022__opc_sys_menus.sql 的处理。
+SET NAMES utf8mb4;
+
 INSERT INTO `sys_job` (
     `job_name`, `job_group`, `invoke_target`, `cron_expression`,
     `misfire_policy`, `concurrent`, `status`, `create_by`, `create_time`, `remark`
