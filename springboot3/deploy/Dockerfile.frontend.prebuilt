@@ -1,0 +1,15 @@
+# aiopc-frontend (prebuilt dist 版本 — 跳过 docker 内 npm install)
+# 使用方式: 把 vue3-typescript/dist/ 复制到 build context,然后用这个 Dockerfile
+FROM nginx:1.27-alpine
+
+LABEL maintainer="aiopc"
+
+# 替换 nginx 默认配置
+COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+
+# 复制已构建好的 SPA
+COPY ./dist/ /usr/share/nginx/html/
+
+EXPOSE 8079
+
+CMD ["nginx", "-g", "daemon off;"]
