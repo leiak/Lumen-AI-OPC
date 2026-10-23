@@ -1,5 +1,6 @@
 package com.ruoyi.opc.marketplace.service.impl;
 
+import com.ruoyi.common.core.domain.R;
 import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.marketplace.domain.MpInstall;
 import com.ruoyi.opc.marketplace.domain.MpPublication;
@@ -147,13 +148,17 @@ public class InstallServiceImpl implements InstallService {
         body.put("nickname", p.getName()); // 可选:实例昵称默认跟商品名
 
         // AgentHubClientFallback 已把异常转译成 OpcException(503, "opc-agent-hub 调用失败,请稍后重试")
-        Map<String, Object> resp = agentHubClient.createAgentInstance(body);
+        R<Map<String, Object>> resp = agentHubClient.createAgentInstance(body);
         if (resp == null) {
             // fallback 返回 null 通常只发生在 revoke 路径;createAgentInstance 路径 fallback 抛 503,
             // 走到这里 = 真的没拿到响应体,作为 OOM exception(500)处理
             throw new OpcException(503, "opc-agent-hub 返回空响应", "MARKETPLACE");
         }
-        Object idObj = resp.get(RESP_KEY_ID);
+        // 实例 id 在 data 里 —— 对端返回的是 R.ok({id, instanceCode, ...})。
+        // 此前把整个响应体当 Map 反序列化、直接 resp.get("id"),恒为 null,
+        // 导致「远端已建实例、本地写 mp_install 前抛错」→ 孤儿实例。
+        Map<String, Object> data = resp.getData();
+        Object idObj = (data == null) ? null : data.get(RESP_KEY_ID);
         if (!(idObj instanceof Number)) {
             throw new OpcException(503, "opc-agent-hub 返回的实例 id 缺失或类型异常", "MARKETPLACE");
         }

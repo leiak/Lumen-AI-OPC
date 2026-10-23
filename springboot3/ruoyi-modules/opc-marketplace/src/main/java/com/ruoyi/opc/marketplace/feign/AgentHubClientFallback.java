@@ -1,5 +1,6 @@
 package com.ruoyi.opc.marketplace.feign;
 
+import com.ruoyi.common.core.domain.R;
 import com.ruoyi.opc.common.exception.OpcException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.openfeign.FallbackFactory;
@@ -33,7 +34,7 @@ public class AgentHubClientFallback implements FallbackFactory<AgentHubClient> {
                 cause.getClass().getSimpleName(), cause.getMessage(), cause);
         return new AgentHubClient() {
             @Override
-            public Map<String, Object> createAgentInstance(Map<String, Object> body) {
+            public R<Map<String, Object>> createAgentInstance(Map<String, Object> body) {
                 throw new OpcException(503, "opc-agent-hub 调用失败,请稍后重试", "MARKETPLACE");
             }
 

@@ -1,5 +1,6 @@
 package com.ruoyi.opc.marketplace.feign;
 
+import com.ruoyi.common.core.domain.R;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -47,12 +48,18 @@ public interface AgentHubClient {
      * }
      * </pre>
      *
-     * <p>成功响应（远端 {@code R.ok} body）：{@code { "id": 12345, "instanceCode": "I..." }}。
-     * 由调用方（{@code InstallServiceImpl}）从响应 map 里取 {@code id} 作为
-     * {@code mp_install.agent_instance_id}。
+     * <p>成功响应（远端 {@code R.ok} body）：
+     * <pre>{@code {"code":200,"msg":"操作成功","data":{"id":12345,"instanceCode":"I...", ...}}}</pre>
+     *
+     * <p>⚠️ 返回类型必须是 {@code R<Map<String,Object>>} 而不是 {@code Map<String,Object>}。
+     * 对端 {@code OpcMarketplaceInstanceController.create} 返回的是 {@code R.ok(resp)},
+     * 实例 id 嵌在 {@code data} 里;若把整个响应体反序列化成 {@code Map},
+     * {@code resp.get("id")} 恒为 null,安装会以「返回的实例 id 缺失或类型异常」失败,
+     * 且远端已建好的实例变成孤儿(revoke 清理路径同样读不到 id)。
+     * 与 {@code RemoteFinanceService} 等跨模块 Feign 的约定一致(W11 C1 评审修复)。
      */
     @PostMapping("/marketplace-instance/create")
-    Map<String, Object> createAgentInstance(@RequestBody Map<String, Object> body);
+    R<Map<String, Object>> createAgentInstance(@RequestBody Map<String, Object> body);
 
     /**
      * 退订（{@code REVOKED}）一个 Agent 实例 ——
