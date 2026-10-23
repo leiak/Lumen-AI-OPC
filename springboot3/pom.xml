@@ -329,6 +329,20 @@
                     <encoding>${project.build.sourceEncoding}</encoding>
                 </configuration>
             </plugin>
+            <!--
+              显式钉住 surefire 3.x:Maven 3.8 自带的默认版本是 2.12.4,它只认识
+              junit3/junit4 provider,遇到 JUnit 5(jupiter)测试会**静默跳过**——
+              `mvn test` 输出 "Tests run: 0"、BUILD SUCCESS,看起来一切正常。
+              SysMenuHierarchyTest 那批 /getRouters 护栏就是这么"从没跑过"的:
+              提交时是绿的,只是因为一条都没执行。
+              3.x 内置 surefire-junit-platform provider,自动按 classpath 上的
+              jupiter-engine 选 provider,不需要再手工指定。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+            </plugin>
         </plugins>
         <pluginManagement>
             <plugins>
