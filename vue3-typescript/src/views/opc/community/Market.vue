@@ -4,8 +4,8 @@
     <el-card class="hero">
       <div class="hero-content">
         <div class="hero-text">
-          <h1>🛒 OPC 模块市场</h1>
-          <p>发现、安装、评分 OPC 生态里的扩展模块。从 CRM 到财务,从 HR 到 AI Agent,一站式浏览所有能力。</p>
+          <h1>🛒 OPC 模块社区</h1>
+          <p>浏览、评论、评分 OPC 生态里的扩展模块。从 CRM 到财务,从 HR 到 AI Agent,一站式了解所有能力。</p>
         </div>
         <div class="hero-stats">
           <div class="stat">
@@ -23,6 +23,24 @@
         </div>
       </div>
     </el-card>
+
+    <!--
+      这里的「安装」只做 opc_community_module.install_count +1,不留任何安装记录
+      (ModuleController#install → moduleService.incrementInstall),
+      也没有卸载/升级/「我安装了什么」。
+      真正的安装能力在 opc-marketplace:AGENT 类会调 opc-agent-hub 建实例,
+      MODULE 类会写 mp_install 登记,支持卸载、升级与评价。
+      两边模块数据同源(mp_publication.module_id → opc_community_module.id)。
+      故本页面定位为「社区/评论/浏览」,实际安装请去智能体市场。
+    -->
+    <el-alert type="info" :closable="false" class="marketplace-hint">
+      <template #title>
+        本页是模块的浏览与社区评论区。
+        <b>实际安装</b>请前往
+        <router-link to="/opc/marketplace/index" class="hint-link">智能体市场 · 功能模块</router-link>，
+        那里支持安装、卸载、升级与「我安装了什么」。
+      </template>
+    </el-alert>
 
     <!-- Filters -->
     <el-card class="filters">
@@ -321,6 +339,16 @@ onMounted(load)
 .filters {
   :deep(.el-card__body) {
     padding: 16px;
+  }
+}
+
+// 「本页只浏览/评论,实际安装请去智能体市场」的引导条
+.marketplace-hint {
+  margin-bottom: 16px;
+
+  .hint-link {
+    font-weight: 600;
+    text-decoration: underline;
   }
 }
 
