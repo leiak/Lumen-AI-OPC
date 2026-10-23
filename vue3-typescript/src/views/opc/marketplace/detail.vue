@@ -43,6 +43,11 @@
             <el-button v-else type="success" plain :loading="installing" @click="onUninstall">
               <el-icon><CircleCheck /></el-icon>&nbsp;已安装
             </el-button>
+            <!-- AGENT 商品安装时会在 agent-hub 建实例(InstallServiceImpl#install 只对
+                 product_type='AGENT' 走远端,MODULE 是纯本地登记),而对话入口在
+                 「智能体中心 → 我的实例」,不在本页面。装完不给指引,用户就只知道
+                 「装成功了」然后卡在原地 —— 这个按钮是那条缺失的指路牌。 -->
+            <el-button v-if="isAgentInstalled" link type="primary" @click="goToInstance">查看实例</el-button>
           </div>
         </div>
       </el-card>
@@ -214,7 +219,8 @@ import {
   updateReview,
   deleteReview,
   type PublicationVO,
-  type ReviewVO
+  type ReviewVO,
+  type InstallVO
 } from '@/api/opc/marketplace'
 
 const route = useRoute()
@@ -228,6 +234,12 @@ const pub = ref<PublicationVO | null>(null)
  * 之前默认 false，意味着按钮在状态回来之前就画成「安装」——已安装的用户点一下必然 409。
  */
 const installed = ref<boolean | null>(null)
+/**
+ * 完整的安装记录而不只是一个 bool —— 因为「查看实例」按钮要的是
+ * `agentInstanceId`，它只在 install/status 与 install 的响应体里，
+ * installed 这个布尔量已经把它丢掉了。
+ */
+const installRecord = ref<InstallVO | null>(null)
 const activeTab = ref('intro')
 
 const reviewLoading = ref(false)
@@ -333,12 +345,29 @@ async function load() {
   }
 }
 
+/**
+ * 有没有可跳转的实例。
+ *
+ * 两个条件都必须满足：已安装（status=ACTIVE），且响应里带着 agentInstanceId。
+ * 后者只对 product_type='AGENT' 的商品存在 —— MODULE 走 InstallServiceImpl#install
+ * 的「纯本地登记」分支，不建实例，所以这个按钮对模块类商品永远不出现。
+ */
+const isAgentInstalled = computed(
+  () => installed.value === true && !!installRecord.value?.agentInstanceId
+)
+
+function goToInstance() {
+  const id = installRecord.value?.agentInstanceId
+  if (id) router.push(`/opc/agent/instance/${id}`)
+}
+
 async function loadInstallStatus() {
   if (!pubId.value) return
   try {
     // 未安装时后端 R.ok(null)，但本模块开了 default-property-inclusion: non_null，
     // 所以响应里**没有 data 这个键**，res.data 是 undefined —— 同样不能当成错误。
     const res = await installStatus(pubId.value)
+    installRecord.value = res.data ?? null
     // 注意：MpInstall.status 的取值是 ACTIVE / UNINSTALLED（InstallServiceImpl 写入的也是
     // "ACTIVE" / "UNINSTALLED"），没有 INSTALLED 这个值。比对错了会导致刷新后按钮永远退回「安装」。
     installed.value = !!res.data && res.data.status === 'ACTIVE'
@@ -353,10 +382,23 @@ async function onInstall() {
   if (!pubId.value) return
   installing.value = true
   try {
-    await installPublication(pubId.value)
+    const res = await installPublication(pubId.value)
+    installRecord.value = res.data ?? null
     installed.value = true
     if (pub.value) pub.value.installCount = (pub.value.installCount || 0) + 1
-    ElMessage.success('安装成功')
+    if (isAgentInstalled.value) {
+      // 实例已在后台建好，直接把人送到对话页。选「稍后」不视为失败 ——
+      // 「已安装」旁的「查看实例」按钮一直还在，指路牌不撤。
+      ElMessageBox.confirm('实例已创建，是否现在进入对话？', '安装成功', {
+        confirmButtonText: '去对话',
+        cancelButtonText: '稍后',
+        type: 'success'
+      })
+        .then(goToInstance)
+        .catch(() => { /* 用户选择稍后 */ })
+    } else {
+      ElMessage.success('安装成功')
+    }
   } catch {
     ElMessage.error('安装失败')
   } finally {
@@ -370,6 +412,7 @@ async function onUninstall() {
   try {
     await uninstallPublication(pubId.value)
     installed.value = false
+    installRecord.value = null
     if (pub.value) pub.value.installCount = Math.max(0, (pub.value.installCount || 0) - 1)
     ElMessage.success('已卸载')
   } catch {
