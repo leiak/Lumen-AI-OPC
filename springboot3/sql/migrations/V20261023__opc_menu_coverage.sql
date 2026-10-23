@@ -41,6 +41,30 @@
 
 -- ------------------------------------------------------------
 -- 1) 5 个新模块目录 + OPC 首页
+--
+-- ⚠️ 2033 曾经写成 component=null —— 违反了本文件头第 36-37 行的约定。
+--    menu_type='C' 是叶子页面不是目录,component 为空时的实际判别链是:
+--      SysMenuServiceImpl#getComponent(:487)
+--        component 为空 → isInnerLink 假(path='index' 非 http)
+--                       → isParentView 假(menu_type='C' 不是 'M')
+--                       → 落到默认值 UserConstants.LAYOUT,吐出 **"Layout"**
+--      前端 permission.ts#filterAsyncRouter(:66) 认得 "Layout",
+--        把它换成 Layout 外壳组件;该叶子又没 children,
+--        :79-80 把 children/redirect 一并 delete
+--      → /opc/index 渲染出侧边栏+顶栏,内层 <router-view/> 无子路由可渲染
+--        → **主内容区一片空白,控制台不报错、网关 200**。
+--    注意不是「路由被丢掉」:菜单项照常出现在侧边栏,只是点开是白的。
+--    只有目录(menu_type='M')component 为空才合法(走 ParentView)。
+--
+--    实测对照(本地 aiopc,POST /login 取 token 后 GET /system/menu/getRouters):
+--      修复前  OpcHome  path=index  component=Layout      ← 全树唯一的外壳
+--      修复后  OpcHome  path=index  component=opc/index
+--    同一份响应里另外 33 个叶子本来就都是真实路径,所以「只有首页白」这个
+--    症状本身就是 component 漏填的判据 —— 全平铺/全空白则要往层级那边查。
+--
+--    光把下面这行 INSERT 改对**救不了已经跑过本文件的环境**:
+--    INSERT IGNORE 撞 menu_id 主键冲突 → 静默跳过,2033 仍是 NULL。
+--    所以文件末尾还有一条幂等 UPDATE 专门兜这一半 —— 见第 4 节。
 -- ------------------------------------------------------------
 -- ⚠️ SET NAMES utf8mb4 是必需的:客户端字符集默认 latin1 时,
 --    下面这些 UTF-8 中文字面量会被双重编码入库
@@ -53,7 +77,7 @@ INSERT IGNORE INTO sys_menu
    is_frame, is_cache, menu_type, visible, status, perms, icon,
    create_by, create_time, update_by, update_time, remark)
 VALUES
-  (2033, 'OPC 首页',     2000,  0, 'index',     null, null, 'OpcHome',     1, 0, 'C', '0', '0', '',                      'guide',     'admin', sysdate(), '', null, 'OPC 门户首页'),
+  (2033, 'OPC 首页',     2000,  0, 'index',     'opc/index', null, 'OpcHome',     1, 0, 'C', '0', '0', '',                      'guide',     'admin', sysdate(), '', null, 'OPC 门户首页'),
   (2034, '智能体中心',   2000,  9, 'agent',     null, null, 'OpcAgent',    1, 0, 'M', '0', '0', '',                      'component', 'admin', sysdate(), '', null, 'Agent Hub 目录'),
   (2037, '财务管理',     2000, 10, 'finance',   null, null, 'OpcFinance',  1, 0, 'M', '0', '0', '',                      'money',     'admin', sysdate(), '', null, '财务目录'),
   (2041, '计费中心',     2000, 11, 'billing',   null, null, 'OpcBilling',  1, 0, 'M', '0', '0', '',                      'star',      'admin', sysdate(), '', null, '计费/钱包目录'),
@@ -98,3 +122,17 @@ INSERT IGNORE INTO sys_role_menu (role_id, menu_id) VALUES
   (1, 2041), (1, 2042),
   (1, 2043), (1, 2044),
   (1, 2045), (1, 2046), (1, 2047);
+
+-- ------------------------------------------------------------
+-- 4) 补 2033 的 component —— 给「已经跑过旧版本文件」的环境兜底
+--
+-- 上面第 1 节的 INSERT IGNORE 在 2033 已存在时会撞 menu_id 主键冲突被静默
+-- 跳过,所以只修 INSERT 对这些环境是**空操作**,空白页照旧。UPDATE 必须单列:
+--   · component IS NULL OR '' 作条件 → 已是 'opc/index' 的新环境命中 0 行,无副作用
+--     (空串一并兜住:后台「菜单管理」页存的是 '' 而不是 NULL)
+--   · 限定 menu_id=2033 → 不会碰到别的菜单
+-- ------------------------------------------------------------
+UPDATE sys_menu
+   SET component = 'opc/index'
+ WHERE menu_id = 2033
+   AND (component IS NULL OR component = '');

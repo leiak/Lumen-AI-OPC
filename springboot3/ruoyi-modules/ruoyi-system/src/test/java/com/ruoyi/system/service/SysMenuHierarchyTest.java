@@ -263,6 +263,51 @@ class SysMenuHierarchyTest
     }
 
     @Test
+    @DisplayName("叶子 component 为空回退的是 Layout(不是 ParentView)—— 渲染出空壳,主内容区全白")
+    void leafWithNullComponentFallsBackToLayoutShell()
+    {
+        // V20261023 里 2033「OPC 首页」漏填 component 的那一份。判别链值得逐段钉住,
+        // 因为**每一步的反直觉直觉都足以让人判断错**:
+        //
+        //   getComponent() 局部变量 component 的初值就是 UserConstants.LAYOUT(:489) ——
+        //   component 为空并不会返回 null,两个 fallback 不命中就**原样吐 "Layout"**。
+        //   叶子 menu_type='C' → isParentView 假(:525 只认 'M');path='index' 不是 http
+        //   → isInnerLink 假。所以没有任何一处会报「组件缺失」。
+        //
+        //   前端 permission.ts:66 认得 "Layout" 并替换成 Layout 外壳组件,
+        //   叶子没有 children → :79 delete children + redirect,内层 router-view 空转。
+        //   症状是**菜单项在、点开白屏、控制台干净** —— 不是 404,排查成本极高。
+        SysMenu opcHome = leaf(2033L, "OPC 首页", 2000L, "index", null, "OpcHome", "guide");
+
+        assertEquals("Layout", service.getComponent(opcHome),
+                "叶子的 component 空 → 默认兜底 Layout,绝不是 null,也不该是 ParentView");
+
+        // 而目录才是 ParentView —— 两个「component 为空」的行必须落在不同组件上,
+        // 这正是上次把 2033 误当成目录来写的由来
+        SysMenu dir = dir(2001L, "智能体市场", 2000L, "marketplace", "OpcMarketplace", "shopping");
+        assertEquals("ParentView", service.getComponent(dir));
+    }
+
+    @Test
+    @DisplayName("2033 补上 component 后一路透传到 RouterVo —— /opc/index 有组件可渲染")
+    void opcHomeRowCarriesItsComponentThroughToRouter()
+    {
+        // 与上一条互为对照:同一行,只把 component 填上,
+        // RouterVo 就不再是 Layout 外壳,前端 loadView('opc/index') 能解析到
+        // src/views/opc/index.vue,路由有组件可渲染。
+        List<SysMenu> rows = new ArrayList<>();
+        rows.add(dir(2000L, "OPC业务", 0L, "opc", "OpcBiz", "star"));
+        rows.add(leaf(2033L, "OPC 首页", 2000L, "index", "opc/index", "OpcHome", "guide"));
+
+        List<RouterVo> routers = routersFor(rows, 1L, true);
+        RouterVo home = routers.get(0).getChildren().get(0);
+
+        assertEquals("opc/index", home.getComponent(), "不能是 Layout 外壳:" + json(home));
+        assertEquals("OpcHome", home.getName());
+        assertEquals("/opc/index", fullPath(routers.get(0), home), "path='index' 挂在 /opc 下 → /opc/index");
+    }
+
+    @Test
     @DisplayName("route_name 为空回退 capitalize(path) —— path='index' 会撞内置 Index 路由")
     void emptyRouteNameFallsBackToCapitalizedPath()
     {
