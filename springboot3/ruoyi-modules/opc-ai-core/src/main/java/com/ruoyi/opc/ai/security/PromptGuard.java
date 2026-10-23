@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -109,7 +110,32 @@ public class PromptGuard {
             "parse_resume", "schedule_interview"
     );
 
+    /**
+     * <b>业务动作类</b>规则 —— 只在「模型能真的执行动作」的路径上才有意义。
+     *
+     * <p>{@code WITHDRAWAL_BYPASS} 挡的是「跳过审核 / 无需背调 / 面试顺序调前」
+     * 这类规避内控的话。这对 {@code AgentRuntime} 是对的：那条路能建凭证、排面试，
+     * 拦下来有实际意义。
+     *
+     * <p>但纯对话路径（{@code POST /opc/llm/chat}）里模型只能吐文本，没有工具、
+     * 不写库。「这笔不用走流程了」只是一句正常财务闲聊，硬拦就是纯粹的误伤 ——
+     * 而这个模块的误杀率是 0 容忍的（见 {@code PromptGuardHardeningTest} 的立意）。
+     *
+     * <p>其余 6 条规则（凭证泄露 / 提示词泄露 / 跨租户 / 危险工具 / 不可信内容 / 记忆投毒）
+     * 描述的都是「模型可能说出或吐出什么」，对话场景同样成立，故不在此列。
+     */
+    public static final Set<String> ACTION_ONLY_RULES = Set.of("WITHDRAWAL_BYPASS");
+
     public String sanitize(String input) {
+        return sanitize(input, Set.of());
+    }
+
+    /**
+     * @param skippedRules 需要跳过的红队规则类别，见 {@link #ACTION_ONLY_RULES}。
+     *                      注入类规则（{@link #INJECTION_PATTERNS}）<b>不受影响</b>，
+     *                      任何调用方都拦不掉它们。
+     */
+    public String sanitize(String input, Set<String> skippedRules) {
         if (input == null) return "";
         String result = input;
         for (Pattern p : INJECTION_PATTERNS) {
@@ -118,7 +144,7 @@ public class PromptGuard {
                 throw new OpcException(403, "检测到潜在的 Prompt 注入", "SECURITY");
             }
         }
-        String attackType = detectAttack(result);
+        String attackType = detectAttack(result, skippedRules);
         if (attackType != null) {
             log.warn("[PromptGuard] 检测到红队攻击模式：type={}", attackType);
             throw new OpcException(403, "请求被安全策略拒绝：" + attackType, "SECURITY");
@@ -131,8 +157,13 @@ public class PromptGuard {
      * 供离线评测 / 灰度观察模式使用。
      */
     public String detectAttack(String input) {
+        return detectAttack(input, Set.of());
+    }
+
+    public String detectAttack(String input, Set<String> skippedRules) {
         if (input == null || input.isEmpty()) return null;
         for (Map.Entry<String, Pattern> e : ATTACK_PATTERNS.entrySet()) {
+            if (skippedRules != null && skippedRules.contains(e.getKey())) continue;
             if (e.getValue().matcher(input).find()) {
                 return e.getKey();
             }
