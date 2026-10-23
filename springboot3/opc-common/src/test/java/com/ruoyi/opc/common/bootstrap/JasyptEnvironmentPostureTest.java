@@ -36,7 +36,13 @@ class JasyptEnvironmentPostureTest {
         env.setProperty("jasypt.encryptor.password", "OpcEncrypt!2026");
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> processor.postProcessEnvironment(env, null));
-        assertTrue(ex.getMessage().contains("内置默认密码"));
+        // "OpcEncrypt!2026" 非空，所以第 1 步（JASYPT_PASSWORD 必须注入）是通过的；
+        // 真正拦下它的是第 2 步的 cleartextPlaceholders 黑名单，报的是「明文敏感字段」。
+        // 「内置默认密码」那句只出现在第 1 步的报错里 —— 原断言认错了分支，
+        // 于是永远对不上。该测试此前从未执行过。
+        assertTrue(ex.getMessage().contains("明文敏感字段"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("jasypt.encryptor.password"),
+            "报错应指名是哪个属性触发的：" + ex.getMessage());
     }
 
     @Test

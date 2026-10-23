@@ -7,7 +7,6 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.time.LocalDate;
@@ -213,13 +212,14 @@ class OpcCodeGeneratorTest {
                 OpcCodeGenerator.class.getDeclaredConstructor();
         assertTrue(Modifier.isPrivate(ctor.getModifiers()),
                 "构造函数应为 private");
-        // 实际尝试实例化应抛 IllegalAccessException（或通过 setAccessible + InvocationTargetException）
-        ctor.setAccessible(true);
-        InvocationTargetException ex = assertThrows(InvocationTargetException.class,
-                () -> ctor.newInstance());
-        // 实际不应抛异常（构造函数为空体），所以我们改为直接验证 final + private
-        // 忽略 InvocationTargetException 结果
-        assertNotNull(ex);  // 仅占位断言 — 真正的断言在上面
+        // 关键在**不**调 setAccessible：不可实例化的保证正是「不强行改访问权限就 new 不出来」。
+        // 原测试先 setAccessible(true) 再断言 InvocationTargetException，可构造函数是空体，
+        // setAccessible 之后 newInstance() 必然成功 —— 断言与代码行为互相矛盾，
+        // 而且紧挨着的注释自己就写着「实际不应抛异常」。该测试此前从未执行过。
+        assertFalse(ctor.canAccess(null),
+                "私有构造函数对类外不可访问");
+        assertThrows(IllegalAccessException.class, () -> ctor.newInstance(),
+                "未 setAccessible 就实例化应抛 IllegalAccessException");
     }
 
     @Test

@@ -40,7 +40,14 @@ class JasyptCipherToolTest {
         StandardPBEStringEncryptor b = JasyptCipherTool.buildEncryptor("other-password");
         String ca = a.encrypt(PLAINTEXT);
         String cb = b.encrypt(PLAINTEXT);
-        // PBE 输出随机化：相同密码相同明文也可能不同，但密码不同一定不同
-        assertNotEquals(a.decrypt(ca), b.decrypt(cb));
+
+        // 要比的是**密文**，不是解密结果。两个密文用各自的密码解回来本来就该是
+        // 同一段明文 —— 原断言写成 assertNotEquals(a.decrypt(ca), b.decrypt(cb))，
+        // 等于断言「同一段明文解密后不相等」，逻辑是反的。该测试此前从未执行过
+        // （opc-common 的测试被编译不过的 OpcNacosStartupCheckerTest 整体挡住），
+        // 所以这个反向断言一直没暴露。
+        assertNotEquals(ca, cb, "不同密码产生的密文必须不同");
+        assertEquals(PLAINTEXT, a.decrypt(ca), "A 密码应能解回原文");
+        assertEquals(PLAINTEXT, b.decrypt(cb), "B 密码应能解回原文");
     }
 }

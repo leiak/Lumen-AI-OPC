@@ -92,20 +92,26 @@ class OpcExceptionTest {
     }
 
     @Test
-    @DisplayName("ServiceException.getCode() 返回 Integer；OpcException.getCode() 返回 int — 签名兼容")
+    @DisplayName("ServiceException.getCode() 与 OpcException.getCode() 都是 Integer — 不能收窄成 int")
     void getCodeReturnTypeCompatibility() throws NoSuchMethodException {
-        // 编译期检查：ServiceException.getCode() 返回 Integer.class
-        // Lombok 生成的 OpcException.getCode() 返回 int.class
-        // JVM 层：int 与 Integer 方法描述符不同，但子类可以重写父类方法返回更窄类型（协变返回）
+        // 原断言写的是「子类收窄成 int（Lombok @Getter on int field）」，那是错的，
+        // 而且照着写代码在 JDK 17 下**根本编译不过**：父类返回 Integer，子类返回 int
+        // 属于协变返回，但 int 与 Integer 在 Java 里是两个互不兼容的类型，
+        // javac 报 "getCode() in OpcException cannot override getCode() in ServiceException"。
+        //
+        // 生产代码因此手写了 `public Integer getCode()` 覆盖 Lombok 的 @Getter
+        // （OpcException.java:77，附有同款说明）。字段本身仍是 `private final int code`。
+        // 本测试原先从未执行过 —— opc-common 的测试被那个编译不过的
+        // OpcNacosStartupCheckerTest 整体挡住了，所以过时的断言一直没暴露。
         java.lang.reflect.Method parentMethod = ServiceException.class.getMethod("getCode");
         java.lang.reflect.Method childMethod = OpcException.class.getMethod("getCode");
 
         assertEquals(Integer.class, parentMethod.getReturnType(),
                 "ServiceException.getCode() 应返回 Integer（父类字段）");
-        assertEquals(int.class, childMethod.getReturnType(),
-                "OpcException.getCode() 应返回 int（Lombok @Getter on int field）");
+        assertEquals(Integer.class, childMethod.getReturnType(),
+                "OpcException.getCode() 也必须是 Integer，否则 JDK 17 下无法 override");
         assertTrue(java.lang.reflect.Modifier.isPublic(childMethod.getModifiers()),
-                "Lombok @Getter 应生成 public 方法");
+                "getCode() 应为 public");
     }
 
     @Test
