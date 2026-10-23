@@ -58,7 +58,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getInstance, listInstanceTasks, listInstanceUsage, runTask } from '@/api/opc/agent'
+import { getInstance, getAgentDetail, listInstanceTasks, listInstanceUsage } from '@/api/opc/agent'
 import { chat as llmChat } from '@/api/opc/llm'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
 
@@ -71,6 +71,8 @@ const loading = ref(false)
 const messages = ref<any[]>([])
 const input = ref('')
 const sending = ref(false)
+/** 该实例背后 agent 定义的 system_prompt。取不到就是空串，退回通用提示。 */
+const persona = ref('')
 
 const taskColumns: Column[] = [
   { key: 'taskCode', label: '编号', primary: true, width: 180 },
@@ -107,22 +109,47 @@ function statusType(s?: string) {
   return ({ RUNNING: 'success', PAUSED: 'warning', EXPIRED: 'info', REVOKED: 'danger' } as Record<string, string>)[String(s)] || ''
 }
 
+/**
+ * 按实例的 definitionId 去 agent 定义里取 system_prompt 当人设。
+ *
+ * 之前这里根本没人查定义 —— send() 里写死一句「你是 OPC 数字员工」，
+ * 于是雇来的「财务数字员工-小财」和别的实例一个口气。
+ * opc_agent_definition.system_prompt 这列在生产代码里从未被读过。
+ *
+ * 人设是增强项：取不到就退回通用提示，不该把整个实例页拖挂，
+ * 更不能让「定义查不到」被外层报成「实例加载失败」—— 所以自己兜 try/catch。
+ */
+async function loadPersona() {
+  persona.value = ''
+  const defId = inst.value?.definitionId
+  if (!defId) return
+  try {
+    const d = await getAgentDetail(defId)
+    persona.value = d.data?.systemPrompt || ''
+  } catch { }
+}
+
 async function load() {
   loading.value = true
   try {
     const r = await getInstance(Number(route.params.id))
     inst.value = r.data || {}
+    await loadPersona()
     const t = await listInstanceTasks(Number(route.params.id), 50)
     tasks.value = t.data || []
     const u = await listInstanceUsage(Number(route.params.id), 50)
     usage.value = u.data || []
+  } catch {
+    ElMessage.error('实例加载失败')
   } finally {
     loading.value = false
   }
 }
 
 async function send() {
-  if (!input.value.trim()) return
+  // sending 守卫不能省：发送按钮有 :loading 挡着，但 Ctrl+Enter 那条路没有。
+  // 双发会让下面 catch 里的 pop() 弹错那条气泡。
+  if (!input.value.trim() || sending.value) return
   const userInput = input.value
   messages.value.push({ role: 'user', content: userInput })
   input.value = ''
@@ -130,11 +157,17 @@ async function send() {
 
   try {
     const r = await llmChat([
-      { role: 'system', content: '你是 OPC 数字员工，请基于上下文回答。' },
+      { role: 'system', content: persona.value || '你是 OPC 数字员工，请基于上下文回答。' },
       ...messages.value
     ], { instanceId: Number(route.params.id) })
     const content = r.data?.content ?? '(无响应)'
     messages.value.push({ role: 'assistant', content })
+  } catch {
+    // 回滚那条乐观推入的气泡，并把原文还回输入框 —— 别让用户白打一遍字。
+    // 只靠全局 axios toast 的话，气泡会孤零零留在屏幕上、对面没回音。
+    messages.value.pop()
+    input.value = userInput
+    ElMessage.error('发送失败，请重试')
   } finally {
     sending.value = false
   }
