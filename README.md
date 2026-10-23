@@ -160,6 +160,98 @@ OPC 沿用的 RuoYi 内置模块：
 
 ---
 
+## 演示账号与测试数据
+
+用于在没有真实业务数据的情况下把 OPC 菜单下 13 个模块 / 33 个页面都跑一遍。
+**非管理员**账号 —— 专门建了一个只含 OPC 菜单的角色，不挂系统管理菜单，
+这样能顺带验证多租户隔离（换个 `companyId` 就查不到数据）。
+
+### 账号
+
+| 项 | 值 |
+|---|---|
+| 用户名 | `opctest` |
+| 密码 | `3pdUCuWxlK0ayc` |
+| user_id | `101` |
+| 角色 | `opc_test`「OPC 测试角色」（48 个 OPC 菜单，`admin = False`） |
+| 所属公司 | 「杭州明轩电子商务有限公司」，`company_id = 2` |
+
+> 密码是一次性演示口令，随机生成后存在服务器 `/tmp/opctest.pw`（600）。
+> 对外分享本仓库前请先重置 —— 或直接在「系统管理 → 用户管理」里改掉。
+
+### 公司是怎么建的
+
+**刻意走应用接口而非直接插库**，顺带验证了注册与建公司两条链路：
+
+1. 临时把 `sys_config.sys.account.registerUser` 置 `true`
+   —— ⚠️ 改完必须 `DEL` Redis 键 `sys_config:sys.account.registerUser`，
+   否则 `ConfigService` 的 `@Cacheable` 会让改动不生效（这个坑踩过一次）
+2. `POST /auth/register`
+3. `POST /auth/login` 取 token
+4. `POST /opc/user/company` 建公司
+   —— 必须显式传 `companyType`，`OpcUserProfileServiceImpl` 没给它兜底，
+   而 DDL 是 `NOT NULL`，传 null 直接 1048 报错
+5. 恢复 `sys.account.registerUser = false`
+
+### 补 opc_company_member（关键，漏了必踩）
+
+`POST /opc/user/company` **不会**写 `opc_company_member`
+（见 `OpcUserProfileServiceImpl.createCompany()`），而登录时
+`SysUserCompanyMapper.selectDefaultCompanyId` 只认这张表。
+缺了它，下次登录 `companyId` 解析为 `null`，marketplace / agent-hub
+全线 400「当前账号未关联企业」—— 用户明明刚建了公司。
+
+```sql
+INSERT INTO opc_company_member
+  (company_id, user_id, role, department, position, joined_at, status, create_by, create_time)
+VALUES (2, 101, 'OWNER', '管理层', '创始人', NOW(), 'ACTIVE', 'admin', NOW());
+```
+
+⚠️ 必须在该用户**下次登录前**补 —— `LoginUser.companyId` 是登录那一刻
+解析并写进 token 的，补晚了要重新登录才生效。
+
+### 测试数据
+
+场景设定：一人公司，主营家居用品与服饰的线上零售，自建抖音 + 小红书渠道，
+年 GMV 约 800 万，有少量合伙员工。
+
+种子脚本：`springboot3/sql/seed/opc_demo_ecommerce_seed.sql`
+
+| 模块 | 条数 | 模块 | 条数 |
+|---|---|---|---|
+| 进销存 | 供应商 3 / 商品 3 / SKU 6 / 采购 3 / 销售 3 / 退货 2 / 批次 3 / 库存流水 12 / 快照 18 | 人力资源 | 职位 6 / 候选人 5 / 投递 6 / 面试 4 / Offer 2 / 匹配 5 |
+| 财务管理 | 凭证 5 / 流水 6 / 税表 1 | 内容创作 | 脚本 3 / 平台账号 1 / 发布 1 / 适配 1 |
+| 计费中心 | 钱包 1 / 订单 5 / 交易 2 | 数据洞察 | 日报 7 / 异常 4 / 建议 5 |
+| 智能体中心 | 实例 3 / 任务 3 / token 用量 3 / 工作流运行 2 | 市场 / 通知 / 个人 | 作者 1 / 作品 2 / 站内信 3 / 画像 1 / 邀请码 2 |
+| CRM | 客户 3 / 联系人 6 / 跟进 6 / 商机 2 | | |
+
+部分数据是**故意**这么造的，别当成脏数据：
+
+- 蓝牙音箱 SKU 库存 12 < 阈值 50 —— 为了让「低库存预警」页面有数
+  （`selectLowStock` 的 `threshold > 0` 条件恒不生效，见 `OpcErpProductSkuMapper.xml:88`，
+  不显式给 `stock`/`threshold` 的话所有 SKU 都会被判低库存）
+- Offer 有一条 `status='ACCEPTED'` 且 `responded_at` 在 30 天内 ——
+  否则 HR 看板的 `avg_hire_days` 恒为 null，前端显示 "-"
+- 凭证覆盖 `DRAFT / REVIEW / POSTED / REJECTED` 四态，其中 `REVIEW`
+  是 review-pass 后的状态（不是 `APPROVED`，反直觉但属实）
+- 银行流水有 `extracted=1` 和 `extracted=0` 两种，让「已提取 / 待处理」两个 tab 都有内容
+
+### 灌数据与备份
+
+```bash
+# 备份（改数据前务必先做）
+mysqldump -uroot -p ry-vue-opc > /root/db-backups/before_seed_$(date +%Y%m%d_%H%M%S).sql
+
+# 灌种子
+mysql -uroot -p --default-character-set=utf8mb4 ry-vue-opc \
+  < springboot3/sql/seed/opc_demo_ecommerce_seed.sql
+
+# 重复灌会因主键冲突报错并中止（整段在事务里，不会写脏数据）。
+# 这是刻意的 —— 静默跳过比响亮报错更容易掩盖问题。
+```
+
+---
+
 ## 本地开发（本机限制说明）
 
 | 环境 | 状态 | 说明 |
@@ -185,6 +277,10 @@ OPC 沿用的 RuoYi 内置模块：
 | Job Handler | 必须放在 `com.ruoyi.job.task` 包下 | `ScheduleUtils.whiteList()` 强制 |
 | Cron 触发 | 走 Quartz `sys_job`，不引 XXL-Job | 新增 cron 任务见 `opc_agent_workflow` 表设计 |
 | 邀请码 | 31 字符 base32（去 I/L/O/0/1），8 位 | 见 `OpcCodeGenerator.inviteCode()` |
+| **SQL 脚本字符集** | 含中文 INSERT 的 `.sql` 必须以 `SET NAMES utf8mb4;` 开头 | 客户端默认 latin1 时中文会被双重编码入库（UTF-8 字节 E4B89A 存成 C3A4C2B8），页面全是乱码。已漏加的见 `sql/migrations`、`sql/seed` |
+| **跨模块 Feign** | 返回值必须声明 `R<T>`，不能声明 `Map`/`AjaxResult` | 对端返回 `R.ok(x)` 时，声明 `Map` 反序列化的是整个响应体，业务字段藏在 `data` 里，`resp.get("x")` 恒为 null。见 `RemoteFinanceService`、`AgentHubClient` |
+| **镜像构建** | Dockerfile 是「COPY 预编译 jar」模式，不在容器内编译 | 改完 Java 代码必须先 `mvn package` 再 `docker compose --build`，否则重建等于白重建 |
+| **Maven 打包** | 用 `-Dmaven.test.skip=true`，不是 `-DskipTests` | 后者只跳过执行不跳过编译；`opc-common` 有测试源码编译不过会挡住整条 `package` |
 | 响应式断点 | xs(<576) / sm(576-768) / md(768-992) / lg(>992) | 来自 `src/assets/styles/responsive.scss` |
 | 触摸目标 | ≥ 44×44 px（iOS HIG） | el-button `size="large"` 自动满足 |
 | Prompt 评测 | 任何 prompt 变更必须跑 `EvalRunnerTest` + `RedTeamRunnerTest` | CI 安全门禁 |
@@ -199,6 +295,15 @@ mvn -pl ruoyi-modules/opc-ai-core test
 
 # 后端编译某个模块
 mvn -pl ruoyi-modules/opc-user-center -am compile -DskipTests
+
+# 改完 Java 代码 → 打包 → 重建容器（三步不能少中间两步）
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk   # Spring Boot 3 需要 17
+mvn -pl ruoyi-modules/<模块> -am package -Dmaven.test.skip=true
+cd springboot3/deploy && docker compose up -d --build <容器名>
+
+# 灌演示数据 / 验证无乱码
+mysql -uroot -p --default-character-set=utf8mb4 ry-vue-opc \
+  < springboot3/sql/seed/opc_demo_ecommerce_seed.sql
 
 # 前端
 cd vue3-typescript
@@ -235,6 +340,11 @@ mvn -pl ruoyi-modules/opc-ai-core test -Dtest=RedTeamRunnerTest,PromptGuardHarde
 - `springboot3/Jenkinsfile` — CI 流水线
 - `vue3-typescript/package.json` — 前端依赖与脚本
 
+### 演示数据
+- `springboot3/sql/seed/opc_demo_ecommerce_seed.sql` — OPC 全模块演示数据（13 模块 / 33 页面）
+- `springboot3/sql/seed/crm_seed.sql` — CRM 演示数据
+- `springboot3/sql/seed/opc_company_demo_seed.sql` — 示例一人公司
+
 ---
 
 ## 团队与角色
@@ -251,12 +361,53 @@ mvn -pl ruoyi-modules/opc-ai-core test -Dtest=RedTeamRunnerTest,PromptGuardHarde
 
 ---
 
+## 近期开发（2026-10-21 ~ 10-23）
+
+### OPC 菜单注册补齐
+
+之前 OPC 的页面在前端 `constantRoutes` 里硬编码，菜单表 `sys_menu` 里没有对应
+行 —— 表现是「能访问 URL，但没有菜单入口」，且刷新即丢。
+
+- `248cfbc` `sys_menu` 补齐 OPC 全部页面（6 目录 + 9 页）
+- `08305b8` 注册 OPC 8 个业务模块到 `sys_menu`（P1 follow-up，Task #11 漏掉的菜单配置）
+- `362c308` `constantRoutes` 里的 OPC 硬编码路由收敛为 11 条隐藏详情页
+- `174e771` 加 `/getRouters` 层级护栏 7 个测试 —— 用来定位「菜单全平铺」的判别链
+- `c17ad93` 修正菜单迁移的路由注释（二级目录是 `ParentView` 不是 `Layout`）
+
+完成后：`sys_role_menu` 里 48 个 OPC 菜单挂在 `role_id=1`（超级管理员）下。
+
+### 部署与运行时修复
+
+| 提交 | 问题 | 影响 |
+|---|---|---|
+| `3509652` | Dockerfile 里 `VOLUME /home/aiopc` 会创建匿名 volume，把 image COPY 进来的 jar shadow 掉 | 容器跑的是上次构建的旧 jar，改了 yml 应用行为不变 |
+| `dbde25b` | Nacos schema 实际在 `ry-config` 库；`opc-marketplace` 的 `bootstrap.yml` 缺 `application.name`/`profiles.active` | Nacos 起不来；dataId 收到字面量 `${...}` |
+| `f1a01cf` / `568e3f2` / `56e1e56` | 前端 API 走裸路径，与 SPA 页面路由撞名 | `/login`、`/opc/**`、`/system/**` 刷新即白屏 |
+| `1124103` | `opc-insight` 4 个 controller 把 `user_id` 当 `company_id` 用 | 数据洞察 4 个页面必然空屏，且 admin 能看到所有公司数据 |
+| `e701ca7` | 跨模块 Feign 返回类型声明成 `Map` 而非 `R<T>` | 市场安装必然失败，且每次失败留一条孤儿 Agent 实例 |
+
+### 编码问题
+
+- `a184c4c` / `6f04093` — 9 个含中文 INSERT 的脚本漏 `SET NAMES utf8mb4`，
+  数据双重编码入库。全库扫描定位 30 表 42 列 / 309 处，已修复并复扫归零
+
+---
+
 ## 状态
 
 - **MVP**：已上线（参考 `OPC-MVP-DELIVERY.md`）
 - **W1**：8 Task / 25 Sub-task 全部完成（2026-09-06）
+- **W80 市场**：演示数据已就绪，`opctest` 账号可跑通 13 模块 / 33 页面
+- **已知问题**：
+  - ERP / HR / Finance 的 `companyId` 由客户端 query 传入且**零校验**，改 URL 即可跨租户读写（20+ 处，IDOR）
+  - `GET`/`PUT /opc/user/company/{id}` 无归属校验，`update` 可写 `verified`/`status`，可自刷实名认证
+  - JWT 签名密钥硬编码在 `TokenConstants.SECRET`，可伪造任意 `user_id` 的 token
+  - `opc_erp_return` 明细不落库（`OpcErpReturnServiceImpl:134`），退货单详情页无明细
+  - `opc_finance_voucher.aggregateDaily` 引用不存在的列 `direction_via_total_credit`（当前无调用点）
+  - ERP 快照 job 硬编码 `companyId=1` 且只生成「昨天」，多租户下只有 company 1 有日报
+  - 内容看板的 `seven_day_trend` 是代码硬编码 `List.of(0,0,0,0,0,0,0)`，补数据也救不了
 - **下一阶段**：W2 待规划
 
 ---
 
-> 最后更新：2026-09-06 · 维护者：OPC Team
+> 最后更新：2026-10-23 · 维护者：OPC Team
