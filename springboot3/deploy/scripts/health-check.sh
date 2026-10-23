@@ -1047,14 +1047,52 @@ except Exception:
   done
 
   # 11.8 需登录端点必须被拦截 (阻塞, 租户隔离的第一道闸)
-  # install 是 POST 且不在白名单 —— 匿名调用应拿不到 200。
-  local auth_code
-  auth_code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 \
-    -X POST "${base_url}/opc/marketplace/install/1" 2>/dev/null)
-  if [[ "${auth_code}" == "401" ]] || [[ "${auth_code}" == "403" ]]; then
-    ok "鉴权拦截正确 (POST /install/1 → HTTP ${auth_code})"
+  #
+  # ⚠️ 这里打的是**服务直连** (127.0.0.1:9317), 网关的 AuthFilter 不在这条链路上,
+  #    所以「install 不在网关白名单」这条理由在这里根本不适用。
+  #    服务层的闸是 InstallController.requireCompanyId() → 无登录上下文抛
+  #    ServiceException, 由 GlobalExceptionHandler 转成业务错误。
+  #
+  # ⚠️ RuoYi 的业务错误是 **HTTP 200 + body 里带 code**, 不是 HTTP 4xx:
+  #    实测 2026-10-23 匿名调用返回 HTTP 200 + {"code":500,"msg":"获取公司ID失败…"}。
+  #    原断言只看 HTTP 状态码, 于是把「正确拒绝」误报成「租户隔离失效」(实测 FAIL 1)。
+  #
+  # 改用 GET /install/{id}/status 探同一条闸门: 同一个 controller、同一个
+  # requireCompanyId(), 但 GET 永远没有安装副作用 —— 就算哪天这道闸失守,
+  # 这条检查也不会真的往库里装出一个东西。
+  local auth_body auth_code
+  auth_body=$(curl -s -m 10 "${base_url}/opc/marketplace/install/1/status" 2>/dev/null) || auth_body=""
+  auth_code=$(echo "${auth_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${auth_code}" != "200" ]] && [[ "${auth_code}" != "-1" ]]; then
+    ok "鉴权拦截正确 (GET /install/1/status → body.code=${auth_code})"
   else
-    nok "POST /install/1 未被拦截 (HTTP ${auth_code}) — 租户隔离失效"
+    nok "未登录调用未被拦截 (body.code=${auth_code}): ${auth_body:0:120} — 租户隔离可能失效"
+  fi
+
+  # 11.8b 同一道闸, 走网关那条公共路径 (GET, 无副作用)
+  #      /opc/marketplace/install/** 不在网关白名单 (nacos/whitelist-opc-invite.yml:108),
+  #      匿名应被 AuthFilter 拦下。网关同样返回 HTTP 200 + body.code=401,
+  #      所以也只能看 body.code。
+  local gw_body gw_code
+  gw_body=$(curl -s -m 10 \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/marketplace/install/1/status" 2>/dev/null) || gw_body=""
+  gw_code=$(echo "${gw_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${gw_code}" == "401" ]] || [[ "${gw_code}" == "403" ]]; then
+    ok "网关拦截正确 (GET /install/1/status → body.code=${gw_code})"
+  else
+    nok "网关未拦截未登录调用 (body.code=${gw_code}): ${gw_body:0:120} — 租户隔离可能失效"
   fi
 
   # 11.9 公开详情不得泄漏非 PUBLISHED 行 (SQL 层 selectPublishedById 硬过滤)
