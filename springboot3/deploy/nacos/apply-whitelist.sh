@@ -12,7 +12,9 @@
 #   NACOS_USER     默认 nacos
 #   NACOS_PASS     默认 nacos
 #   NACOS_GROUP    默认 DEFAULT_GROUP
+#   NACOS_NAMESPACE 默认 opc-dev  ← ⚠️ 必须与网关读的命名空间一致
 #   DRY_RUN        默认 0;设 1 只打印,不推送
+#   PYTHON_BIN     默认自动挑一个装了 PyYAML 的 python
 #
 # 前置:
 #   该脚本会先 GET 现有 application-{env}.yml,与本目录的
@@ -67,6 +69,13 @@ NACOS_PASS="${NACOS_PASS:-nacos}"
 NACOS_GROUP="${NACOS_GROUP:-DEFAULT_GROUP}"
 DRY_RUN="${DRY_RUN:-0}"
 PYTHON_BIN="${PYTHON_BIN:-}"
+# ⚠️ 命名空间必须带上!
+#   网关从 opc-dev 命名空间读配置 (docker-compose.yml:
+#   SPRING_CLOUD_NACOS_CONFIG_NAMESPACE: opc-dev)。
+#   Nacos v1 API 不传 namespaceId 就落到 public 命名空间 —— 于是脚本"推成功了",
+#   网关却根本读不到, 白名单改了等于没改。
+#   (2026-10-24 发现: 这个脚本一直没传过 namespaceId。)
+NACOS_NAMESPACE="${NACOS_NAMESPACE:-opc-dev}"
 
 DATA_ID="application-${ENV}.yml"
 SNIPPET_FILE="$(dirname "$0")/whitelist-opc-invite.yml"
@@ -112,6 +121,7 @@ echo "=========================================="
 echo "[apply-whitelist] env      = $ENV"
 echo "[apply-whitelist] dataId   = $DATA_ID"
 echo "[apply-whitelist] nacos    = $NACOS_ADDR"
+echo "[apply-whitelist] namespace= $NACOS_NAMESPACE"
 echo "[apply-whitelist] snippet  = $SNIPPET_FILE"
 echo "[apply-whitelist] python   = $PY"
 echo "[apply-whitelist] dry_run  = $DRY_RUN"
@@ -273,6 +283,7 @@ HTTP_CODE=$(curl -sS -o "$REMOTE_TMP" -w "%{http_code}" \
   --get "http://${NACOS_ADDR}/nacos/v1/cs/configs" \
   --data-urlencode "dataId=${DATA_ID}" \
   --data-urlencode "group=${NACOS_GROUP}" \
+  --data-urlencode "namespaceId=${NACOS_NAMESPACE}" \
   --data-urlencode "username=${NACOS_USER}" \
   --data-urlencode "password=${NACOS_PASS}" || echo "000")
 
@@ -302,6 +313,7 @@ PUB_CODE=$(curl -sS -o /tmp/nacos-pub-$$.log -w "%{http_code}" \
   -X POST "http://${NACOS_ADDR}/nacos/v1/cs/configs" \
   --data-urlencode "dataId=${DATA_ID}" \
   --data-urlencode "group=${NACOS_GROUP}" \
+  --data-urlencode "namespaceId=${NACOS_NAMESPACE}" \
   --data-urlencode "username=${NACOS_USER}" \
   --data-urlencode "password=${NACOS_PASS}" \
   --data-urlencode "content@${MERGED_TMP}")
