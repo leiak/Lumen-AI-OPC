@@ -1,7 +1,6 @@
 package com.ruoyi.gateway.filter;
 
 import com.ruoyi.common.core.constant.CacheConstants;
-import com.ruoyi.common.core.constant.HttpStatus;
 import com.ruoyi.common.core.constant.SecurityConstants;
 import com.ruoyi.common.core.constant.TokenConstants;
 import com.ruoyi.common.core.utils.JwtUtils;
@@ -22,7 +21,9 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
+import org.springframework.mock.http.server.reactive.MockServerHttpResponse;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ServerWebExchange;
@@ -128,9 +129,8 @@ class AuthFilterTest {
 
         StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode(),
-                "URL 不在白名单 → 走 token 校验 → 因缺 token 返 401");
-        assertTrue(responseBody(exchange).contains("令牌不能为空"));
+        // URL 不在白名单 → 走 token 校验 → 因缺 token 被拒
+        assertUnauthorized(exchange, "令牌不能为空");
         verify(chain, never()).filter(any(ServerWebExchange.class));
     }
 
@@ -144,8 +144,7 @@ class AuthFilterTest {
 
         StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
-        assertTrue(responseBody(exchange).contains("令牌不能为空"));
+        assertUnauthorized(exchange, "令牌不能为空");
         verify(chain, never()).filter(any(ServerWebExchange.class));
         verifyNoInteractions(redisService);
     }
@@ -163,8 +162,7 @@ class AuthFilterTest {
 
             StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-            assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
-            assertTrue(responseBody(exchange).contains("令牌已过期或验证不正确"));
+            assertUnauthorized(exchange, "令牌已过期或验证不正确");
             jwtMock.verify(() -> JwtUtils.parseToken("malformed"));
             verifyNoInteractions(redisService);
         }
@@ -186,8 +184,7 @@ class AuthFilterTest {
 
             StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-            assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
-            assertTrue(responseBody(exchange).contains("登录状态已过期"));
+            assertUnauthorized(exchange, "登录状态已过期");
             verify(redisService).hasKey(CacheConstants.LOGIN_TOKEN_KEY + USER_KEY);
             verify(chain, never()).filter(any(ServerWebExchange.class));
         }
@@ -210,8 +207,7 @@ class AuthFilterTest {
 
             StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-            assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
-            assertTrue(responseBody(exchange).contains("令牌验证失败"));
+            assertUnauthorized(exchange, "令牌验证失败");
             verify(chain, never()).filter(any(ServerWebExchange.class));
         }
     }
@@ -234,8 +230,7 @@ class AuthFilterTest {
 
             StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-            assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
-            assertTrue(responseBody(exchange).contains("令牌验证失败"));
+            assertUnauthorized(exchange, "令牌验证失败");
             verify(chain, never()).filter(any(ServerWebExchange.class));
         }
     }
@@ -337,8 +332,110 @@ class AuthFilterTest {
 
         StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
-        assertTrue(responseBody(exchange).contains("令牌不能为空"));
+        assertUnauthorized(exchange, "令牌不能为空");
+    }
+
+    // ==================== 9. method 限定的白名单条目 ====================
+
+    /**
+     * 白名单条目加 {@code GET:} 前缀 = 只放行 GET。
+     *
+     * <p>这是 2026-10-23 修的那个洞的回归测试：白名单里的 {@code /**} 通配是为
+     * 「公开浏览」准备的，却把同前缀下的写端点一并放行 —— 匿名
+     * {@code DELETE /opc/erp/product/{id}} 能真的删掉商品（实测穿过网关直达
+     * service，只因 id 不存在才被业务层拦下）。
+     */
+    @Test
+    @DisplayName("白名单 GET:/opc/erp/product/** → GET 放行（不查 token）")
+    void methodScopedEntry_allowsGet() {
+        ignoreWhite.setWhites(List.of("GET:/opc/erp/product/**"));
+        ServerWebExchange exchange = exchange(HttpMethod.GET, "/opc/erp/product/list", null, null);
+        GatewayFilterChain chain = chainMock();
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        verify(chain, times(1)).filter(any(ServerWebExchange.class));
+        verifyNoInteractions(redisService);
+    }
+
+    @Test
+    @DisplayName("白名单 GET:/opc/erp/product/** → DELETE **不放行** → 401（匿名删不了）")
+    void methodScopedEntry_blocksDelete() {
+        ignoreWhite.setWhites(List.of("GET:/opc/erp/product/**"));
+        ServerWebExchange exchange = exchange(HttpMethod.DELETE, "/opc/erp/product/900103", null, null);
+        GatewayFilterChain chain = chainMock();
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        // DELETE 不得被 GET 限定的白名单放行 —— 否则匿名可删任意公司商品
+        assertUnauthorized(exchange, "令牌不能为空");
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    @Test
+    @DisplayName("白名单 GET:/opc/content/script/** → PUT 也不放行 → 401（匿名改不了）")
+    void methodScopedEntry_blocksPut() {
+        ignoreWhite.setWhites(List.of("GET:/opc/content/script/**"));
+        ServerWebExchange exchange = exchange(HttpMethod.PUT, "/opc/content/script/3", null, null);
+        GatewayFilterChain chain = chainMock();
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        assertUnauthorized(exchange, "令牌不能为空");
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    @Test
+    @DisplayName("裸路径条目（无 method 前缀）仍然放行任意 method —— 向后兼容，老配置不变行为")
+    void bareEntry_stillAllowsAnyMethod() {
+        ignoreWhite.setWhites(List.of("/opc/erp/product/**"));
+        ServerWebExchange exchange = exchange(HttpMethod.DELETE, "/opc/erp/product/900103", null, null);
+        GatewayFilterChain chain = chainMock();
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        verify(chain, times(1)).filter(any(ServerWebExchange.class));
+        verifyNoInteractions(redisService);
+    }
+
+    @Test
+    @DisplayName("路径里的冒号不是 method 前缀 —— 邀请码正则条目仍按路径匹配")
+    void colonInsidePath_isNotTreatedAsMethodPrefix() {
+        // 冒号左边是 "/opc/user/invitations/{code" —— 不是 HTTP method，
+        // 所以整条按普通路径处理，不能被截成 "method=xxx"。
+        ignoreWhite.setWhites(List.of("/opc/user/invitations/{code:[A-HJ-KM-NP-Z2-9]{8}}"));
+        ServerWebExchange exchange = exchange(HttpMethod.GET, "/opc/user/invitations/ABC234XY", null, null);
+        GatewayFilterChain chain = chainMock();
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        verify(chain, times(1)).filter(any(ServerWebExchange.class));
+        verifyNoInteractions(redisService);
+    }
+
+    @Test
+    @DisplayName("多条目并存 → 逐条判定，method 不符的那条不生效，其余照常")
+    void multipleEntries_eachEvaluatedIndependently() {
+        ignoreWhite.setWhites(List.of(
+                "GET:/opc/marketplace/publication/**",
+                "POST:/opc/user/invitations/accept"));
+        GatewayFilterChain chain = chainMock();
+
+        // GET 命中第 1 条 → 放行
+        StepVerifier.create(filter.filter(
+                exchange(HttpMethod.GET, "/opc/marketplace/publication/1", null, null), chain)).verifyComplete();
+        verify(chain, times(1)).filter(any(ServerWebExchange.class));
+
+        // POST 命中第 2 条 → 放行
+        StepVerifier.create(filter.filter(
+                exchange(HttpMethod.POST, "/opc/user/invitations/accept", null, null), chain)).verifyComplete();
+        verify(chain, times(2)).filter(any(ServerWebExchange.class));
+
+        // DELETE 两条都不匹配 → 401
+        ServerWebExchange blocked = exchange(HttpMethod.DELETE, "/opc/marketplace/publication/1", null, null);
+        StepVerifier.create(filter.filter(blocked, chain)).verifyComplete();
+        assertUnauthorized(blocked, "令牌不能为空");
+        verify(chain, times(2)).filter(any(ServerWebExchange.class));
     }
 
     // ==================== 测试辅助 ====================
@@ -361,11 +458,40 @@ class AuthFilterTest {
     }
 
     /**
+     * 断言这是一次「未授权」响应。
+     *
+     * <p>⚠️ RuoYi 的网关鉴权失败**不是 HTTP 401**：
+     * {@code ServletUtils.webFluxResponseWriter(response, msg, HttpStatus.UNAUTHORIZED)}
+     * 实际走的是 {@code webFluxResponseWriter(response, HttpStatus.OK, msg, code)} ——
+     * HTTP 状态码是 <b>200</b>，真正的 401 在响应体的 {@code code} 字段里。
+     * 实测：匿名请求拿到的是 HTTP 200 + {@code {"code":401,"msg":"令牌不能为空"}}。
+     *
+     * <p>原断言只看 HTTP 状态码，于是把「正确拒绝」判成了「没拦住」——
+     * 和 {@code health-check.sh} 里 11.8 那条犯的是同一个错。
+     *
+     * @param exchange    被网关拒绝的请求
+     * @param expectedMsg 期望的提示语（null 则不校验提示语）
+     */
+    private void assertUnauthorized(ServerWebExchange exchange, String expectedMsg) {
+        assertEquals(HttpStatus.OK, exchange.getResponse().getStatusCode(),
+                "RuoYi 约定：业务错误走 HTTP 200 + body.code，不是 HTTP 4xx");
+        String body = responseBody(exchange);
+        assertTrue(body.contains("\"code\":401"),
+                "响应体必须带 code=401（真实鉴权码在 body 里），实际: " + body);
+        if (expectedMsg != null) {
+            assertTrue(body.contains(expectedMsg),
+                    "响应体必须含提示语 \"" + expectedMsg + "\"，实际: " + body);
+        }
+    }
+
+    /**
      * 让 Mono 同步执行（webFluxResponseWriter 内部 writeWith 已直接 bufferFactory().wrap()，不需 subscribe），
      * 然后从 exchange 的 response body 读出字符串。
      */
-    private String responseBody(MockServerWebExchange exchange) {
-        return DataBufferUtils.join(exchange.getResponse().getBody())
+    private String responseBody(ServerWebExchange exchange) {
+        // ServerHttpResponse 接口上没有 getBody()，那是 MockServerHttpResponse 的方法
+        MockServerHttpResponse response = (MockServerHttpResponse) exchange.getResponse();
+        return DataBufferUtils.join(response.getBody())
                 .map(buf -> {
                     byte[] bytes = new byte[buf.readableByteCount()];
                     buf.read(bytes);

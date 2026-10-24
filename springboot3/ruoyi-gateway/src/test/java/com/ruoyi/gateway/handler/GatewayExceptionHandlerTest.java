@@ -9,6 +9,7 @@ import org.springframework.cloud.gateway.support.NotFoundException;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.http.server.reactive.MockServerHttpResponse;
+import org.springframework.mock.http.server.reactive.MockServerHttpResponse;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebExchange;
@@ -172,7 +173,9 @@ class GatewayExceptionHandlerTest {
      * 从 MockServerHttpResponse 读取写入的字节并转字符串。
      */
     private String responseBody(ServerWebExchange exchange) {
-        return DataBufferUtils.join(exchange.getResponse().getBody())
+        // ServerHttpResponse 接口上没有 getBody()，那是 MockServerHttpResponse 的方法
+        MockServerHttpResponse response = (MockServerHttpResponse) exchange.getResponse();
+        return DataBufferUtils.join(response.getBody())
                 .map(buf -> {
                     byte[] bytes = new byte[buf.readableByteCount()];
                     buf.read(bytes);

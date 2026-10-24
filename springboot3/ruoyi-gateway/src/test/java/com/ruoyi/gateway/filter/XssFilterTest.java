@@ -76,11 +76,11 @@ class XssFilterTest {
                 MockServerHttpRequest.post("/opc/finance/voucher")
                         .contentType(MediaType.APPLICATION_JSON)
                         .body("{\"summary\":\"<script>alert(1)</script>\"}"));
-        GatewayFilterChain chain = chainMock();
+        CapturingChain chain = chainMock();
 
         StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-        verify(chain).filter(any(ServerWebExchange.class));
+        assertNotNull(chain.captured, "filter 必须把请求放行到下游 chain");
         // body 没被改写（chain.filter 收到原始 exchange，不带 decorator）
         assertNull(chain.captured.getRequest().getHeaders().getFirst(HttpHeaders.TRANSFER_ENCODING),
                 "xss 关闭时不应设置 Transfer-Encoding");
@@ -94,11 +94,11 @@ class XssFilterTest {
         xssProperties.setEnabled(true);
         ServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/opc/finance/voucher"));
-        GatewayFilterChain chain = chainMock();
+        CapturingChain chain = chainMock();
 
         StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-        verify(chain).filter(any(ServerWebExchange.class));
+        assertNotNull(chain.captured, "filter 必须把请求放行到下游 chain");
     }
 
     // ==================== 3. DELETE 方法 ====================
@@ -109,11 +109,11 @@ class XssFilterTest {
         xssProperties.setEnabled(true);
         ServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.delete("/opc/finance/voucher/1"));
-        GatewayFilterChain chain = chainMock();
+        CapturingChain chain = chainMock();
 
         StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-        verify(chain).filter(any(ServerWebExchange.class));
+        assertNotNull(chain.captured, "filter 必须把请求放行到下游 chain");
     }
 
     // ==================== 4. 非 JSON Content-Type ====================
@@ -126,11 +126,11 @@ class XssFilterTest {
                 MockServerHttpRequest.post("/opc/finance/voucher")
                         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                         .body("summary=test"));
-        GatewayFilterChain chain = chainMock();
+        CapturingChain chain = chainMock();
 
         StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-        verify(chain).filter(any(ServerWebExchange.class));
+        assertNotNull(chain.captured, "filter 必须把请求放行到下游 chain");
     }
 
     @Test
@@ -140,11 +140,11 @@ class XssFilterTest {
         ServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.post("/opc/finance/voucher")
                         .body("raw text"));
-        GatewayFilterChain chain = chainMock();
+        CapturingChain chain = chainMock();
 
         StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-        verify(chain).filter(any(ServerWebExchange.class));
+        assertNotNull(chain.captured, "filter 必须把请求放行到下游 chain");
     }
 
     // ==================== 5. 排除 URL ====================
@@ -158,11 +158,11 @@ class XssFilterTest {
                 MockServerHttpRequest.post("/opc/upload/file")
                         .contentType(MediaType.APPLICATION_JSON)
                         .body("{\"name\":\"<img onerror=alert(1) src=x>\"}"));
-        GatewayFilterChain chain = chainMock();
+        CapturingChain chain = chainMock();
 
         StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
-        verify(chain).filter(any(ServerWebExchange.class));
+        assertNotNull(chain.captured, "filter 必须把请求放行到下游 chain");
     }
 
     // ==================== 6. POST + JSON + 含 <script> ====================
@@ -176,12 +176,12 @@ class XssFilterTest {
                 MockServerHttpRequest.post("/opc/finance/voucher")
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(originalBody));
-        GatewayFilterChain chain = chainMock();
+        CapturingChain chain = chainMock();
 
         StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
         // chain.filter 收到的 exchange 应是被 decorator mutate 过的
-        verify(chain).filter(any(ServerWebExchange.class));
+        assertNotNull(chain.captured, "filter 必须把请求放行到下游 chain");
 
         // 验证 mutated request 的 body 被清理（读 body 验证 HTML 标签被剥除）
         ServerWebExchange mutated = chain.captured;
@@ -211,15 +211,22 @@ class XssFilterTest {
                 MockServerHttpRequest.post("/opc/finance/voucher")
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(originalBody));
-        GatewayFilterChain chain = chainMock();
+        CapturingChain chain = chainMock();
 
         StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
         String cleanedBody = readBody(chain.captured.getRequest().getBody());
         assertFalse(cleanedBody.contains("onerror"),
                 "onerror 属性必须被剥除（XSS 攻击向量），实际 body: " + cleanedBody);
-        assertFalse(cleanedBody.contains("<img"),
-                "<img> 标签本身也被剥除");
+        // <img> 标签本身**保留** —— HTMLFilter 是白名单式过滤，img 在允许元素表里
+        // （HTMLFilter.java:117 vAllowed.put("img", [src,width,height,alt])），
+        // 只把不在属性白名单里的 onerror 剥掉。
+        // 原断言「<img> 标签本身也被剥除」与实现不符：script 才是不在白名单里、
+        // 会被整个剥掉的元素（见上一条测试）。
+        assertTrue(cleanedBody.contains("<img"),
+                "<img> 是允许元素，应保留；实际 body: " + cleanedBody);
+        assertTrue(cleanedBody.contains("src="),
+                "允许的属性 src 应保留（HTMLFilter 会把它规范化成 src=\"x\" 并补自闭合）；实际 body: " + cleanedBody);
     }
 
     // ==================== 7. POST + JSON + 无害 body ====================
@@ -233,7 +240,7 @@ class XssFilterTest {
                 MockServerHttpRequest.post("/opc/finance/voucher")
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(originalBody));
-        GatewayFilterChain chain = chainMock();
+        CapturingChain chain = chainMock();
 
         StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
 
@@ -252,14 +259,27 @@ class XssFilterTest {
 
     // ==================== 测试辅助 ====================
 
-    /** 用 captured 字段捕获 chain.filter 收到的 exchange */
-    private GatewayFilterChain chainMock() {
-        GatewayFilterChain chain = mock(GatewayFilterChain.class);
-        when(chain.filter(any(ServerWebExchange.class))).thenAnswer(inv -> {
-            chain.captured = inv.getArgument(0);
+    /**
+     * 捕获 chain.filter 收到的 exchange。
+     *
+     * <p>原先这里是个 Mockito mock —— 但 {@code GatewayFilterChain} 是接口,
+     * mock 出来的对象上没有 {@code captured} 字段可写,而测试里到处在读
+     * {@code chain.captured}。这个模块的测试因此一直编译不过(和 AuthFilterTest
+     * 的 responseBody 参数类型一样,都是陈旧问题)。
+     */
+    private static class CapturingChain implements GatewayFilterChain {
+        ServerWebExchange captured;
+
+        @Override
+        public Mono<Void> filter(ServerWebExchange exchange) {
+            this.captured = exchange;
             return Mono.empty();
-        });
-        return chain;
+        }
+    }
+
+    /** 用 captured 字段捕获 chain.filter 收到的 exchange */
+    private CapturingChain chainMock() {
+        return new CapturingChain();
     }
 
     private String readBody(Flux<DataBuffer> body) {

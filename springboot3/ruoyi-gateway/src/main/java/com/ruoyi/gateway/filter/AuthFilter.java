@@ -10,6 +10,8 @@ import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import com.ruoyi.common.core.constant.CacheConstants;
+import java.util.List;
+import java.util.Set;
 import com.ruoyi.common.core.constant.HttpStatus;
 import com.ruoyi.common.core.constant.SecurityConstants;
 import com.ruoyi.common.core.constant.TokenConstants;
@@ -31,6 +33,13 @@ public class AuthFilter implements GlobalFilter, Ordered
 {
     private static final Logger log = LoggerFactory.getLogger(AuthFilter.class);
 
+    /**
+     * 白名单条目里允许出现的 method 前缀。
+     * 只有冒号左边正好是其中之一时，那条条目才被解读为「只放行该 method」。
+     */
+    private static final Set<String> HTTP_METHODS = Set.of(
+            "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS");
+
     // 排除过滤的 uri 地址，nacos自行添加
     @Autowired
     private IgnoreWhiteProperties ignoreWhite;
@@ -47,7 +56,7 @@ public class AuthFilter implements GlobalFilter, Ordered
 
         String url = request.getURI().getPath();
         // 跳过不需要验证的路径
-        if (StringUtils.matches(url, ignoreWhite.getWhites()))
+        if (isWhiteListed(url, request.getMethod().name(), ignoreWhite.getWhites()))
         {
             return chain.filter(exchange);
         }
@@ -81,6 +90,68 @@ public class AuthFilter implements GlobalFilter, Ordered
         // 内部请求来源参数清除
         removeHeader(mutate, SecurityConstants.FROM_SOURCE);
         return chain.filter(exchange.mutate().request(mutate.build()).build());
+    }
+
+    /**
+     * 白名单命中判定。
+     *
+     * <p>条目语法有两种：
+     * <ul>
+     *   <li>{@code /opc/xxx/**} —— 放行<b>任意</b> HTTP method（老条目都这么写，行为不变）</li>
+     *   <li>{@code GET:/opc/xxx/**} —— 只放行指定 method</li>
+     * </ul>
+     *
+     * <p><b>为什么要 method 限定</b>：{@code AuthFilter} 只按路径匹配，不区分 method。
+     * 白名单里那些 {@code /**} 通配是为「公开浏览」准备的，却把同一前缀下的
+     * <b>写端点一并放行</b> —— 匿名 {@code DELETE /opc/erp/product/{id}} 能真的删掉
+     * 商品，{@code PUT /opc/marketplace/publication/{id}} 能改别人的商品。
+     * 2026-10-23 实测：匿名 DELETE 穿过网关直达 service，只因 id 不存在才被业务层拦下。
+     *
+     * <p>method 前缀只在「冒号左边正好是一个已知 HTTP method」时才生效。
+     * 路径本身可以含冒号（{@code /opc/user/invitations/{code:[A-HJ-KM-NP-Z2-9]{8}}}），
+     * 那种冒号左边是一段路径而不是 method，不会被误当成前缀。
+     *
+     * @param url    请求路径
+     * @param method 请求 method
+     * @param whites 白名单条目
+     * @return 是否命中白名单（命中即跳过 token 校验）
+     */
+    private boolean isWhiteListed(String url, String method, List<String> whites)
+    {
+        if (StringUtils.isEmpty(url) || StringUtils.isEmpty(whites))
+        {
+            return false;
+        }
+        for (String entry : whites)
+        {
+            if (StringUtils.isEmpty(entry))
+            {
+                continue;
+            }
+            String pattern = entry;
+            String requiredMethod = null;
+            int colon = entry.indexOf(':');
+            if (colon > 0)
+            {
+                String maybe = entry.substring(0, colon).trim().toUpperCase();
+                // 冒号左边必须正好是一个 HTTP method —— 否则按普通路径处理
+                if (HTTP_METHODS.contains(maybe))
+                {
+                    requiredMethod = maybe;
+                    pattern = entry.substring(colon + 1).trim();
+                }
+            }
+            if (requiredMethod != null && !requiredMethod.equalsIgnoreCase(method))
+            {
+                // method 不符 → 这条不适用，继续看下一条
+                continue;
+            }
+            if (StringUtils.isMatch(pattern, url))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void addHeader(ServerHttpRequest.Builder mutate, String name, Object value)

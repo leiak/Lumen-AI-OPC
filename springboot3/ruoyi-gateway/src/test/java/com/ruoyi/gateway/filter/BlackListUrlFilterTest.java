@@ -11,6 +11,7 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
+import org.springframework.mock.http.server.reactive.MockServerHttpResponse;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -169,12 +170,17 @@ class BlackListUrlFilterTest {
 
     private GatewayFilterChain chainMock() {
         GatewayFilterChain chain = mock(GatewayFilterChain.class);
-        when(chain.filter(any(ServerWebExchange.class))).thenReturn(Mono.empty());
+        // lenient(): 命中黑名单的用例里 chain 根本不会被调用，这个 stub 就是没人用的。
+        // 用严格模式（默认 STRICT_STUBS）会抛 UnnecessaryStubbing —— 而"chain 从没被调用"
+        // 恰恰是那些用例要断言的东西，不该反过来把测试判成错。
+        lenient().when(chain.filter(any(ServerWebExchange.class))).thenReturn(Mono.empty());
         return chain;
     }
 
     private String responseBody(ServerWebExchange exchange) {
-        return DataBufferUtils.join(exchange.getResponse().getBody())
+        // ServerHttpResponse 接口上没有 getBody()，那是 MockServerHttpResponse 的方法
+        MockServerHttpResponse response = (MockServerHttpResponse) exchange.getResponse();
+        return DataBufferUtils.join(response.getBody())
                 .map(buf -> {
                     byte[] bytes = new byte[buf.readableByteCount()];
                     buf.read(bytes);

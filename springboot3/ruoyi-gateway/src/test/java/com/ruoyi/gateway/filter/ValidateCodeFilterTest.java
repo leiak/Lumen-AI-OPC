@@ -17,6 +17,7 @@ import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.MediaType;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
+import org.springframework.mock.http.server.reactive.MockServerHttpResponse;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ServerWebExchange;
@@ -219,7 +220,9 @@ class ValidateCodeFilterTest {
     }
 
     private String responseBody(ServerWebExchange exchange) {
-        return DataBufferUtils.join(exchange.getResponse().getBody())
+        // ServerHttpResponse 接口上没有 getBody()，那是 MockServerHttpResponse 的方法
+        MockServerHttpResponse response = (MockServerHttpResponse) exchange.getResponse();
+        return DataBufferUtils.join(response.getBody())
                 .map(buf -> {
                     byte[] bytes = new byte[buf.readableByteCount()];
                     buf.read(bytes);
