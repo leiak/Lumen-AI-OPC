@@ -12,22 +12,54 @@
 #    整体盖掉 —— 少写一条 = 线上直接少一条, 不会"回落到本地默认值"。
 #    改网关白名单时, 两处必须同步修改。
 #
-# ⚠️ AuthFilter 不区分 HTTP method (AuthFilter.java:50 只做路径匹配)。
-#    凡是写成 `/**` 的条目, 对该路径下的 POST/PUT/DELETE 同样放行。
-#    下游必须自己在 service 层 fail-closed, 不能指望网关兜底。
+# ============================ method 前缀 ============================
+# 条目可以带 HTTP method 前缀:
+#     GET:/opc/xxx/**    只放行 GET
+#     POST:/opc/xxx/**   只放行 POST
+#     /opc/xxx/**        放行任意 method (裸条目)
 #
-# W80 变更 (相对本文件的历史版本):
-#   1) 删除过时的 `/opc/user/invitations/*` 通配 —— 它会把
-#      POST /generate 一并放行, 正是 W48.5 要修的问题。
-#      换成两条精确条目 (accept + 8位 base32 code 正则)。
-#   2) 补齐 notification / community / hr / erp / content / marketplace
-#      的公开读白名单 —— 老版本缺这些, 一旦推送就把对应模块公网入口全关。
+# AuthFilter 从 2026-10-24 起支持这个语法 (AuthFilter.java:119 isWhiteListed)。
+# 裸条目仍然有效, 但只在"该路径下确实只有读端点"时才用。
+#
+# ⚠️ 为什么必须加 (2026-10-23 实测的洞):
+#    裸条目只按路径匹配, 不区分 method。白名单里为「公开浏览」准备的
+#    `/**` 通配, 把同一前缀下的**写端点**也一并放行了 —— 匿名
+#    DELETE /opc/erp/product/{id} 能真的删掉商品, PUT /publication/{id}
+#    能改别人的商品。收紧前, 共有 23 个写端点对匿名开放。
+#
+# ⚠️ 冒号左边必须正好是一个 HTTP method 才算前缀。
+#    路径本身可以含冒号 (/opc/user/invitations/{code:[A-HJ-KM-NP-Z2-9]{8}}),
+#    那种冒号左边是一段路径, 不会被误当成前缀。
 # ============================================================
 
 security:
   ignore:
+    # ------------------------------------------------------------
+    # 移除清单 —— 只被 apply-whitelist.sh 读取, 不会写回 Nacos。
+    #
+    # 并集合并是【只增不减】的: 条目从本文件里删掉, 它仍然留在 Nacos 上。
+    # 下面这些就是历史上删过、但可能还活着的条目:
+    #   - /opc/user/invitations/* : W80 换成了两条精确条目, 但并集不会删。
+    #     它会放行 POST /opc/user/invitations/generate (正是 W48.5 要堵的口)。
+    #   - /test/**, /*/v2|v3/api-docs : RuoYi 基线遗留, 本仓库没有对应 handler。
+    #   - /opc/content/script/recent : opc-content 只有 3 个 controller,
+    #     没有任何 recent 端点 —— 一条失效条目。
+    # ------------------------------------------------------------
+    whitesRemove:
+      - /opc/user/invitations/*
+      - /opc/content/script/recent
+      - /test/**
+      - /*/v2/api-docs
+      - /*/v3/api-docs
+
     whites:
       # ===== 认证 / 验证码 / 注册 (RuoYi 既有) =====
+      # 这批保持裸路径, 不加 method 前缀:
+      #   - 它们的 handler 本来就是"匿名可调"的登录类端点, 路径上没有
+      #     破坏性操作 (/auth/login POST, /auth/logout DELETE, /auth/register POST)
+      #   - /code /captcha/image /captchaImage /social/* 在本仓库里
+      #     **根本没有对应 handler** (RuoYi 删掉 ruoyi-admin 的遗留条目)
+      #   - 加错 method 前缀会直接把登录搞挂, 收益却接近 0
       - /auth/logout
       - /auth/register
       - /auth/login
@@ -44,65 +76,86 @@ security:
       - /refresh
       - /register
       - /unlockscreen
+
       # ===== OPC 邀请落地页 =====
-      # GET /{code} 公开查邀请人 (落地页); POST /accept 匿名被邀请人接受。
-      # POST /generate 不在白名单 → 需登录 (W48.5 修复:
-      # 曾经的 `/opc/user/invitations/*` 会把 generate 误放过公网,
-      # 导致 SecurityUtils.getUserId() 返回 null, 生成邀请失败)。
-      # 8位 base32 = [A-HJ-KM-NP-Z2-9]{8} (排除 I/L/O/0/1, 与 OpcCodeGenerator 一致)
-      - /opc/user/invitations/accept
-      - /opc/user/invitations/{code:[A-HJ-KM-NP-Z2-9]{8}}
+      # GET  /opc/user/invitations/{code} 公开查邀请人 (落地页)
+      #   AntPathMatcher 支持 {name:regex} 语法, 8位 base32 = [A-HJ-KM-NP-Z2-9]{8}
+      #   (排除 I/L/O/0/1, 与 OpcCodeGenerator 一致)
+      - GET:/opc/user/invitations/{code:[A-HJ-KM-NP-Z2-9]{8}}
+      # POST /opc/user/invitations/accept 匿名被邀请人接受 (登录后才生效)
+      #   —— 这是**有意公开**的写端点, 全表唯一一条。
+      #      POST /opc/user/invitations/generate 不在白名单 → 需登录
+      #      (曾经的 `/opc/user/invitations/*` 通配会把 generate 也放过公网,
+      #       导致 SecurityUtils.getUserId() 返回 null, 生成邀请失败 —— W48.5)
+      - POST:/opc/user/invitations/accept
 
       # ===== Notification WebSocket (W49) =====
       # token 在 URL ?token= 里, 不走 Authorization 头 → 不白名单会报"令牌不能为空"
-      - /opc/notification/ws
-      - /opc/notification/ws/**
+      # 只有 GET Upgrade 握手这一种用法 (WebSocketConfig 注册 /ws/notification),
+      # 后面没有 POST/PUT/DELETE handler。
+      - GET:/opc/notification/ws
+      - GET:/opc/notification/ws/**
 
       # ===== Community 公开浏览 (W52) =====
-      # install / create 评论仍需鉴权 — service 层 SecurityUtils 校验
-      - /opc/community/module/list
-      - /opc/community/module/**
-      - /opc/community/comment
-      - /opc/community/rating
+      # 收紧前这三条是裸路径, 于是下面这些**写端点对匿名开放**:
+      #   POST   /opc/community/module                创建模块
+      #   POST   /opc/community/module/{id}/install   安装模块
+      #   POST   /opc/community/comment               发评论
+      #   POST   /opc/community/rating                评分
+      #   POST   /opc/community/rating/{moduleId}/refresh  刷新评分
+      # 现在只放行 GET (公开浏览), 写操作一律要登录。
+      - GET:/opc/community/module/list
+      - GET:/opc/community/module/**
+      - GET:/opc/community/comment
+      - GET:/opc/community/rating
 
       # ===== HR 公开浏览 (W51) =====
-      # 创建 JD / 投递 / 面试 / offer 不在白名单 → 需登录
-      - /opc/hr/dashboard
-      - /opc/hr/job/list
-      - /opc/hr/job/**
+      # 收紧前 /opc/hr/job/** 是裸路径 → 7 个写端点匿名可达:
+      #   POST /opc/hr/job (创建 JD)  PUT|DELETE /opc/hr/job/{id}
+      #   POST /opc/hr/job/{id}/publish|close|pause   POST /opc/hr/job/generate-llm
+      - GET:/opc/hr/dashboard
+      - GET:/opc/hr/job/list
+      - GET:/opc/hr/job/**
 
       # ===== ERP 公开浏览 (W72) =====
-      # 创建商品 / 采购 / 销售 / 退货不在白名单 → 需登录
-      - /opc/erp/product/list
-      - /opc/erp/product/**
-      - /opc/erp/inventory/low-stock
+      # 收紧前 /opc/erp/product/** 是裸路径 → 4 个写端点匿名可达:
+      #   POST /opc/erp/product (创建)  PUT|DELETE /opc/erp/product/{id}
+      #   POST /opc/erp/product/auto-category
+      - GET:/opc/erp/product/list
+      - GET:/opc/erp/product/**
+      - GET:/opc/erp/inventory/low-stock
 
       # ===== Content 公开浏览 (W74) =====
-      # 创建脚本 / 精修 / 发布不在白名单 → 需登录
-      - /opc/content/script/list
-      - /opc/content/script/dashboard
-      - /opc/content/script/recent
-      - /opc/content/script/**
-      - /opc/content/platform-account/list
+      # 收紧前 /opc/content/script/** 是裸路径 → 7 个写端点匿名可达:
+      #   POST /opc/content/script (创建)  PUT|DELETE /opc/content/script/{id}
+      #   POST /opc/content/script/{id}/generate|refine|ready
+      #   POST /opc/content/script/adapt
+      # 注: /opc/content/script/recent 没有任何 handler (opc-content 只有 3 个
+      #     controller), 是一条失效条目, 已删 (见上面的 whitesRemove)。
+      - GET:/opc/content/script/list
+      - GET:/opc/content/script/dashboard
+      - GET:/opc/content/script/**
+      - GET:/opc/content/platform-account/list
 
       # ===== Marketplace 公开浏览 (W80 P1) =====
-      # 类目详情用数字正则而非 `**`: 网关不区分 method, `**` 会把将来
-      # 任何 POST/PUT /category/xxx 一并放行。
-      - /opc/marketplace/category/tree
-      - /opc/marketplace/category/list
-      - /opc/marketplace/category/{id:[0-9]+}
-      - /opc/marketplace/tag/list
-      - /opc/marketplace/publication/list
-      - /opc/marketplace/publication/search
+      # 类目详情用数字正则而非 `**`: 双重保险 ——
+      #   1) `**` 会把将来任何 POST/PUT /category/xxx 一并放行
+      #   2) method 前缀再把非 GET 的 method 挡在外面
+      - GET:/opc/marketplace/category/tree
+      - GET:/opc/marketplace/category/list
+      - GET:/opc/marketplace/category/{id:[0-9]+}
+      - GET:/opc/marketplace/tag/list
+      - GET:/opc/marketplace/publication/list
+      - GET:/opc/marketplace/publication/search
       # 公开详情仅返回 PUBLISHED (selectPublishedById 在 SQL 层硬过滤)。
-      # ⚠️ 该条目同样放行 PUT /publication/{id} (编辑商品), 目前靠
-      #    PublicationController.currentAuthorId() → requireCompanyId()
-      #    的 400 fail-closed 兜住 —— 去掉那个守卫 = 全网可改任意商品。
-      - /opc/marketplace/publication/{id:[0-9]+}
-      - /opc/marketplace/review/list/**
+      # ⚠️ 这条原来没有 method 前缀 → PUT /publication/{id} (编辑商品) 匿名可达,
+      #    只靠 PublicationController.currentAuthorId() → requireCompanyId() 的
+      #    400 fail-closed 兜住 —— 去掉那个守卫 = 全网可改任意商品。
+      - GET:/opc/marketplace/publication/{id:[0-9]+}
+      - GET:/opc/marketplace/review/list/**
       # `[0-9]+` 是必须的: 它保证 "me" 不匹配, 于是 /author/me 仍需登录态。
       # service 层 toPublicVO 已清空 contactEmail / contactPhone / totalRevenue。
-      - /opc/marketplace/author/{id:[0-9]+}
-      - /opc/marketplace/author/list
+      - GET:/opc/marketplace/author/{id:[0-9]+}
+      - GET:/opc/marketplace/author/list
       # 注: /publication/my/{id}, /publication/my/list 不加白名单 —— 需校验 author 归属
       # 注: /install/** 全部需登录
