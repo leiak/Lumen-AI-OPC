@@ -9,6 +9,7 @@
 #   bash deploy.sh stop                     # 停所有容器,保留 host 数据
 #   bash deploy.sh nuke                     # ⚠️ 删 mysql/redis 数据卷重新初始化
 #   bash deploy.sh rebuild crm              # 重建镜像(改完 OPC 源码后)
+#   bash deploy.sh rebuild frontend         # 只重建前端 (改完 vue3-typescript 后)
 #   bash deploy.sh rebuild all              # 重建所有 aiopc-* 镜像
 #   bash deploy.sh snapshot                 # 跑状态快照
 #   bash deploy.sh health                   # 跑健康检查
@@ -158,7 +159,7 @@ cmd_rebuild() {
   require_docker
   local target="${1:-}"
   if [[ -z "${target}" ]]; then
-    fail "用法: deploy.sh rebuild <svc-name|all>     (e.g. crm / notification / ai-core / all)"
+    fail "用法: deploy.sh rebuild <svc-name|all|frontend>     (e.g. crm / notification / ai-core / frontend / all)"
   fi
 
   # 共享模块必须**先 install 进本地仓库** ——
@@ -170,12 +171,16 @@ cmd_rebuild() {
   # 部署看起来成功了, 实际上守卫根本没生效, 而且不报任何错。
   #
   # 一句话: package 只写 target/, install 才写 ~/.m2。两者不是一回事。
-  log "[shared] mvn install ruoyi-common-security (共享模块, 租户守卫在这里)"
-  cd "${PROJECT_ROOT}"
-  JAVA_HOME="${JAVA_HOME}" \
-    mvn -pl ruoyi-common/ruoyi-common-security -am clean install \
-      -Dmaven.test.skip=true -Dspring-boot.repackage.skip=true -q \
-    || fail "共享模块 install 失败"
+  #
+  # 前端不走这条 (它压根不碰 Maven), 跳过 —— 省一次 install, 也少一个失败点。
+  if [[ "${target}" != "frontend" ]]; then
+    log "[shared] mvn install ruoyi-common-security (共享模块, 租户守卫在这里)"
+    cd "${PROJECT_ROOT}"
+    JAVA_HOME="${JAVA_HOME}" \
+      mvn -pl ruoyi-common/ruoyi-common-security -am clean install \
+        -Dmaven.test.skip=true -Dspring-boot.repackage.skip=true -q \
+      || fail "共享模块 install 失败"
+  fi
 
   # compose 服务名: 大多数是 aiopc-<去掉 opc- 前缀>, ruoyi-system 是个例外
   svc_of() {
@@ -268,6 +273,14 @@ cmd_rebuild() {
     build_one ruoyi-system
     build_gateway
     build_frontend
+  elif [[ "${target}" == "frontend" ]]; then
+    # 前端不是 ruoyi-modules/ 下的 Maven 模块, build_one 那条路走不通
+    # (没有 pom、没有镜像构建脚本, 它是 nginx + 预构建产物)。
+    #
+    # 以前前端只能靠 rebuild all 顺带重建 —— 改一版前端就得把
+    # 13 个后端服务 + 网关 + ruoyi-system 全重建一遍, 又慢又容易
+    # 在半路出岔子。现在前端有了自己的入口。
+    build_frontend
   else
     build_one "${target}"
   fi
@@ -331,7 +344,7 @@ Commands:
   status                   docker compose ps
   stop                     停所有容器,保留 host 数据
   nuke                     ⚠️  清 mysql/redis/nacos 数据卷
-  rebuild <svc|all>        重建指定服务镜像 (e.g. crm / notification / all)
+  rebuild <svc|all|frontend>  重建指定服务镜像 (e.g. crm / notification / frontend / all)
   snapshot                 跑全栈状态快照
   health                   跑健康检查 (36+ 项)
   help                     显示本帮助
@@ -340,6 +353,7 @@ Commands:
   bash deploy.sh                       # -> 等价 deploy.sh help
   bash deploy.sh up
   bash deploy.sh rebuild crm
+  bash deploy.sh rebuild frontend
   bash deploy.sh rebuild all
   bash deploy.sh snapshot
   bash deploy.sh health
