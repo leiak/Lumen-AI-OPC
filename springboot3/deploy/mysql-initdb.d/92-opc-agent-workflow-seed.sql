@@ -10,6 +10,18 @@
 -- DAG 说明：WorkflowEngine v0.2 中 TOOL / CONDITION / LOOP 节点尚为 stub，
 --          因此这里只用 LLM 节点，避免踩空实现。
 --          n1 的输出通过 ${n1} 注入 n2 的 prompt。
+--
+-- company_id = 1（不是 NULL）：
+--   这个工作流的产出是**某一家企业**的财务日报 —— prompt 里明写着「汇总昨日的
+--   收支流水、待处理凭证数量与异常项」，那些都是公司口径的数据。而 Quartz 触发时
+--   （WorkflowCronJob → RemoteWorkflowService.trigger）**不带 companyId**，
+--   归属只能从工作流行本身取。
+--   以前这里是 NULL → 一路兜成 0（= 系统）→ 这条工作流跑掉的 token/成本
+--   记在 company_id=0 上，而 opc-finance 是按 company_id 过滤的（WHERE company_id=#{id}），
+--   于是**这笔钱在任何一家公司的账单里都看不见** —— 平台白花钱、客户看不到账。
+--   指向公司 1 之后，用量行落进公司 1 的 token-usage 面板，账目对得上。
+--   （NULL 保留给真正的系统模板 —— 平台自用、不记到客户头上的工作流。）
+--
 -- 幂等：workflow_code 上有 uk_workflow_code，重复执行只刷新定义，不清零 run_count。
 -- =============================================================================
 
@@ -20,7 +32,7 @@ INSERT INTO `opc_agent_workflow` (
 ) VALUES (
     'finance_daily_report_v1',
     '财务日报',
-    NULL,
+    1,
     NULL,
     'CRON',
     '{"cron":"0 0 9 * * ?","timezone":"Asia/Shanghai"}',
@@ -35,6 +47,9 @@ INSERT INTO `opc_agent_workflow` (
 )
 ON DUPLICATE KEY UPDATE
     `name`            = VALUES(`name`),
+    -- company_id 也要跟着刷：种子声明的值就是事实，
+    -- 不刷的话「种子说 1、库里是 NULL」会长期分叉，而分叉出来的正是「用量记到 0」。
+    `company_id`      = VALUES(`company_id`),
     `trigger_type`    = VALUES(`trigger_type`),
     `trigger_config`  = VALUES(`trigger_config`),
     `dag_json`        = VALUES(`dag_json`),
