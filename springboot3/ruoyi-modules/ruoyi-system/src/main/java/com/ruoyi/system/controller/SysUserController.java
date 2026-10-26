@@ -196,6 +196,11 @@ public class SysUserController extends BaseController
         ajax.put("user", user);
         ajax.put("roles", roles);
         ajax.put("permissions", permissions);
+        // 租户（公司）归属 —— 前端需要知道自己属于哪家公司。
+        // 此前前端有 19 处硬编码 const companyId = 1, 于是"看别家数据"只要把参数
+        // 改成 2 就行(服务端照单全收)。现在服务端一律以登录态为准, 前端这边
+        // 也就不用再猜 —— 直接读这个字段。
+        ajax.put("companyId", loginUser.getCompanyId());
         ajax.put("pwdChrtype", getSysAccountChrtype());
         ajax.put("isDefaultModifyPwd", initPasswordIsModify(user.getPwdUpdateDate()));
         ajax.put("isPasswordExpired", passwordIsExpiration(user.getPwdUpdateDate()));
