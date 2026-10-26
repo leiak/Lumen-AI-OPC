@@ -55,10 +55,21 @@ public class AuthFilter implements GlobalFilter, Ordered
         ServerHttpRequest.Builder mutate = request.mutate();
 
         String url = request.getURI().getPath();
+
+        // 内部请求来源参数清除 —— 必须在白名单分支**之前**做。
+        //
+        // 此前这个头只在「已认证」分支里清, 白名单分支直接 return chain.filter(exchange),
+        // 于是公网可以带着 from-source: inner 直达 service:
+        //   1) @InnerAuth 端点靠这个头判定「内部调用」, 伪造它就能进;
+        //   2) 租户守卫(TenantGuard)一旦拿它当豁免, 就等于给所有 companyId 端点
+        //      开了一个万能后门 —— 任何人都能指定想看哪家公司。
+        // 服务端口在 compose 里是发布到宿主机的, 网关这一层必须是唯一的入口。
+        removeHeader(mutate, SecurityConstants.FROM_SOURCE);
+
         // 跳过不需要验证的路径
         if (isWhiteListed(url, request.getMethod().name(), ignoreWhite.getWhites()))
         {
-            return chain.filter(exchange);
+            return chain.filter(exchange.mutate().request(mutate.build()).build());
         }
         String token = getToken(request);
         if (StringUtils.isEmpty(token))
@@ -87,8 +98,6 @@ public class AuthFilter implements GlobalFilter, Ordered
         addHeader(mutate, SecurityConstants.USER_KEY, userkey);
         addHeader(mutate, SecurityConstants.DETAILS_USER_ID, userid);
         addHeader(mutate, SecurityConstants.DETAILS_USERNAME, username);
-        // 内部请求来源参数清除
-        removeHeader(mutate, SecurityConstants.FROM_SOURCE);
         return chain.filter(exchange.mutate().request(mutate.build()).build());
     }
 

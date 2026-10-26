@@ -1121,6 +1121,69 @@ except Exception:
   fi
 }
 
+# ---------- 12. 网关白名单 method 限定 (3c 回归护栏) ----------
+#
+# 3c 的洞: 网关白名单只按路径匹配, 不看 HTTP method。为「公开浏览」准备的
+# `/**` 通配把同一前缀下的**写端点**也一并放行了 —— 匿名 DELETE /opc/erp/product/{id}
+# 能真的删掉商品。修法是白名单条目支持 `GET:/path` 前缀 (AuthFilter.isWhiteListed)。
+#
+# 这条护栏**只发安全方法** (GET / OPTIONS), 绝不 POST/PUT/DELETE:
+#   - GET     在公开读路径上 → 应当放行 (body.code 不是 401)
+#   - OPTIONS 在同一条路径上 → 应当被网关挡下 (body.code=401)
+# OPTIONS 不改任何数据, 但它和 DELETE 在 AuthFilter 里走的是同一段 method
+# 比较逻辑, 所以拿它就能证明「同一条白名单前缀不放行非 GET 方法」。
+#
+# ⚠️ RuoYi 的业务错误是 HTTP 200 + body 里带 code, 不是 HTTP 4xx ——
+#    所以只能看 body.code, 不能看 HTTP 状态码 (HEAD 更看不到 body, 不能用来判定)。
+check_gateway_whitelist() {
+  hr
+  echo "[12] 网关白名单 method 限定 (3c 回归护栏)"
+  hr
+  local base="http://${GATEWAY_HOST}:${GATEWAY_PORT}"
+
+  # 从响应体里取 RuoYi 的 code (取不到返回 "-1")
+  local_code() {
+    python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null
+  }
+
+  local paths=(
+    /opc/erp/product/list
+    /opc/content/script/list
+    /opc/hr/job/list
+    /opc/marketplace/category/tree
+  )
+  local p get_body get_code opt_body opt_code
+  for p in "${paths[@]}"; do
+    # 12.1 匿名 GET 必须放行 (公开读入口不能被收紧误伤)
+    get_body=$(curl -s -m 10 "${base}${p}" 2>/dev/null) || get_body=""
+    if [[ -z "${get_body}" ]]; then
+      nok "匿名 GET ${p} 无响应 — 网关或后端不可达"
+      continue
+    fi
+    get_code=$(echo "${get_body}" | local_code)
+    if [[ "${get_code}" == "401" || "${get_code}" == "403" ]]; then
+      nok "匿名 GET ${p} 被网关拦下 (body.code=${get_code}) — 公开读入口被误关"
+    else
+      ok "匿名 GET ${p} 放行 (body.code=${get_code})"
+    fi
+
+    # 12.2 匿名 OPTIONS 必须被挡 (同一条白名单前缀不放行非 GET)
+    opt_body=$(curl -s -m 10 -X OPTIONS "${base}${p}" 2>/dev/null) || opt_body=""
+    opt_code=$(echo "${opt_body}" | local_code)
+    if [[ "${opt_code}" == "401" || "${opt_code}" == "403" ]]; then
+      ok "匿名 OPTIONS ${p} 被网关挡下 (body.code=${opt_code})"
+    else
+      nok "匿名 OPTIONS ${p} 未被拦 (body.code=${opt_code}) — 白名单又放行了非 GET 方法"
+    fi
+  done
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -1137,6 +1200,7 @@ main() {
   check_erp
   check_content
   check_marketplace
+  check_gateway_whitelist
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"
