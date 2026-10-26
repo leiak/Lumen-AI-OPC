@@ -29,10 +29,18 @@ import lombok.extern.slf4j.Slf4j;
  * </ul>
  *
  * <p><b>为什么不按请求头区分「内部调用」</b>：内部服务调用只靠一个
- * {@code from-source: inner} 请求头来标识，而该请求头在<b>服务端口直连</b>时
- * 可以被公网伪造（compose 把每个服务端口都发布到了宿主机）。一旦拿它当豁免，
- * 等于给全部 companyId 端点开了一个万能后门。真正的内部调用走的是
- * {@code @InnerAuth} 端点，豁免在拦截器里按注解判定，不看请求头。</p>
+ * {@code from-source: inner} 请求头来标识。<b>本段的前提已经变了</b> ——
+ * 端口收敛之后（见 {@code e9cfbb5}）所有业务服务端口一律只绑 127.0.0.1，
+ * 公网再也连不到服务端口，所以这个头<b>不再能被外部伪造</b>；再加上网关的
+ * {@code AuthFilter} 会把外部流量带来的 {@code from-source} 剥掉，
+ * 「带着这个头」= 「来自 compose 内网的另一个服务」。</p>
+ *
+ * <p>即便如此，租户作用域<b>仍然不按请求头豁免</b>：companyId 的作用域只认
+ * 登录态 —— 内部调用如果需要跨公司，必须由调用方在自己的业务层把归属显式带过去
+ * （见 {@code OpcLlmController#resolveCompanyId} 的做法：认 {@code from-source: inner}
+ * 只是为了给「无登录上下文的内部调用」一个可信的兜底归属，不是一张万能后门）。
+ * 真正的内部调用走的是 {@code @InnerAuth} 端点，豁免在拦截器里按注解判定，
+ * 不看请求头。</p>
  *
  * @author OAC
  */
