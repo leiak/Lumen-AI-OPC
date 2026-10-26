@@ -177,15 +177,41 @@ cmd_rebuild() {
       -Dmaven.test.skip=true -Dspring-boot.repackage.skip=true -q \
     || fail "共享模块 install 失败"
 
+  # compose 服务名: 大多数是 aiopc-<去掉 opc- 前缀>, ruoyi-system 是个例外
+  svc_of() {
+    case "$1" in
+      ruoyi-system) echo "aiopc-system" ;;
+      *)            echo "aiopc-${1#opc-}" ;;
+    esac
+  }
+  # 打包方式:
+  #
+  # thin: OPC 各模块 —— pom 里用 <phase>none</phase> 挡掉 repackage,
+  #       打成 thin jar, 依赖靠 dependency:copy-dependencies 拷进 lib/,
+  #       Dockerfile 用 `-cp x.jar:lib/*` 启动。
+  # fat:  ruoyi-system —— pom 里 repackage 正常跑, 打成带 Main-Class 的
+  #       fat jar, Dockerfile 用 `java -jar` 启动, 没有 lib/ 目录。
+  #
+  # 之前对所有模块一律加 -Dspring-boot.repackage.skip=true, 把 ruoyi-system
+  # 也打成了 thin jar → 容器起来就 "no main manifest attribute" 无限重启,
+  # 而部署脚本照样报成功。
+  mode_of() {
+    case "$1" in
+      ruoyi-system) echo "fat" ;;
+      *)            echo "thin" ;;
+    esac
+  }
+
   build_one() {
     local module="$1"
     # compose 服务名与模块名**不**一一对应:
     #   opc-crm      → aiopc-crm       (去掉 opc- 前缀)
-    #   ruoyi-system → aiopc-system    (要显式传, 见下)
+    #   ruoyi-system → aiopc-system    (例外, 见 svc_of)
     # 之前写死 aiopc-${module} → 拼成 aiopc-opc-crm, compose 回一句
     # "no such service" 就把整条部署断了 —— 而且是断在第一个模块,
     # 看起来像成功。所以下面还有一道存在性检查。
-    local svc="${2:-aiopc-${module#opc-}}"
+    local svc="${2:-$(svc_of "${module}")}"
+    local mode="${3:-$(mode_of "${module}")}"
     local svc_dir="${PROJECT_ROOT}/ruoyi-modules/${module}"
     if [[ ! -d "${svc_dir}" ]]; then
       warn "  模块 ${module} 不存在,跳过"
@@ -204,14 +230,21 @@ cmd_rebuild() {
     if ! grep -qx "${svc}" <<<"${services}"; then
       fail "compose 里没有服务 '${svc}' (模块 ${module}) —— 服务名拼错了"
     fi
-    log "[${module}] mvn clean package + copy-dependencies"
     cd "${PROJECT_ROOT}"
-    JAVA_HOME="${JAVA_HOME}" \
-      mvn -pl "ruoyi-modules/${module}" -am clean package \
-        -Dmaven.test.skip=true -Dspring-boot.repackage.skip=true -q
-    JAVA_HOME="${JAVA_HOME}" \
-      mvn -pl "ruoyi-modules/${module}" dependency:copy-dependencies \
-        -DoutputDirectory=target/dependency -q
+    if [[ "${mode}" == "fat" ]]; then
+      log "[${module}] mvn clean package (fat jar) — 启动方式是 java -jar"
+      JAVA_HOME="${JAVA_HOME}" \
+        mvn -pl "ruoyi-modules/${module}" -am clean package \
+          -Dmaven.test.skip=true -q
+    else
+      log "[${module}] mvn clean package + copy-dependencies"
+      JAVA_HOME="${JAVA_HOME}" \
+        mvn -pl "ruoyi-modules/${module}" -am clean package \
+          -Dmaven.test.skip=true -Dspring-boot.repackage.skip=true -q
+      JAVA_HOME="${JAVA_HOME}" \
+        mvn -pl "ruoyi-modules/${module}" dependency:copy-dependencies \
+          -DoutputDirectory=target/dependency -q
+    fi
 
     log "[${module}] docker build ${svc}"
     cd "${SCRIPT_DIR}"
@@ -230,8 +263,9 @@ cmd_rebuild() {
              opc-marketplace opc-community opc-content opc-erp opc-hr; do
       build_one "${m}"
     done
-    # ruoyi-system 的 compose 服务名是 aiopc-system(不是 aiopc-ruoyi-system)
-    build_one ruoyi-system aiopc-system
+    # ruoyi-system 的 compose 服务名是 aiopc-system(不是 aiopc-ruoyi-system),
+    # 而且它是 fat jar 启动(java -jar), 不能走 thin jar 那套
+    build_one ruoyi-system
     build_gateway
     build_frontend
   else
