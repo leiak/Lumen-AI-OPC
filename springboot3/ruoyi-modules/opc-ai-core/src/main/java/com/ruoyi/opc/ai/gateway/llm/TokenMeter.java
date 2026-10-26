@@ -1,6 +1,8 @@
 package com.ruoyi.opc.ai.gateway.llm;
 
+import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.common.constant.OpcConstants;
+import com.ruoyi.system.api.model.LoginUser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -36,9 +38,37 @@ public class TokenMeter {
 
         String bizDate = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
 
+        // 归属（租户 + 用户）优先取调用方给的 ctx；ctx 里没有时从登录态补。
+        //
+        // 为什么要补: opc_agent_token_usage 的 company_id / user_id 都是 NOT NULL,
+        // 而"谁在调 LLM"这件事服务端本来就知道(登录态里有) —— 让它白白丢成
+        // 一个看不懂的 SQLIntegrityConstraintViolationException, 再被下面的 catch
+        // 吞掉, 结果就是每一次调用的用量/成本记录都没了, 而账单页面读的就是这张表。
+        Long companyId = ctx != null ? ctx.getCompanyId() : null;
+        Long userId = ctx != null ? ctx.getUserId() : null;
+        if (companyId == null || userId == null) {
+            Long ctxCompany = currentCompanyId();
+            Long ctxUser = currentUserId();
+            if (companyId == null) companyId = ctxCompany;
+            if (userId == null) userId = ctxUser;
+            if (ctxCompany != null && ctxUser != null
+                    && (ctx == null || ctx.getCompanyId() == null || ctx.getUserId() == null)) {
+                log.debug("[TokenMeter] ctx 归属缺失, 已用登录态补齐 companyId={} userId={}", companyId, userId);
+            }
+        }
+
+        if (companyId == null || userId == null) {
+            // 补不上 = 这条记录注定写不进去(列是 NOT NULL)。与其让 SQL 抛一个
+            // 语义不明的约束违例、再被 catch 吞掉, 不如在这里说清楚是哪边缺了。
+            log.error("Token 计量归属缺失, 跳过落库 (companyId={}, userId={}, model={}, scene={}) —— "
+                            + "该次调用的 token/成本没有计入账单",
+                    companyId, userId, model, ctx != null ? ctx.getScene() : null);
+            return;
+        }
+
         TokenUsageRecord record = new TokenUsageRecord();
-        record.companyId = ctx != null ? ctx.getCompanyId() : null;
-        record.userId = ctx != null ? ctx.getUserId() : null;
+        record.companyId = companyId;
+        record.userId = userId;
         record.instanceId = ctx != null ? ctx.getInstanceId() : null;
         record.taskId = ctx != null ? ctx.getTaskId() : null;
         record.model = model;
@@ -59,6 +89,25 @@ public class TokenMeter {
             recorder.save(record);
         } catch (Exception e) {
             log.error("Token 计量写入失败", e);
+        }
+    }
+
+    /** 当前登录态的租户；无登录上下文（内部调用/定时任务）时返回 null。 */
+    private Long currentCompanyId() {
+        try {
+            LoginUser loginUser = SecurityUtils.getLoginUser();
+            return loginUser == null ? null : loginUser.getCompanyId();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 当前登录态的用户；无登录上下文时返回 null。 */
+    private Long currentUserId() {
+        try {
+            return SecurityUtils.getUserId();
+        } catch (Exception e) {
+            return null;
         }
     }
 

@@ -1,13 +1,17 @@
 package com.ruoyi.opc.ai.controller;
 
+import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.ai.gateway.llm.ChatMessage;
 import com.ruoyi.opc.ai.gateway.llm.ChatModelProvider;
 import com.ruoyi.opc.ai.gateway.llm.ChatResponse;
 import com.ruoyi.opc.ai.gateway.llm.LlmGateway;
+import com.ruoyi.opc.ai.gateway.llm.TokenMeter;
 import com.ruoyi.opc.ai.security.PromptGuard;
+import com.ruoyi.system.api.model.LoginUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Comparator;
@@ -23,6 +27,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/opc/llm")
 @RequiredArgsConstructor
+@Slf4j
 public class OpcLlmController {
 
     private final LlmGateway llmGateway;
@@ -74,6 +79,19 @@ public class OpcLlmController {
     public R<ChatResponse> chat(@RequestBody ChatRequest req) {
         // 必须在校验通过之后才触达模型：注入内容连 provider 都不该看见
         guardUserMessages(req.messages);
+        // 计量的归属（租户 + 用户）必须来自**登录态**，不能来自 body。
+        //
+        // 旧实现直接 companyId(req.companyId) / userId(req.userId) 透传 body，
+        // 而前端两个调用点（llm/chat.vue、agent/instance.vue）都不发这两个字段
+        // → company_id 为 null → 落库撞 opc_agent_token_usage.company_id NOT NULL
+        // → 异常被 TokenMeter.record 的 catch 吞掉（只打一行 error）
+        // → 结果是**每一次** LLM 调用的用量/成本记录都静默丢失，
+        //   而 /opc/finance/agg/token-usage 正好读这张表做成本 KPI —— 于是账单一直是空的。
+        //
+        // body 里的 companyId/userId 现在只作为「无登录上下文」时的兜底（内部调用/定时任务），
+        // 有登录上下文时一律以登录态为准：客户端说什么不算数。
+        Long companyId = resolveCompanyId(req.companyId);
+        Long userId = resolveUserId(req.userId);
         ChatResponse resp = llmGateway.chat(req.messages, ChatModelProvider.ChatOptions.builder()
                 .temperature(req.temperature)
                 .maxTokens(req.maxTokens)
@@ -81,13 +99,52 @@ public class OpcLlmController {
                 .toolChoice(req.toolChoice)
                 .user(req.user)
                 .build(), LlmGateway.ChatContext.builder()
-                .companyId(req.companyId)
-                .userId(req.userId)
+                .companyId(companyId)
+                .userId(userId)
                 .instanceId(req.instanceId)
                 .taskId(req.taskId)
                 .scene(req.scene)
                 .build());
         return R.ok(resp);
+    }
+
+    /**
+     * 解析计量的租户归属。
+     *
+     * <p>有登录上下文时以登录态为准（{@code LoginUser.companyId} 是登录时
+     * 由 {@code UserCompanyResolver} 解析出来、随 token 下发的），body 里带的
+     * companyId 只用于对照告警 —— 客户端可以随便填，不能拿它决定写到谁名下。</p>
+     *
+     * <p>无登录上下文时（内部服务调用 / 定时任务）退回 body 的值，让调用方自己负责；
+     * 此时若仍是 null，{@link TokenMeter} 会记一条可定位的告警并跳过落库，
+     * 而不是让 SQL 抛一个看不懂的 NOT NULL 违例。</p>
+     */
+    private Long resolveCompanyId(Long requested) {
+        LoginUser loginUser = SecurityUtils.getLoginUser();
+        if (loginUser == null) {
+            log.warn("[LLM] 无登录上下文, 计量租户退回请求体的 companyId={}", requested);
+            return requested;
+        }
+        Long own = loginUser.getCompanyId();
+        if (requested != null && !requested.equals(own)) {
+            log.warn("[LLM] 请求体的 companyId={} 与登录租户 {} 不一致, 以登录态为准", requested, own);
+        }
+        return own;
+    }
+
+    /**
+     * 解析计量的用户归属。有登录上下文时以登录态为准。
+     */
+    private Long resolveUserId(Long requested) {
+        Long own = SecurityUtils.getUserId();
+        if (own == null) {
+            log.warn("[LLM] 无登录上下文, 计量用户退回请求体的 userId={}", requested);
+            return requested;
+        }
+        if (requested != null && !requested.equals(own)) {
+            log.warn("[LLM] 请求体的 userId={} 与登录用户 {} 不一致, 以登录态为准", requested, own);
+        }
+        return own;
     }
 
     @Operation(summary = "列出可用模型（数据驱动：所有 enabled=true 的 provider）")
