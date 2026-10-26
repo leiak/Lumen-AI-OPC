@@ -2061,6 +2061,127 @@ except Exception:
   fi
 }
 
+# ---------- 18. 多公司切租户 (3d 回归护栏) ----------
+#
+# 3d 修的是「多公司用户只能看见第一家公司」。这条链路上有两处必须守住:
+#
+#   18.1 「我加入的公司」要能列出来, 且当前租户要有 current 标记
+#        以前这个列表只按 owner_user_id 过滤 —— 被邀请进别人公司的员工
+#        (demo 里 user 101 挂在公司 2 名下) 拿到的是空数组, 界面上直接显示
+#        「没有公司」; 而且默认选中第一家, 显示的公司名和真实租户对不上。
+#        探针: 列表非空 + 恰好一条 current=true。
+#
+#   18.2 不能切到自己不是成员的公司
+#        切换 = 改写服务端的登录态 (Redis 里的 LoginUser.companyId)。
+#        如果只凭请求体里的 id 就改, 任何登录用户都能把租户换成别家公司 ——
+#        换完就能读别人家的财务/订单。探针: admin (公司 1 的成员) 去切公司 2
+#        (公司 2 的成员是 101) → 必须被拒 (body.code 403), 且当前租户不变。
+#
+#   18.3 每家公司都得有在职成员
+#        createCompany 以前只写 opc_company_profile、不写 opc_company_member ——
+#        自己开的公司对自己都不是租户 (companyId 为空 → 所有租户接口 400)。
+#        探针: NORMAL 公司里「没有 ACTIVE 成员行」的数量必须为 0。
+check_company_switch() {
+  hr
+  echo "[18] 多公司切租户 (3d 回归护栏)"
+  hr
+
+  local base="http://${GATEWAY_HOST}:${GATEWAY_PORT}"
+  local login_body token
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "${base}/login" 2>/dev/null) || true
+  token=$(echo "${login_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data', {})
+    print(d.get('token','') or d.get('access_token',''))
+except Exception:
+    print('')
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    nok "登录失败, 多公司切租户护栏无法验证"
+    return
+  fi
+  ok "登录成功 (admin)"
+
+  # --- 18.1 我加入的公司 ---
+  local members_body list_count current_id
+  members_body=$(curl -s -m 15 \
+    -H "Authorization: Bearer ${token}" \
+    "${base}/opc/user/company-members" 2>/dev/null) || members_body=""
+  list_count=$(printf '%s' "${members_body}" | python -c "
+import sys,json
+try:
+    data = json.load(sys.stdin).get('data') or []
+    print(len(data) if isinstance(data, list) else -1)
+except Exception:
+    print(-1)
+" 2>/dev/null)
+  current_id=$(printf '%s' "${members_body}" | python -c "
+import sys,json
+try:
+    data = json.load(sys.stdin).get('data') or []
+    cur = [c for c in data if c.get('current')]
+    print(cur[0].get('id','') if cur else '')
+except Exception:
+    print('')
+" 2>/dev/null)
+  if [[ "${list_count}" == "-1" ]]; then
+    nok "18.1 GET /opc/user/company-members 读不出列表 (返回体不是预期结构) — 护栏空转"
+  elif [[ "${list_count}" -le 0 ]]; then
+    nok "18.1 我加入的公司是空的 — 员工看不到自己所在的公司"
+  elif [[ -z "${current_id}" ]]; then
+    nok "18.1 列表里没有 current=true 的项 — 前端显示的公司名会和真实租户对不上"
+  else
+    ok "18.1 我加入的公司 ${list_count} 家, 当前租户 companyId=${current_id}"
+  fi
+
+  # --- 18.2 不能切到自己不是成员的公司 ---
+  #     找一个 admin(user_id=1) 不是成员的公司 —— 切它必须被拒。
+  local other_id
+  other_id=$(db_q "SELECT p.id FROM opc_company_profile p WHERE p.status='NORMAL' AND p.owner_user_id <> 1 AND NOT EXISTS (SELECT 1 FROM opc_company_member m WHERE m.company_id = p.id AND m.user_id = 1) LIMIT 1;" | tr -d '\r')
+  if [[ -z "${other_id}" ]]; then
+    warn "18.2 库里没有 admin 不是成员的公司 — 越权切换这一项跳过"
+  else
+    local code after_id
+    code=$(body_code "$(curl -s -m 15 -X POST \
+      -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+      -d "{\"targetCompanyId\":${other_id}}" \
+      "${base}/opc/user/switch-company" 2>/dev/null)")
+    after_id=$(printf '%s' "$(curl -s -m 15 -H "Authorization: Bearer ${token}" "${base}/opc/user/company-members" 2>/dev/null)" | python -c "
+import sys,json
+try:
+    data = json.load(sys.stdin).get('data') or []
+    cur = [c for c in data if c.get('current')]
+    print(cur[0].get('id','') if cur else '')
+except Exception:
+    print('')
+" 2>/dev/null)
+    if [[ "${code}" == "200" ]]; then
+      nok "18.2 admin 切到了自己不是成员的公司 ${other_id} —— 任何登录用户都能把租户换成别人的公司"
+    elif [[ "${code}" != "403" ]]; then
+      nok "18.2 切到非成员公司 ${other_id} 返回 code=${code} —— 应当是 403"
+    elif [[ "${after_id}" != "${current_id}" ]]; then
+      nok "18.2 切换被拒了, 但当前租户从 ${current_id} 变成了 ${after_id} —— 登录态被改了"
+    else
+      ok "18.2 切到非成员公司 ${other_id} 被拒 (403), 当前租户仍是 ${current_id}"
+    fi
+  fi
+
+  # --- 18.3 每家公司都得有在职成员 ---
+  local orphan
+  orphan=$(db_q "SELECT COUNT(*) FROM opc_company_profile p WHERE p.status='NORMAL' AND NOT EXISTS (SELECT 1 FROM opc_company_member m WHERE m.company_id = p.id AND m.status='ACTIVE');" | tr -d '\r')
+  if [[ -z "${orphan}" ]]; then
+    nok "18.3 查不到成员行 — 护栏空转, 证明不了什么"
+  elif [[ "${orphan}" != "0" ]]; then
+    nok "18.3 有 ${orphan} 家公司没有任何在职成员 —— 这家公司谁都进不去 (建公司时没写成员行)"
+  else
+    ok "18.3 每家 NORMAL 公司都有在职成员"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -2083,6 +2204,7 @@ main() {
   check_port_exposure
   check_body_tenant_and_oauth_state
   check_metering_chain
+  check_company_switch
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"
