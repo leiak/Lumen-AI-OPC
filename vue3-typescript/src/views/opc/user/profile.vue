@@ -80,8 +80,10 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getMyProfile, saveProfile, listMyCompanies, createCompany as createCompanyApi } from '@/api/opc/user'
+import useUserStore from '@/store/modules/user'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
 
+const userStore = useUserStore()
 const profile = ref<any>({})
 const companies = ref<any[]>([])
 const showCreate = ref(false)
@@ -114,9 +116,17 @@ async function save() {
 }
 
 async function createCompany() {
-  await createCompanyApi(newCompany.value)
+  const r: any = await createCompanyApi(newCompany.value)
   ElMessage.success('创建成功')
   showCreate.value = false
+  // 后端建完公司就把当前租户切过去了（登录态里已经是新公司）——
+  // 前端这边同步一下 store 里的 companyId，否则各视图
+  // （useCompanyId 读的就是它）还在用旧租户。
+  const newId = Number(r?.data?.companyId) || 0
+  if (newId) {
+    userStore.companyId = newId
+    ElMessage.success('已切换到新公司')
+  }
   load()
 }
 

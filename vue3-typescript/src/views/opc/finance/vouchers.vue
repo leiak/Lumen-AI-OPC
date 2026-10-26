@@ -5,7 +5,7 @@
         <div class="header">
           <span class="title">财务凭证</span>
           <div>
-            <el-select v-model="companyId" placeholder="选择公司" style="width: 200px" @change="load">
+            <el-select v-model="companyId" placeholder="选择公司" style="width: 200px" @change="onCompanyChange">
               <el-option v-for="c in companies" :key="c.id" :label="c.companyName" :value="c.id" />
             </el-select>
             <el-select v-model="status" placeholder="状态" clearable style="width: 140px; margin-left: 8px" @change="load">
@@ -55,8 +55,12 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { listVouchers, reviewPass, reviewReject, postVoucher, extractFlows as doExtract, generateDailyReport } from '@/api/opc/finance'
-import { listMyCompanies } from '@/api/opc/user'
+import useUserStore from '@/store/modules/user'
+import { useCompanySwitch } from '@/composables/useCompanySwitch'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
+
+const userStore = useUserStore()
+const { switchTo } = useCompanySwitch()
 
 const list = ref<any[]>([])
 const companies = ref<any[]>([])
@@ -106,9 +110,26 @@ async function load() {
 }
 
 async function loadCompanies() {
-  const r = await listMyCompanies()
-  companies.value = r.data || []
-  if (companies.value.length) companyId.value = companies.value[0].id
+  // 公司列表按「成员关系」取（我加入的公司），不是「我创办的」——
+  // 被邀请进别人公司的员工也有租户可选。
+  const list = await userStore.loadCompanies()
+  companies.value = list
+  // 默认落在当前所在的那家公司（不是第一家）—— 否则界面显示的公司名
+  // 和用户真正所在的公司对不上。
+  companyId.value = userStore.defaultCompanyId(list)
+  load()
+}
+
+/**
+ * 选公司 = 切租户。
+ *
+ * <p>服务端一律以登录态为准，光改本地这个参数没用（拿到的还是当前租户的数据），
+ * 所以这里真的去切：切成功会整页重载；取消或本来就是当前公司，就把选择拨回去。</p>
+ */
+async function onCompanyChange(id: number) {
+  const switched = await switchTo(id)
+  if (switched) return
+  companyId.value = userStore.defaultCompanyId()
   load()
 }
 

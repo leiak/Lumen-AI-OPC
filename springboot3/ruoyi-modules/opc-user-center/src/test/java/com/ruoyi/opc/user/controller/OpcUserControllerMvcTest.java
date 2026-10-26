@@ -4,6 +4,7 @@ import com.ruoyi.common.core.context.SecurityContextHolder;
 import com.ruoyi.common.security.handler.GlobalExceptionHandler;
 import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.user.domain.OpcUserProfile;
+import com.ruoyi.opc.user.service.IOpcCompanySwitchService;
 import com.ruoyi.opc.user.service.IOpcUserProfileService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,6 +56,9 @@ class OpcUserControllerMvcTest {
 
     @MockBean
     private IOpcUserProfileService userProfileService;
+
+    @MockBean
+    private IOpcCompanySwitchService companySwitchService;
 
     private static final Long USER_ID = 2002L;
 

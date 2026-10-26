@@ -10,6 +10,10 @@ import useUserStore from '@/store/modules/user'
  *
  * <p>取值拿不到时兜底 1（演示环境里公司 1 是公开展示的那一家）。
  * 真正的隔离由服务端兜底 —— 前端传什么都不算数。</p>
+ *
+ * <p><b>注意</b>：这里返回的是<b>普通数字</b>，在 setup 里取一次就固定了。
+ * 切换公司后这些视图不会自动跟着变 —— 切租户要整页重载
+ * （见 {@code useCompanySwitch}），重载后 setup 重跑，取到的就是新租户。</p>
  */
 export function useCompanyId(): number {
   const userStore = useUserStore()

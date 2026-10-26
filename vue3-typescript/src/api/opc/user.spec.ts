@@ -8,6 +8,8 @@ import {
   getMyProfile,
   saveProfile,
   listMyCompanies,
+  listMyCompanyMembers,
+  switchCompany,
   createCompany,
   getCompany,
   updateCompany,
@@ -135,5 +137,30 @@ describe('api/opc/user', () => {
     const sentinel = Symbol('p')
     requestMock.mockReturnValue(sentinel as any)
     expect(getMyProfile()).toBe(sentinel)
+  })
+
+  // ---- 多公司（可切换的租户）----
+  it('14. listMyCompanyMembers() -> GET /opc/user/company-members', () => {
+    listMyCompanyMembers()
+    expect(requestMock).toHaveBeenCalledWith({
+      url: '/opc/user/company-members',
+      method: 'get',
+    })
+  })
+
+  it('15. switchCompany(7) -> POST /opc/user/switch-company data.targetCompanyId', () => {
+    switchCompany(7)
+    expect(requestMock).toHaveBeenCalledWith({
+      url: '/opc/user/switch-company',
+      method: 'post',
+      data: { targetCompanyId: 7 },
+    })
+  })
+
+  it('16. switchCompany() body field must NOT be named companyId (租户守卫会改写它)', () => {
+    switchCompany(7)
+    const arg = requestMock.mock.calls[0][0] as any
+    expect(arg.data).toHaveProperty('targetCompanyId')
+    expect(arg.data).not.toHaveProperty('companyId')
   })
 })

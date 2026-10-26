@@ -4,9 +4,13 @@ import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.common.core.web.domain.AjaxResult;
 import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.common.exception.OpcException;
+import com.ruoyi.opc.user.domain.OpcCompanyBrief;
 import com.ruoyi.opc.user.domain.OpcCompanyProfile;
+import com.ruoyi.opc.user.domain.OpcCompanySwitchRequest;
 import com.ruoyi.opc.user.domain.OpcUserProfile;
+import com.ruoyi.opc.user.service.IOpcCompanySwitchService;
 import com.ruoyi.opc.user.service.IOpcUserProfileService;
+import com.ruoyi.system.api.model.LoginUser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -62,6 +66,9 @@ class OpcUserControllerTest {
 
     @Mock
     private IOpcUserProfileService userProfileService;
+
+    @Mock
+    private IOpcCompanySwitchService companySwitchService;
 
     @InjectMocks
     private OpcUserController controller;
@@ -225,6 +232,81 @@ class OpcUserControllerTest {
         verifyNoMoreInteractions(userProfileService);
     }
 
+    // ==================== GET /company-members (多公司切换) ====================
+
+    @Test
+    @DisplayName("myCompanyMembers — 返回我加入的公司（按成员关系，不是按 owner）")
+    void myCompanyMembers_returnsMemberCompanies() {
+        OpcCompanyBrief brief = new OpcCompanyBrief();
+        brief.setId(1L);
+        brief.setCompanyName("示例一人公司");
+        brief.setRole("OWNER");
+        brief.setCurrent(Boolean.TRUE);
+        List<OpcCompanyBrief> list = new ArrayList<>();
+        list.add(brief);
+        when(companySwitchService.listMyCompanies(eq(USER_ID), any())).thenReturn(list);
+
+        AjaxResult result = controller.myCompanyMembers();
+
+        assertEquals(200, result.get("code"));
+        assertSame(list, result.get("data"));
+        verify(companySwitchService).listMyCompanies(eq(USER_ID), any());
+    }
+
+    @Test
+    @DisplayName("myCompanyMembers — 我不在任何公司（登录态 companyId=null）→ 传 null 进去，不兜底成 0")
+    void myCompanyMembers_noCurrentCompany_passesNull() {
+        LoginUser loginUser = new LoginUser();
+        loginUser.setUserid(USER_ID);
+        loginUser.setCompanyId(null);
+        securityMock.when(SecurityUtils::getLoginUser).thenReturn(loginUser);
+        when(companySwitchService.listMyCompanies(eq(USER_ID), isNull())).thenReturn(new ArrayList<>());
+
+        AjaxResult result = controller.myCompanyMembers();
+
+        assertEquals(200, result.get("code"));
+        verify(companySwitchService).listMyCompanies(eq(USER_ID), isNull());
+    }
+
+    // ==================== POST /switch-company (多公司切换) ====================
+
+    @Test
+    @DisplayName("switchCompany — 传 targetCompanyId → service 切租户 → 返回 {companyId}")
+    void switchCompany_switchesAndReturnsCompanyId() {
+        OpcCompanySwitchRequest req = new OpcCompanySwitchRequest();
+        req.setTargetCompanyId(2L);
+        when(companySwitchService.switchCompany(USER_ID, 2L)).thenReturn(2L);
+
+        AjaxResult result = controller.switchCompany(req);
+
+        assertEquals(200, result.get("code"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) result.get("data");
+        assertEquals(2L, data.get("companyId"));
+        verify(companySwitchService).switchCompany(USER_ID, 2L);
+    }
+
+    @Test
+    @DisplayName("switchCompany — 请求体没有 targetCompanyId → 报错，不调 service")
+    void switchCompany_missingTarget_returnsError() {
+        AjaxResult result = controller.switchCompany(new OpcCompanySwitchRequest());
+
+        assertEquals(500, result.get("code"));
+        verifyNoInteractions(companySwitchService);
+    }
+
+    @Test
+    @DisplayName("switchCompany — service 抛 403（不是在职成员）→ 透传，不吞")
+    void switchCompany_notMember_propagates() {
+        OpcCompanySwitchRequest req = new OpcCompanySwitchRequest();
+        req.setTargetCompanyId(999L);
+        when(companySwitchService.switchCompany(USER_ID, 999L))
+                .thenThrow(new ServiceException("无权切换到该公司：你不是它的在职成员", 403));
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> controller.switchCompany(req));
+        assertEquals(403, ex.getCode());
+    }
+
     // ==================== POST /company ====================
 
     @Test
@@ -273,6 +355,35 @@ class OpcUserControllerTest {
         assertTrue(ex.getMessage().contains("ownerUserId"));
         verify(userProfileService).createCompany(incoming);
         verifyNoMoreInteractions(userProfileService);
+    }
+
+    @Test
+    @DisplayName("createCompany — 建完自动把当前租户切到新公司（否则新公司对创建人自己不可见）")
+    void createCompany_switchesToNewCompany() {
+        OpcCompanyProfile incoming = new OpcCompanyProfile();
+        incoming.setCompanyName("新公司");
+        when(userProfileService.createCompany(any())).thenReturn(NEW_COMPANY_ID);
+
+        controller.createCompany(incoming);
+
+        verify(companySwitchService).switchCompany(USER_ID, NEW_COMPANY_ID);
+    }
+
+    @Test
+    @DisplayName("createCompany — 切租户失败也不能让建公司失败（公司已经建好了）")
+    void createCompany_switchFails_stillReturnsCompanyId() {
+        OpcCompanyProfile incoming = new OpcCompanyProfile();
+        incoming.setCompanyName("新公司");
+        when(userProfileService.createCompany(any())).thenReturn(NEW_COMPANY_ID);
+        when(companySwitchService.switchCompany(anyLong(), anyLong()))
+                .thenThrow(new ServiceException("无权切换到该公司：你不是它的在职成员", 403));
+
+        AjaxResult result = controller.createCompany(incoming);
+
+        assertEquals(200, result.get("code"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) result.get("data");
+        assertEquals(NEW_COMPANY_ID, data.get("companyId"));
     }
 
     // ==================== GET /company/{id} ====================

@@ -41,8 +41,10 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getWallet, recharge, listOrders } from '@/api/opc/billing'
-import { listMyCompanies } from '@/api/opc/user'
+import useUserStore from '@/store/modules/user'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
+
+const userStore = useUserStore()
 
 const wallet = ref<any>({})
 const orders = ref<any[]>([])
@@ -79,8 +81,11 @@ async function load() {
 }
 
 async function init() {
-  const r = await listMyCompanies()
-  companyId.value = r.data?.[0]?.id
+  // 钱包跟着「当前所在的公司」走 —— 服务端一律以登录态为准，
+  // 之前这里取的是「我创办的第一家公司」，两者对不上时前端显示的余额
+  // 其实是当前租户的钱包。
+  const list = await userStore.loadCompanies()
+  companyId.value = userStore.defaultCompanyId(list)
   load()
 }
 

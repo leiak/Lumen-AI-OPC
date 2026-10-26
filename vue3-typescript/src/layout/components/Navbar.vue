@@ -36,6 +36,9 @@
         <el-tooltip content="消息通知" effect="dark" placement="bottom">
           <header-notice id="header-notice" class="right-menu-item hover-effect" />
         </el-tooltip>
+
+        <!-- 公司（租户）切换：登录只能解析出一家默认公司，多公司用户得能自己切 -->
+        <company-switcher id="company-switcher" class="right-menu-item hover-effect" />
       </template>
 
       <el-dropdown @command="handleCommand" class="avatar-container right-menu-item hover-effect" trigger="hover">
@@ -81,6 +84,7 @@ import useUserStore from '@/store/modules/user'
 import useLockStore from '@/store/modules/lock'
 import useSettingsStore from '@/store/modules/settings'
 import HeaderNotice from './HeaderNotice'
+import CompanySwitcher from '@/components/CompanySwitcher/index.vue'
 
 const route = useRoute()
 const router = useRouter()

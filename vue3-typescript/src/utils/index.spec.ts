@@ -24,7 +24,7 @@
 // - makeMap: builds predicate from comma-separated string; optional lowercase
 // - titleCase / camelCase / isNumberStr: string transforms
 // - constants: exportDefault, beautifierConf shape
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   formatDate,
@@ -90,6 +90,18 @@ describe('formatDate()', () => {
 })
 
 describe('formatTime()', () => {
+  // 冻结时钟：formatTime 内部自己会再取一次 Date.now()，两次取值之间
+  // 只要跨过一个毫秒边界，Math.ceil(diff/60) 就会把 5 分钟算成 6 分钟
+  // （这条用例在完整套件里跑时会随机翻车）。
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T12:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('6. < 30 sec → "刚刚"', () => {
     expect(formatTime(Date.now() - 1000)).toBe('刚刚')
   })

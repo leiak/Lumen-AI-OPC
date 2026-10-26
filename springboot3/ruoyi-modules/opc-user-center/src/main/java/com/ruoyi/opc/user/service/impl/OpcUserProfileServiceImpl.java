@@ -70,6 +70,7 @@ public class OpcUserProfileServiceImpl implements IOpcUserProfileService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Long createCompany(OpcCompanyProfile company) {
         if (company.getOwnerUserId() == null) throw new OpcException("ownerUserId 不能为空");
         if (company.getCompanyCode() == null || company.getCompanyCode().isEmpty()) {
@@ -80,6 +81,18 @@ public class OpcUserProfileServiceImpl implements IOpcUserProfileService {
         company.setScale(company.getScale() == null ? "SMALL" : company.getScale());
         company.setCreateBy(String.valueOf(company.getOwnerUserId()));
         companyMapper.insert(company);
+        // 创建人自动成为这家公司的 OWNER 成员。
+        //
+        // 租户归属的唯一事实来源是 opc_company_member —— 不写这一行，
+        // 新建的公司对创建人自己都是「不存在的租户」：登录期解析不出公司
+        // (UserCompanyResolver 只认 opc_company_member)，companyId 为 null，
+        // 于是所有租户维度的接口一律 400「当前账号未关联企业」。
+        // 整段放在事务里：成员关系写不进去就把公司一起回滚，
+        // 不能留下「有公司、没成员」的半截数据。
+        jdbcTemplate.update(
+                "INSERT INTO opc_company_member (company_id, user_id, role, joined_at, status, create_by, create_time) "
+                        + "VALUES (?, ?, 'OWNER', NOW(), 'ACTIVE', ?, NOW())",
+                company.getId(), company.getOwnerUserId(), String.valueOf(company.getOwnerUserId()));
         return company.getId();
     }
 

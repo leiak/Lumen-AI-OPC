@@ -7,12 +7,17 @@ import com.ruoyi.common.core.web.domain.AjaxResult;
 import com.ruoyi.common.security.annotation.InnerAuth;
 import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.common.exception.OpcException;
+import com.ruoyi.opc.user.domain.OpcCompanyBrief;
 import com.ruoyi.opc.user.domain.OpcCompanyProfile;
+import com.ruoyi.opc.user.domain.OpcCompanySwitchRequest;
 import com.ruoyi.opc.user.domain.OpcUserProfile;
+import com.ruoyi.opc.user.service.IOpcCompanySwitchService;
 import com.ruoyi.opc.user.service.IOpcUserProfileService;
+import com.ruoyi.system.api.model.LoginUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -24,6 +29,7 @@ import java.util.Map;
  *
  * @author OAC
  */
+@Slf4j
 @Tag(name = "OPC 用户中心")
 @RestController
 @RequestMapping("/opc/user")
@@ -31,6 +37,8 @@ import java.util.Map;
 public class OpcUserController extends BaseController {
 
     private final IOpcUserProfileService userProfileService;
+
+    private final IOpcCompanySwitchService companySwitchService;
 
     @Operation(summary = "当前用户画像")
     @GetMapping("/profile")
@@ -53,11 +61,43 @@ public class OpcUserController extends BaseController {
         return success(profile);
     }
 
-    @Operation(summary = "我的公司列表")
+    @Operation(summary = "我的公司列表（我创办的）")
     @GetMapping("/companies")
     public AjaxResult myCompanies() {
         Long userId = SecurityUtils.getUserId();
         return success(userProfileService.listCompaniesByOwner(userId));
+    }
+
+    /**
+     * 我加入的公司（= 可切换的租户）。
+     *
+     * <p>与 {@code /companies} 的区别：那个按 {@code owner_user_id} 过滤，只能看到
+     * <b>自己创办</b>的公司；这个按成员关系（{@code opc_company_member}）过滤，
+     * 被邀请进别人公司的员工也能看到 —— 否则多公司用户在前端只能看见默认那一家。</p>
+     */
+    @Operation(summary = "我加入的公司（可切换的租户）")
+    @GetMapping("/company-members")
+    public AjaxResult myCompanyMembers() {
+        Long userId = SecurityUtils.getUserId();
+        return success(companySwitchService.listMyCompanies(userId, currentCompanyId()));
+    }
+
+    /**
+     * 切换当前公司（租户）。
+     *
+     * <p>请求体里的字段叫 {@code targetCompanyId} 而不是 {@code companyId}：
+     * 后者会被租户守卫的 {@code CompanyIdBodyAdvice} 改写成「当前公司」，
+     * 那样这个端点永远收到当前公司，切换就永远切不过去。</p>
+     */
+    @Operation(summary = "切换当前公司（租户）")
+    @PostMapping("/switch-company")
+    public AjaxResult switchCompany(@RequestBody OpcCompanySwitchRequest request) {
+        if (request == null || request.getTargetCompanyId() == null) {
+            return error("目标公司不能为空");
+        }
+        Long userId = SecurityUtils.getUserId();
+        Long companyId = companySwitchService.switchCompany(userId, request.getTargetCompanyId());
+        return success(Map.of("companyId", companyId));
     }
 
     @Operation(summary = "创建公司")
@@ -66,6 +106,14 @@ public class OpcUserController extends BaseController {
         Long userId = SecurityUtils.getUserId();
         company.setOwnerUserId(userId);
         Long id = userProfileService.createCompany(company);
+        // 建完公司就把当前租户切过去 —— 否则新公司对创建人自己都是「看不见的租户」
+        // （登录态还停在旧公司/空公司），用户会以为没建成功。
+        // 切不过去不该让建公司失败：公司已经建好了，失败只记日志。
+        try {
+            companySwitchService.switchCompany(userId, id);
+        } catch (Exception e) {
+            log.warn("[公司切换] 创建公司后切换租户失败 (companyId={}): {}", id, e.getMessage());
+        }
         return success(Map.of("companyId", id));
     }
 
@@ -89,6 +137,18 @@ public class OpcUserController extends BaseController {
         // (营业执照号、税号、法人、联系方式都在这张表里)。
         requireCompanyAccess(company);
         return success(userProfileService.updateCompany(company) > 0);
+    }
+
+    /**
+     * 当前登录态所在的公司。
+     *
+     * <p>取自 Redis 里的登录缓存（{@code LoginUser.companyId}）——
+     * 切过公司之后这里就是新公司。没有登录上下文时返回 null
+     * （不用 {@code SecurityUtils.getCompanyId()}：它在没有登录上下文时会抛异常）。</p>
+     */
+    private Long currentCompanyId() {
+        LoginUser loginUser = SecurityUtils.getLoginUser();
+        return loginUser == null ? null : loginUser.getCompanyId();
     }
 
     /**

@@ -44,7 +44,7 @@
               </el-select>
             </el-form-item>
             <el-form-item label="公司">
-              <el-select v-model="companyId" placeholder="选择公司" style="width: 100%">
+              <el-select v-model="companyId" placeholder="选择公司" style="width: 100%" @change="onCompanyChange">
                 <el-option v-for="c in companies" :key="c.id" :label="c.companyName" :value="c.id" />
               </el-select>
             </el-form-item>
@@ -71,7 +71,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getAgentDetail, hireAgent } from '@/api/opc/agent'
-import { listMyCompanies } from '@/api/opc/user'
+import useUserStore from '@/store/modules/user'
+import { useCompanySwitch } from '@/composables/useCompanySwitch'
+
+const userStore = useUserStore()
+const { switchTo } = useCompanySwitch()
 
 const route = useRoute()
 const router = useRouter()
@@ -104,9 +108,22 @@ async function loadDetail() {
 }
 
 async function loadCompanies() {
-  const r = await listMyCompanies()
-  companies.value = r.data || []
-  if (companies.value.length) companyId.value = companies.value[0].id
+  // 按成员关系取（我加入的公司）—— 被邀请进别人公司的员工也能选。
+  const list = await userStore.loadCompanies()
+  companies.value = list
+  companyId.value = userStore.defaultCompanyId(list)
+}
+
+/**
+ * 选公司 = 切租户。
+ *
+ * <p>雇佣接口的 companyId 会被服务端的租户守卫改写成「当前公司」，
+ * 所以想雇给别家公司必须先切过去（切完会重载本页，选择仍然保留）。</p>
+ */
+async function onCompanyChange(id: number) {
+  const switched = await switchTo(id)
+  if (switched) return
+  companyId.value = userStore.defaultCompanyId()
 }
 
 async function hire() {

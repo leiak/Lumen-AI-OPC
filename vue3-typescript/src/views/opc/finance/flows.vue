@@ -5,7 +5,7 @@
         <div class="header">
           <span>银行流水</span>
           <div>
-            <el-select v-model="companyId" placeholder="选择公司" style="width: 200px" @change="load">
+            <el-select v-model="companyId" placeholder="选择公司" style="width: 200px" @change="onCompanyChange">
               <el-option v-for="c in companies" :key="c.id" :label="c.companyName" :value="c.id" />
             </el-select>
             <el-button type="primary" @click="showUpload = true" style="margin-left: 8px">导入流水</el-button>
@@ -31,8 +31,12 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { pendingFlows, uploadFlows, extractFlows as doExtract } from '@/api/opc/finance'
-import { listMyCompanies } from '@/api/opc/user'
+import useUserStore from '@/store/modules/user'
+import { useCompanySwitch } from '@/composables/useCompanySwitch'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
+
+const userStore = useUserStore()
+const { switchTo } = useCompanySwitch()
 
 const list = ref<any[]>([])
 const companies = ref<any[]>([])
@@ -78,9 +82,17 @@ async function load() {
 }
 
 async function loadCompanies() {
-  const r = await listMyCompanies()
-  companies.value = r.data || []
-  if (companies.value.length) companyId.value = companies.value[0].id
+  const list = await userStore.loadCompanies()
+  companies.value = list
+  companyId.value = userStore.defaultCompanyId(list)
+  load()
+}
+
+/** 选公司 = 切租户（服务端以登录态为准，光改本地参数拿到的还是当前租户的数据） */
+async function onCompanyChange(id: number) {
+  const switched = await switchTo(id)
+  if (switched) return
+  companyId.value = userStore.defaultCompanyId()
   load()
 }
 

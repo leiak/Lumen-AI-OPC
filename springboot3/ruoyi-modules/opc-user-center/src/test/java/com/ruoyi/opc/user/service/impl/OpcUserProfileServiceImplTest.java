@@ -14,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,6 +24,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
@@ -52,6 +54,9 @@ class OpcUserProfileServiceImplTest {
 
     @Mock
     private OpcCompanyProfileMapper companyMapper;
+
+    @Mock
+    private JdbcTemplate jdbcTemplate;
 
     @InjectMocks
     private OpcUserProfileServiceImpl service;
@@ -308,6 +313,27 @@ class OpcUserProfileServiceImplTest {
         assertEquals("SMALL", inserted.getScale(), "scale=null 时应默认 SMALL");
         assertEquals(String.valueOf(OWNER_USER_ID), inserted.getCreateBy());
         assertNotNull(resultId);
+    }
+
+    @Test
+    @DisplayName("createCompany — 创建人自动成为 OWNER 成员（不写这行，新公司对创建人自己都是不存在的租户）")
+    void createCompany_writesOwnerMembership() {
+        OpcCompanyProfile c = new OpcCompanyProfile();
+        c.setOwnerUserId(OWNER_USER_ID);
+        c.setCompanyName("张三工作室");
+        when(companyMapper.insert(any(OpcCompanyProfile.class))).thenAnswer(inv -> {
+            OpcCompanyProfile arg = inv.getArgument(0);
+            arg.setId(NEXT_COMPANY_ID.getAndIncrement());
+            return 1;
+        });
+
+        service.createCompany(c);
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate).update(sql.capture(), eq(c.getId()), eq(OWNER_USER_ID), any());
+        assertTrue(sql.getValue().contains("opc_company_member"),
+                "成员关系必须写到 opc_company_member（租户归属的唯一事实来源）");
+        assertTrue(sql.getValue().contains("'OWNER'"), "创建人的角色是 OWNER");
     }
 
     @Test
