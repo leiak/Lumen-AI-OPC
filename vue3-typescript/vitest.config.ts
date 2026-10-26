@@ -43,6 +43,8 @@ export default defineConfig({
       include: ['src/**/*.{ts,vue}'],
       exclude: [
         'src/**/*.{spec,test}.ts',
+        // 测试脚手架（setup、契约体检工具）不是产品代码，不参与覆盖率。
+        'src/test/**',
         'src/main.ts',
         'src/App.vue',
         'src/permission.ts',

@@ -21,6 +21,15 @@ export function useNotificationSocket() {
 
   let ws: WebSocket | null = null
   let reconnectTimer: number | null = null
+  /**
+   * 主动断开过 —— 之后不再自动重连。
+   *
+   * <p>{@code close()} 触发的 {@code onclose} 是<b>异步</b>的：disconnect()
+   * 里刚把 socket 关掉，onclose 还会照常跑一遍，而它原本无条件排一个
+   * 3 秒后的重连。于是组件卸载之后，socket 照样每 3 秒重连一次 ——
+   * 页面来回切几轮，连接就攒下来了。</p>
+   */
+  let disposed = false
 
   async function refresh() {
     loading.value = true
@@ -40,6 +49,8 @@ export function useNotificationSocket() {
 
   function connect() {
     if (ws) return
+    // 显式重连（而不是自动重连）—— 恢复「断了可以自己再连上」的能力
+    disposed = false
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
     const token = getToken() || ''
@@ -57,7 +68,8 @@ export function useNotificationSocket() {
     ws.onclose = () => {
       connected.value = false
       ws = null
-      scheduleReconnect()
+      // 主动关掉的（disconnect）不再重连
+      if (!disposed) scheduleReconnect()
     }
     ws.onmessage = async (evt) => {
       try {
@@ -75,6 +87,7 @@ export function useNotificationSocket() {
   }
 
   function scheduleReconnect() {
+    if (disposed) return
     if (reconnectTimer != null) return
     reconnectTimer = window.setTimeout(() => {
       reconnectTimer = null
@@ -83,6 +96,7 @@ export function useNotificationSocket() {
   }
 
   function disconnect() {
+    disposed = true
     if (reconnectTimer != null) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
