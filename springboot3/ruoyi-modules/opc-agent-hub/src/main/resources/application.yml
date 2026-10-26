@@ -59,6 +59,51 @@ jasypt:
   encryptor:
     password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
 
+# OPC LLM Gateway 配置
+#
+# 为什么 agent-hub 也要配 provider:
+#   agent-hub 的 @ComponentScan 覆盖 com.ruoyi.opc, 所以 opc-ai-core 的
+#   LlmGateway / AgentRuntime / 各 ChatModelProvider 都会在 agent-hub 里成bean。
+#   工作流的 LLM 节点 (WorkflowEngine → AgentRuntime → LlmGateway) 是**进程内**
+#   调用 provider, 不走 Feign —— 于是 agent-hub 自己就得有一份 provider 配置和凭证。
+#
+#   以前这里什么都没有 → 所有 provider 的 api-key 都是空 → enabled() 恒为 false
+#   → LlmGateway.chat 抛「所有 LLM provider 失败」
+#   → **工作流只要带 LLM 节点就必然失败**(定时任务 sys_job 里「财务日报」那条
+#     就是这么废的), 也就没有任何用量记录可言 —— 连「漏记」都谈不上, 是压根没调成。
+#
+#   注意 key 仍然只从环境变量读, 不写进仓库; 缺 key 时 provider 自动 disabled,
+#   不会带着假凭证去打 provider。
+opc:
+  llm:
+    primary: MiniMax-Text-01
+    fallback: deepseek-v3
+    enable-cache: true
+    cache-ttl: 3600
+    max-retries: 3
+    timeout-seconds: 60
+    deepseek:
+      enabled: false
+      api-key: ${DEEPSEEK_API_KEY:}
+      base-url: https://api.deepseek.com/v1
+      model: deepseek-chat
+    minimax:
+      enabled: true
+      api-key: ${MINIMAX_API_KEY:}
+      base-url: https://api.minimaxi.com/v1
+      model: MiniMax-Text-01
+    openai:
+      enabled: false
+      api-key: ${OPENAI_API_KEY:}
+      base-url: https://api.openai.com/v1
+      model: gpt-4o-mini
+  memory:
+    short-term-ttl: 86400
+    long-term-collection: opc_memory
+  agent:
+    max-steps: 10
+    step-timeout-seconds: 30
+
 mybatis:
   mapper-locations: classpath*:mapper/**/*.xml
   type-aliases-package: com.ruoyi.opc.agent.domain

@@ -21,6 +21,7 @@
 #  14) CRM 归属守卫 (per-user IDOR 回归护栏)
 #  15) 端口收敛护栏 (业务端口不得外露)
 #  16) 请求体租户归属 + OAuth state 签名 (3b 回归护栏)
+#  17) LLM 计量链 (3c 回归护栏)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -39,6 +40,9 @@ GATEWAY_PORT="${GATEWAY_PORT:-8080}"
 FRONTEND_PORT="${FRONTEND_PORT:-8079}"
 NACOS_PORT="${NACOS_PORT:-8848}"
 MYSQL_PORT="${MYSQL_PORT:-3308}"
+# opc-agent-hub 的宿主机端口 (只绑 127.0.0.1)。第 17 节要直连它:
+# agent-hub 的 provider 凭证配没配, 从网关那侧看不出来 —— 只能直连问它自己。
+AGENT_HUB_PORT="${AGENT_HUB_PORT:-9303}"
 RED='\033[0;31m'
 GRN='\033[0;32m'
 YEL='\033[0;33m'
@@ -64,6 +68,18 @@ db_q() {
   local out
   out="$(mysql -N -B ry-vue-opc -e "$1" 2>/dev/null)" || return 1
   printf '%s' "${out}" | tr -d '\r'
+}
+
+# 取业务返回体里的 code (RuoYi 的业务错误是 HTTP 200 + body.code, 不是 HTTP 错误码)。
+# 解析不出来返回 "-1" —— 跟「后端明确回了 0/500」区分开, 免得把「读不懂」当成「通过」。
+body_code() {
+  printf '%s' "$1" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null
 }
 
 # ---------- 1. 容器 Up 检查 ----------
@@ -1916,6 +1932,135 @@ except Exception:
   fi
 }
 
+# ---------- 17. LLM 计量链 (3c 回归护栏) ----------
+#
+# 3c 的洞有三处, 互相独立, 这里各配一个探针:
+#
+#   17.1 缓存命中也要计量
+#        以前 LlmGateway 在缓存命中时直接 return, 根本不调 tokenMeter.record ——
+#        缓存越命中, 账单越空。修法: 命中也计量, token 数照记、费用记 0。
+#        探针: **同一段**消息连发两次 → 计量表必须长 2 行; 第二行 request_id 以
+#        "cache-" 开头 (LlmGateway 命中时打的标记) 且 cost = 0。
+#        消息里要带一次性随机串 —— 否则会命中上一次巡检留下的缓存条目,
+#        第一次就不是 miss 了, 探针就变成在测空气。
+#
+#   17.2 agent-hub 自己也得能调 LLM
+#        工作流的 LLM 节点 (WorkflowEngine → AgentRuntime → LlmGateway) 是**进程内**
+#        直连 provider, 不走 Feign —— 所以 agent-hub 自己得有一份 provider 凭证。
+#        以前它一个都没有 → 所有 provider 的 enabled() 恒为 false
+#        → 工作流只要带 LLM 节点就必然失败 (连「漏记」都谈不上, 是压根没调成)。
+#        探针: 直连 agent-hub 的 /opc/llm/chat (127.0.0.1:${AGENT_HUB_PORT}) → body.code 必须是 200。
+#
+#   17.3 没有登录态的内部调用也要记账
+#        工作流是定时触发的 (@InnerAuth, 只有 Quartz 能调), 本来就没有登录态;
+#        归属必须由工作流自己带进 LLM 调用, 否则这次调用的 token/成本凭空消失。
+#        探针: 用内部端点触发一次工作流 → 计量表必须长行, 且新行的
+#        company_id / user_id 都是 0 (系统模板工作流归 0 = 系统)。
+#        这一步会在 opc_agent_workflow_run 里多一条运行记录 —— 那是运行日志, 不是业务数据。
+check_metering_chain() {
+  hr
+  echo "[17] LLM 计量链 (3c 回归护栏)"
+  hr
+
+  local base="http://${GATEWAY_HOST}:${GATEWAY_PORT}"
+  local hub="http://127.0.0.1:${AGENT_HUB_PORT}"
+
+  # --- 登录 (admin → 公司 1) ---
+  local login_body token
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "${base}/login" 2>/dev/null) || true
+  token=$(echo "${login_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data', {})
+    print(d.get('token','') or d.get('access_token',''))
+except Exception:
+    print('')
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    nok "登录失败, LLM 计量链护栏无法验证"
+    return
+  fi
+  ok "登录成功 (admin → 公司1)"
+
+  # --- 17.1 缓存命中也要计量 ---
+  local nonce msg before after last_req last_cost code1 code2
+  nonce="n$(date +%s%N | tail -c 7)"
+  msg="只回复一个字:好 ${nonce}"
+  before=$(db_q "SELECT COUNT(*) FROM opc_agent_token_usage;" | tr -d '\r')
+  code1=$(body_code "$(curl -s -m 90 -X POST \
+    -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+    -d "{\"messages\":[{\"role\":\"user\",\"content\":\"${msg}\"}]}" \
+    "${base}/opc/llm/chat" 2>/dev/null)")
+  sleep 2
+  code2=$(body_code "$(curl -s -m 90 -X POST \
+    -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+    -d "{\"messages\":[{\"role\":\"user\",\"content\":\"${msg}\"}]}" \
+    "${base}/opc/llm/chat" 2>/dev/null)")
+  sleep 3
+  after=$(db_q "SELECT COUNT(*) FROM opc_agent_token_usage;" | tr -d '\r')
+  last_req=$(db_q "SELECT request_id FROM opc_agent_token_usage ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+  last_cost=$(db_q "SELECT cost FROM opc_agent_token_usage ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+  if [[ "${code1}" != "200" || "${code2}" != "200" ]]; then
+    warn "17.1 /opc/llm/chat 没成功 (code1=${code1} code2=${code2}) — provider 可能不可用, 护栏未能验证"
+  elif [[ -z "${after}" || -z "${before}" ]]; then
+    nok "17.1 计量表查不到 — 护栏空转, 证明不了什么"
+  elif [[ "${after}" -le $((before + 1)) ]]; then
+    nok "17.1 两次同样的调用只让计量表从 ${before} 变成 ${after} 行 — 缓存命中那次没计量 (第 2 次应记 token、费用记 0)"
+  elif [[ "${last_req}" != cache-* ]]; then
+    nok "17.1 最后一行 request_id=${last_req:-空} —— 缓存命中没打上 'cache-' 标记, 走的还是 provider"
+  elif [[ "${last_cost}" != "0.0000" && "${last_cost}" != "0" ]]; then
+    nok "17.1 缓存命中那行 cost=${last_cost} —— 缓存命中不该再付一次 provider 的钱, 必须是 0"
+  else
+    ok "17.1 缓存命中也计量 (${before} → ${after} 行, 末行 request_id=${last_req} cost=${last_cost})"
+  fi
+
+  # --- 17.2 agent-hub 自己的 LLM 网关要能用 ---
+  #     绕开网关直连服务端口: agent-hub 的 provider 凭证配没配, 网关那侧看不出来。
+  local hub_code
+  hub_code=$(body_code "$(curl -s -m 90 -X POST \
+    -H "Content-Type: application/json" \
+    -d "{\"messages\":[{\"role\":\"user\",\"content\":\"只回复一个字:好 hub${nonce}\"}]}" \
+    "${hub}/opc/llm/chat" 2>/dev/null)")
+  if [[ "${hub_code}" == "200" ]]; then
+    ok "17.2 agent-hub 自带的 LLM 网关可用 (直连 127.0.0.1:${AGENT_HUB_PORT} → 200)"
+  else
+    nok "17.2 agent-hub 自带的 LLM 网关不可用 (body.code=${hub_code}) —— 工作流的 LLM 节点必然失败 (provider 凭证没配?)"
+  fi
+
+  # --- 17.3 没有登录态的内部调用也要记账 ---
+  local wf_code wf_before wf_after wf_status wf_body
+  wf_code=$(db_q "SELECT workflow_code FROM opc_agent_workflow WHERE enabled=1 ORDER BY id LIMIT 1;" | tr -d '\r')
+  if [[ -z "${wf_code}" ]]; then
+    warn "17.3 没有启用的工作流 — 内部调用(无登录态)的计量护栏跳过"
+    return
+  fi
+  wf_before=$(db_q "SELECT COUNT(*) FROM opc_agent_token_usage WHERE user_id=0;" | tr -d '\r')
+  wf_body=$(curl -s -m 240 -X POST -H "from-source: inner" \
+    "${hub}/opc/agent/workflows/${wf_code}/trigger?triggerSource=healthcheck" 2>/dev/null) || wf_body=""
+  wf_status=$(printf '%s' "${wf_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data') or {}
+    print(d.get('status','') or '')
+except Exception:
+    print('')
+" 2>/dev/null)
+  sleep 2
+  wf_after=$(db_q "SELECT COUNT(*) FROM opc_agent_token_usage WHERE user_id=0;" | tr -d '\r')
+  if [[ "${wf_status}" == "RUNNING" ]]; then
+    warn "17.3 工作流 ${wf_code} 正在运行中(30 秒去重) — 本次未触发, 护栏未能验证"
+  elif [[ -z "${wf_before}" || -z "${wf_after}" ]]; then
+    nok "17.3 计量表查不到 — 护栏空转, 证明不了什么"
+  elif [[ "${wf_after}" -le "${wf_before}" ]]; then
+    nok "17.3 触发工作流 ${wf_code} (status=${wf_status:-未知}) 后, user_id=0 的计量行没多 (${wf_before} → ${wf_after}) —— 无登录态的内部调用把用量整条丢了"
+  else
+    ok "17.3 工作流 ${wf_code} (status=${wf_status}) 的用量也记账了 (user_id=0 的计量行 ${wf_before} → ${wf_after})"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -1937,6 +2082,7 @@ main() {
   check_crm_ownership
   check_port_exposure
   check_body_tenant_and_oauth_state
+  check_metering_chain
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"

@@ -370,6 +370,13 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: "5672"
       SERVER_PORT: "9303"
+      # LLM provider 凭证 —— agent-hub 内嵌了 opc-ai-core 的 LlmGateway,
+      # 工作流的 LLM 节点 (WorkflowEngine → AgentRuntime → LlmGateway) 是**进程内**
+      # 直连 provider, 不走 Feign, 所以 agent-hub 自己得有一份 key。
+      # 以前这里一个 key 都没有 → 所有 provider 的 enabled() 恒为 false
+      # → 工作流只要带 LLM 节点就必然失败。
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-sk-placeholder}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-ey-placeholder}
     depends_on:
       - nacos1
       - mysql
