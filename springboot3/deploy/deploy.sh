@@ -179,12 +179,20 @@ cmd_rebuild() {
 
   build_one() {
     local module="$1"
-    # compose 服务名与模块名不一定同名(ruoyi-system → aiopc-system)
-    local svc="${2:-aiopc-${module}}"
+    # compose 服务名与模块名**不**一一对应:
+    #   opc-crm      → aiopc-crm       (去掉 opc- 前缀)
+    #   ruoyi-system → aiopc-system    (要显式传, 见下)
+    # 之前写死 aiopc-${module} → 拼成 aiopc-opc-crm, compose 回一句
+    # "no such service" 就把整条部署断了 —— 而且是断在第一个模块,
+    # 看起来像成功。所以下面还有一道存在性检查。
+    local svc="${2:-aiopc-${module#opc-}}"
     local svc_dir="${PROJECT_ROOT}/ruoyi-modules/${module}"
     if [[ ! -d "${svc_dir}" ]]; then
       warn "  模块 ${module} 不存在,跳过"
       return
+    fi
+    if ! docker compose config --services 2>/dev/null | grep -qx "${svc}"; then
+      fail "compose 里没有服务 '${svc}' (模块 ${module}) —— 服务名拼错了"
     fi
     log "[${module}] mvn clean package + copy-dependencies"
     cd "${PROJECT_ROOT}"
