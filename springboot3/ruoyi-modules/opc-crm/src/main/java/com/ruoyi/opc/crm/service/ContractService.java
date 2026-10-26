@@ -10,6 +10,10 @@ public interface ContractService {
     CrmContract activate(Long id, Long operatorId);
     CrmContract expire(Long id, Long operatorId);
     CrmContract terminate(Long id, String reason, Long operatorId);
-    CrmContract getById(Long id);
-    List<CrmContract> listByCustomer(Long customerId);
+
+    /** 按 id 取合同，但**必须**挂在 {@code ownerId} 名下的客户下。 */
+    CrmContract getById(Long id, Long ownerId);
+
+    /** 按客户列合同，且该客户必须属于 {@code ownerId}。 */
+    List<CrmContract> listByCustomer(Long customerId, Long ownerId);
 }

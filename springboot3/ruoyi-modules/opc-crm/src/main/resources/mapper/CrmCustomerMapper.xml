@@ -43,10 +43,11 @@
         WHERE id = #{id} AND deleted = 0
     </update>
 
-    <select id="selectById" resultMap="BaseResultMap">
+    <!-- 归属版取数: id 对上了还得 owner 对上, 越权读一律查不到 -->
+    <select id="selectByIdAndOwner" resultMap="BaseResultMap">
         SELECT <include refid="BaseColumns" />
         FROM opc_crm_customer
-        WHERE id = #{id} AND deleted = 0
+        WHERE id = #{id} AND owner_id = #{ownerId} AND deleted = 0
     </select>
 
     <select id="selectList" resultMap="BaseResultMap">

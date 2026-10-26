@@ -1,9 +1,15 @@
 package com.ruoyi.opc.crm.service;
 
+import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.opc.crm.domain.CrmContract;
+import com.ruoyi.opc.crm.domain.CrmCustomer;
+import com.ruoyi.opc.crm.domain.CrmOpportunity;
 import com.ruoyi.opc.crm.enums.ContractStatus;
 import com.ruoyi.opc.crm.mapper.CrmContractMapper;
+import com.ruoyi.opc.crm.mapper.CrmCustomerMapper;
+import com.ruoyi.opc.crm.mapper.CrmOpportunityMapper;
 import com.ruoyi.opc.crm.service.impl.ContractServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -17,6 +23,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -24,7 +31,17 @@ import static org.mockito.Mockito.*;
 class ContractServiceTest {
 
     @Mock CrmContractMapper mapper;
+    @Mock CrmCustomerMapper customerMapper;
+    @Mock CrmOpportunityMapper opportunityMapper;
     @InjectMocks ContractServiceImpl service;
+
+    @BeforeEach
+    void setUp() {
+        when(customerMapper.selectByIdAndOwner(anyLong(), anyLong()))
+            .thenReturn(CrmCustomer.builder().id(1L).ownerId(1L).build());
+        when(opportunityMapper.selectByIdAndOwner(anyLong(), anyLong()))
+            .thenReturn(CrmOpportunity.builder().id(1L).customerId(1L).build());
+    }
 
     @Test
     void should_create_contract() {
@@ -56,7 +73,7 @@ class ContractServiceTest {
 
     @Test
     void should_activate_draft_contract() {
-        when(mapper.selectById(1L)).thenReturn(CrmContract.builder()
+        when(mapper.selectByIdAndOwner(1L, 10L)).thenReturn(CrmContract.builder()
             .id(1L).status(ContractStatus.DRAFT.name()).build());
         when(mapper.updateById(any())).thenReturn(1);
 
@@ -67,7 +84,7 @@ class ContractServiceTest {
 
     @Test
     void should_expire_active_contract() {
-        when(mapper.selectById(1L)).thenReturn(CrmContract.builder()
+        when(mapper.selectByIdAndOwner(1L, 10L)).thenReturn(CrmContract.builder()
             .id(1L).status(ContractStatus.ACTIVE.name()).build());
         when(mapper.updateById(any())).thenReturn(1);
 
@@ -78,7 +95,7 @@ class ContractServiceTest {
 
     @Test
     void should_terminate_active_contract() {
-        when(mapper.selectById(1L)).thenReturn(CrmContract.builder()
+        when(mapper.selectByIdAndOwner(1L, 10L)).thenReturn(CrmContract.builder()
             .id(1L).status(ContractStatus.ACTIVE.name()).build());
         when(mapper.updateById(any())).thenReturn(1);
 
@@ -88,11 +105,72 @@ class ContractServiceTest {
 
     @Test
     void should_list_by_customer() {
-        when(mapper.selectByCustomerId(1L)).thenReturn(List.of(
+        when(mapper.selectByCustomerIdAndOwner(1L, 10L)).thenReturn(List.of(
             CrmContract.builder().id(1L).customerId(1L).contractNo("C-1").build(),
             CrmContract.builder().id(2L).customerId(1L).contractNo("C-2").build()
         ));
-        List<CrmContract> list = service.listByCustomer(1L);
+        List<CrmContract> list = service.listByCustomer(1L, 10L);
         assertThat(list).hasSize(2);
+    }
+
+    // ---------- 越权回归护栏 ----------
+
+    @Test
+    void should_not_read_another_owners_contract() {
+        when(mapper.selectByIdAndOwner(8L, 10L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(() -> service.getById(8L, 10L), ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(403);
+    }
+
+    @Test
+    void should_not_activate_another_owners_contract() {
+        when(mapper.selectByIdAndOwner(8L, 10L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(() -> service.activate(8L, 10L), ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(403);
+        verify(mapper, never()).updateById(any());
+    }
+
+    @Test
+    void should_not_terminate_another_owners_contract() {
+        when(mapper.selectByIdAndOwner(8L, 10L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(() -> service.terminate(8L, "越权", 10L), ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(403);
+        verify(mapper, never()).updateById(any());
+    }
+
+    @Test
+    void should_not_create_contract_under_another_owners_customer() {
+        when(mapper.countByContractNo("C-X")).thenReturn(0);
+        when(customerMapper.selectByIdAndOwner(11L, 10L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(() -> service.create(CrmContract.builder()
+            .customerId(11L).contractNo("C-X").title("越权").build(), 10L),
+            ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(403);
+        verify(mapper, never()).insert(any());
+    }
+
+    @Test
+    void should_not_create_contract_referencing_another_owners_opportunity() {
+        when(mapper.countByContractNo("C-Y")).thenReturn(0);
+        when(opportunityMapper.selectByIdAndOwner(20L, 10L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(() -> service.create(CrmContract.builder()
+            .customerId(1L).opportunityId(20L).contractNo("C-Y").title("越权").build(), 10L),
+            ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(403);
+        verify(mapper, never()).insert(any());
+    }
+
+    @Test
+    void should_not_list_contracts_of_another_owners_customer() {
+        when(mapper.selectByCustomerIdAndOwner(11L, 10L)).thenReturn(List.of());
+        List<CrmContract> list = service.listByCustomer(11L, 10L);
+        assertThat(list).isEmpty();
+        // mapper 里已经没有不带 owner 的 selectByCustomerId 了
+        verify(mapper).selectByCustomerIdAndOwner(11L, 10L);
     }
 }

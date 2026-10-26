@@ -30,23 +30,30 @@ public class FollowUpController {
 
     private final FollowUpService followUpService;
 
+    /**
+     * 跟进记录列表。
+     *
+     * <p>客户端传的 {@code ownerId} **不采信** —— 归属永远是当前登录用户。
+     * 以前这里是 {@code ownerId != null ? ownerId : 当前用户}, 等于谁都能列出
+     * 别人的跟进记录。</p>
+     */
     @GetMapping
     public R<List<CrmFollowUp>> list(@RequestParam(required = false) Long customerId,
                                      @RequestParam(required = false) Long contactId,
                                      @RequestParam(required = false) Long ownerId) {
-        if (customerId != null) return R.ok(followUpService.listByCustomer(customerId));
+        Long uid = SecurityUtils.getUserId();
+        if (customerId != null) return R.ok(followUpService.listByCustomer(customerId, uid));
         if (contactId != null) {
-            // contactId 维度未提供 listByContact, 回退为按 customer
+            // contactId 维度未提供 listByContact, 回退为空
             // (前端实际不会直接按 contactId 查, 多走 customer 维度)
             return R.ok(List.of());
         }
-        if (ownerId != null) return R.ok(followUpService.listByOwner(ownerId));
-        return R.ok(followUpService.listByOwner(SecurityUtils.getUserId()));
+        return R.ok(followUpService.listByOwner(uid));
     }
 
     @GetMapping("/{id}")
     public R<CrmFollowUp> getById(@PathVariable Long id) {
-        return R.ok(followUpService.getById(id));
+        return R.ok(followUpService.getById(id, SecurityUtils.getUserId()));
     }
 
     @PostMapping
@@ -59,11 +66,15 @@ public class FollowUpController {
         return R.ok(followUpService.markCompleted(id, SecurityUtils.getUserId()));
     }
 
+    /**
+     * 到期提醒。
+     *
+     * <p>同样**不采信**客户端的 ownerId —— 只能看自己的日程。</p>
+     */
     @GetMapping("/scheduled")
     public R<List<CrmFollowUp>> scheduled(
             @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime from,
             @RequestParam(required = false) Long ownerId) {
-        return R.ok(followUpService.listUpcoming(
-            ownerId != null ? ownerId : SecurityUtils.getUserId(), from));
+        return R.ok(followUpService.listUpcoming(SecurityUtils.getUserId(), from));
     }
 }

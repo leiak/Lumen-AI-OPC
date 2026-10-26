@@ -38,7 +38,8 @@ public class CustomerController {
 
     @GetMapping("/{id}")
     public R<CrmCustomer> getById(@PathVariable Long id) {
-        return R.ok(customerService.getById(id));
+        // 归属由服务端判定 —— 客户端传的 ownerId 一律不采信
+        return R.ok(customerService.getById(id, SecurityUtils.getUserId()));
     }
 
     @PostMapping

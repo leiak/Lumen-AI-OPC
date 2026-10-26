@@ -29,12 +29,12 @@ public class ContactController {
 
     @GetMapping
     public R<List<CrmContact>> listByCustomer(@RequestParam Long customerId) {
-        return R.ok(contactService.listByCustomer(customerId));
+        return R.ok(contactService.listByCustomer(customerId, SecurityUtils.getUserId()));
     }
 
     @GetMapping("/{id}")
     public R<CrmContact> getById(@PathVariable Long id) {
-        return R.ok(contactService.getById(id));
+        return R.ok(contactService.getById(id, SecurityUtils.getUserId()));
     }
 
     @PostMapping
@@ -53,9 +53,17 @@ public class ContactController {
         return R.ok();
     }
 
+    /**
+     * 设主联系人。
+     *
+     * <p>{@code customerId} 仍然收着(前端在传), 但**不使用** —— 客户 id 由服务端
+     * 从联系人本身反查, 否则「拿我的 contactId + 别人的 customerId」就能把别人
+     * 客户的主联系人清掉。</p>
+     */
     @PostMapping("/{id}/primary")
-    public R<Void> setPrimary(@PathVariable Long id, @RequestParam Long customerId) {
-        contactService.setPrimary(customerId, id);
+    public R<Void> setPrimary(@PathVariable Long id,
+                              @RequestParam(required = false) Long customerId) {
+        contactService.setPrimary(id, SecurityUtils.getUserId());
         return R.ok();
     }
 }

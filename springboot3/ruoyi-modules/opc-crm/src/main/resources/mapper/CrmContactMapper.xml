@@ -41,17 +41,29 @@
         WHERE id = #{id} AND deleted = 0
     </update>
 
-    <select id="selectById" resultMap="BaseResultMap">
-        SELECT <include refid="BaseColumns" />
-        FROM opc_crm_contact
-        WHERE id = #{id} AND deleted = 0
+    <!--
+      归属版取数: 联系人自己不带 owner_id, 归属沿客户走, 所以 join 客户表比 owner_id。
+      列名带表别名, 但输出列名保持和 BaseColumns 一致(resultMap 按列名映射)。
+    -->
+    <select id="selectByIdAndOwner" resultMap="BaseResultMap">
+        SELECT ct.id, ct.customer_id, ct.name, ct.phone, ct.email, ct.position,
+               ct.is_primary, ct.remark, ct.create_by, ct.create_time,
+               ct.update_by, ct.update_time, ct.deleted
+        FROM opc_crm_contact ct
+        JOIN opc_crm_customer cu ON cu.id = ct.customer_id
+        WHERE ct.id = #{id} AND cu.owner_id = #{ownerId}
+          AND ct.deleted = 0 AND cu.deleted = 0
     </select>
 
-    <select id="selectByCustomerId" resultMap="BaseResultMap">
-        SELECT <include refid="BaseColumns" />
-        FROM opc_crm_contact
-        WHERE customer_id = #{customerId} AND deleted = 0
-        ORDER BY is_primary DESC, create_time DESC
+    <select id="selectByCustomerIdAndOwner" resultMap="BaseResultMap">
+        SELECT ct.id, ct.customer_id, ct.name, ct.phone, ct.email, ct.position,
+               ct.is_primary, ct.remark, ct.create_by, ct.create_time,
+               ct.update_by, ct.update_time, ct.deleted
+        FROM opc_crm_contact ct
+        JOIN opc_crm_customer cu ON cu.id = ct.customer_id
+        WHERE ct.customer_id = #{customerId} AND cu.owner_id = #{ownerId}
+          AND ct.deleted = 0 AND cu.deleted = 0
+        ORDER BY ct.is_primary DESC, ct.create_time DESC
     </select>
 
     <update id="unsetPrimaryForCustomer">
@@ -63,12 +75,6 @@
     <update id="setPrimary">
         UPDATE opc_crm_contact
         SET is_primary = 1, update_time = NOW()
-        WHERE id = #{id} AND deleted = 0
-    </update>
-
-    <update id="deleteById">
-        UPDATE opc_crm_contact
-        SET deleted = 1, update_time = NOW()
         WHERE id = #{id} AND deleted = 0
     </update>
 

@@ -1,7 +1,10 @@
 package com.ruoyi.opc.crm.service.impl;
 
 import com.ruoyi.opc.crm.domain.CrmFollowUp;
+import com.ruoyi.opc.crm.mapper.CrmContactMapper;
+import com.ruoyi.opc.crm.mapper.CrmCustomerMapper;
 import com.ruoyi.opc.crm.mapper.CrmFollowUpMapper;
+import com.ruoyi.opc.crm.service.CrmOwnership;
 import com.ruoyi.opc.crm.service.FollowUpService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +20,8 @@ import java.util.List;
 public class FollowUpServiceImpl implements FollowUpService {
 
     private final CrmFollowUpMapper mapper;
+    private final CrmCustomerMapper customerMapper;
+    private final CrmContactMapper contactMapper;
 
     @Override
     @Transactional
@@ -27,6 +32,9 @@ public class FollowUpServiceImpl implements FollowUpService {
         if (followUp.getContent() == null || followUp.getContent().isBlank()) {
             throw new IllegalArgumentException("Follow-up content cannot be empty (跟进内容不能为空)");
         }
+        // 跟进挂到别人客户下 = 越权写入; contactId 同理(否则能把别人的联系人挂进来)
+        CrmOwnership.requireCustomer(customerMapper, followUp.getCustomerId(), operatorId);
+        CrmOwnership.requireContact(contactMapper, followUp.getContactId(), operatorId);
         followUp.setOwnerId(operatorId);
         followUp.setCreateBy(String.valueOf(operatorId));
         followUp.setUpdateBy(String.valueOf(operatorId));
@@ -41,9 +49,9 @@ public class FollowUpServiceImpl implements FollowUpService {
     @Override
     @Transactional
     public CrmFollowUp markCompleted(Long id, Long operatorId) {
-        CrmFollowUp existing = mapper.selectById(id);
+        CrmFollowUp existing = mapper.selectByIdAndOwner(id, operatorId);
         if (existing == null) {
-            throw new IllegalArgumentException("Follow-up not found: " + id);
+            throw CrmOwnership.denied("跟进记录");
         }
         // Mark as completed by clearing nextAt — no further reminder needed.
         existing.setNextAt(null);
@@ -54,17 +62,17 @@ public class FollowUpServiceImpl implements FollowUpService {
     }
 
     @Override
-    public CrmFollowUp getById(Long id) {
-        CrmFollowUp f = mapper.selectById(id);
+    public CrmFollowUp getById(Long id, Long ownerId) {
+        CrmFollowUp f = mapper.selectByIdAndOwner(id, ownerId);
         if (f == null) {
-            throw new IllegalArgumentException("Follow-up not found: " + id);
+            throw CrmOwnership.denied("跟进记录");
         }
         return f;
     }
 
     @Override
-    public List<CrmFollowUp> listByCustomer(Long customerId) {
-        return mapper.selectByCustomerId(customerId);
+    public List<CrmFollowUp> listByCustomer(Long customerId, Long ownerId) {
+        return mapper.selectByCustomerIdAndOwner(customerId, ownerId);
     }
 
     @Override

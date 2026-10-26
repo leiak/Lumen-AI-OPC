@@ -105,7 +105,7 @@ export interface CrmFollowUp {
 export function listFollowUps(params: {
   customerId?: number
   contactId?: number
-  ownerId?: number
+  /** 不接受 ownerId —— 归属一律由服务端按登录用户判定，传了也不作数。 */
 }): Promise<AjaxResult<CrmFollowUp[]>> {
   return request({ url: '/opc/crm/follow-up', method: 'get', params })
 }

@@ -29,17 +29,22 @@ public class OpportunityController {
 
     private final OpportunityService opportunityService;
 
+    /**
+     * 商机列表。
+     *
+     * <p>三种筛法(customerId / stage / 都不给)都在**当前用户**名下进行 ——
+     * 以前「都不给」直接返回空数组, 看板因此永远是空的。</p>
+     */
     @GetMapping
     public R<List<CrmOpportunity>> list(@RequestParam(required = false) Long customerId,
                                         @RequestParam(required = false) String stage) {
-        if (customerId != null) return R.ok(opportunityService.listByCustomer(customerId));
-        if (stage != null) return R.ok(opportunityService.listByStage(OpportunityStage.valueOf(stage)));
-        return R.ok(List.of());
+        OpportunityStage target = stage == null ? null : OpportunityStage.valueOf(stage);
+        return R.ok(opportunityService.list(SecurityUtils.getUserId(), customerId, target));
     }
 
     @GetMapping("/{id}")
     public R<CrmOpportunity> getById(@PathVariable Long id) {
-        return R.ok(opportunityService.getById(id));
+        return R.ok(opportunityService.getById(id, SecurityUtils.getUserId()));
     }
 
     @PostMapping

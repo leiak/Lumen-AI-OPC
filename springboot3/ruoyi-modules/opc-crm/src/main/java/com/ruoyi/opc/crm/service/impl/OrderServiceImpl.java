@@ -2,7 +2,10 @@ package com.ruoyi.opc.crm.service.impl;
 
 import com.ruoyi.opc.crm.domain.CrmOrder;
 import com.ruoyi.opc.crm.enums.OrderStatus;
+import com.ruoyi.opc.crm.mapper.CrmContractMapper;
+import com.ruoyi.opc.crm.mapper.CrmCustomerMapper;
 import com.ruoyi.opc.crm.mapper.CrmOrderMapper;
+import com.ruoyi.opc.crm.service.CrmOwnership;
 import com.ruoyi.opc.crm.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,10 +21,15 @@ import java.util.List;
 public class OrderServiceImpl implements OrderService {
 
     private final CrmOrderMapper mapper;
+    private final CrmCustomerMapper customerMapper;
+    private final CrmContractMapper contractMapper;
 
     @Override
     @Transactional
     public CrmOrder create(CrmOrder order, Long operatorId) {
+        if (order.getCustomerId() == null) {
+            throw new IllegalArgumentException("customerId required");
+        }
         if (order.getOrderNo() == null || order.getOrderNo().isBlank()) {
             throw new IllegalArgumentException("order_no required (订单编号必填)");
         }
@@ -35,6 +43,9 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException(
                 "order_no already exists: " + order.getOrderNo() + " (订单编号已存在)");
         }
+        // 订单挂在别人客户/合同下 = 越权写入
+        CrmOwnership.requireCustomer(customerMapper, order.getCustomerId(), operatorId);
+        CrmOwnership.requireContract(contractMapper, order.getContractId(), operatorId);
         if (order.getStatus() == null) order.setStatus(OrderStatus.PENDING.name());
         order.setCreateBy(String.valueOf(operatorId));
         order.setUpdateBy(String.valueOf(operatorId));
@@ -48,9 +59,9 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public CrmOrder update(Long id, CrmOrder update, Long operatorId) {
-        CrmOrder existing = mapper.selectById(id);
+        CrmOrder existing = mapper.selectByIdAndOwner(id, operatorId);
         if (existing == null) {
-            throw new IllegalArgumentException("Order not found: " + id);
+            throw CrmOwnership.denied("订单");
         }
         if (update.getItemsJson() != null) existing.setItemsJson(update.getItemsJson());
         if (update.getTotal() != null) existing.setTotal(update.getTotal());
@@ -63,8 +74,8 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public CrmOrder pay(Long id, Long operatorId) {
-        CrmOrder o = mapper.selectById(id);
-        if (o == null) throw new IllegalArgumentException("Order not found: " + id);
+        CrmOrder o = mapper.selectByIdAndOwner(id, operatorId);
+        if (o == null) throw CrmOwnership.denied("订单");
         if (!OrderStatus.PENDING.name().equals(o.getStatus())) {
             throw new IllegalStateException(
                 "Only PENDING can be paid (只有待支付订单可以支付). Current: " + o.getStatus());
@@ -79,8 +90,8 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public CrmOrder ship(Long id, Long operatorId) {
-        CrmOrder o = mapper.selectById(id);
-        if (o == null) throw new IllegalArgumentException("Order not found: " + id);
+        CrmOrder o = mapper.selectByIdAndOwner(id, operatorId);
+        if (o == null) throw CrmOwnership.denied("订单");
         if (!OrderStatus.PAID.name().equals(o.getStatus())) {
             throw new IllegalStateException(
                 "Only PAID can be shipped (只有已支付订单可以发货). Current: " + o.getStatus());
@@ -95,8 +106,8 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public CrmOrder complete(Long id, Long operatorId) {
-        CrmOrder o = mapper.selectById(id);
-        if (o == null) throw new IllegalArgumentException("Order not found: " + id);
+        CrmOrder o = mapper.selectByIdAndOwner(id, operatorId);
+        if (o == null) throw CrmOwnership.denied("订单");
         if (!OrderStatus.SHIPPED.name().equals(o.getStatus())) {
             throw new IllegalStateException(
                 "Only SHIPPED can be completed (只有已发货订单可以完成). Current: " + o.getStatus());
@@ -110,8 +121,8 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public CrmOrder cancel(Long id, String reason, Long operatorId) {
-        CrmOrder o = mapper.selectById(id);
-        if (o == null) throw new IllegalArgumentException("Order not found: " + id);
+        CrmOrder o = mapper.selectByIdAndOwner(id, operatorId);
+        if (o == null) throw CrmOwnership.denied("订单");
         if (OrderStatus.COMPLETED.name().equals(o.getStatus()) ||
             OrderStatus.CANCELLED.name().equals(o.getStatus())) {
             throw new IllegalStateException(
@@ -125,19 +136,19 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public CrmOrder getById(Long id) {
-        CrmOrder o = mapper.selectById(id);
-        if (o == null) throw new IllegalArgumentException("Order not found: " + id);
+    public CrmOrder getById(Long id, Long ownerId) {
+        CrmOrder o = mapper.selectByIdAndOwner(id, ownerId);
+        if (o == null) throw CrmOwnership.denied("订单");
         return o;
     }
 
     @Override
-    public List<CrmOrder> listByCustomer(Long customerId) {
-        return mapper.selectByCustomerId(customerId);
+    public List<CrmOrder> listByCustomer(Long customerId, Long ownerId) {
+        return mapper.selectByCustomerIdAndOwner(customerId, ownerId);
     }
 
     @Override
-    public List<CrmOrder> listByContract(Long contractId) {
-        return mapper.selectByContractId(contractId);
+    public List<CrmOrder> listByContract(Long contractId, Long ownerId) {
+        return mapper.selectByContractIdAndOwner(contractId, ownerId);
     }
 }

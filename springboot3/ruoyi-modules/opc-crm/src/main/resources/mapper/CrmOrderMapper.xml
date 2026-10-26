@@ -47,24 +47,42 @@
         WHERE id = #{id} AND deleted = 0
     </update>
 
-    <select id="selectById" resultMap="BaseResultMap">
-        SELECT <include refid="BaseColumns" />
-        FROM opc_crm_order
-        WHERE id = #{id} AND deleted = 0
+    <!-- 归属版取数: 订单自己不带 owner_id, 归属沿客户走, 所以 join 客户表 -->
+    <select id="selectByIdAndOwner" resultMap="BaseResultMap">
+        SELECT o.id, o.customer_id, o.contract_id, o.order_no, o.items_json, o.total,
+               o.status, o.paid_at, o.shipped_at, o.remark,
+               o.create_by, o.create_time, o.update_by, o.update_time, o.deleted
+        FROM opc_crm_order o
+        JOIN opc_crm_customer cu ON cu.id = o.customer_id
+        WHERE o.id = #{id} AND cu.owner_id = #{ownerId}
+          AND o.deleted = 0 AND cu.deleted = 0
     </select>
 
-    <select id="selectByCustomerId" resultMap="BaseResultMap">
-        SELECT <include refid="BaseColumns" />
-        FROM opc_crm_order
-        WHERE customer_id = #{customerId} AND deleted = 0
-        ORDER BY create_time DESC
+    <select id="selectByCustomerIdAndOwner" resultMap="BaseResultMap">
+        SELECT o.id, o.customer_id, o.contract_id, o.order_no, o.items_json, o.total,
+               o.status, o.paid_at, o.shipped_at, o.remark,
+               o.create_by, o.create_time, o.update_by, o.update_time, o.deleted
+        FROM opc_crm_order o
+        JOIN opc_crm_customer cu ON cu.id = o.customer_id
+        WHERE o.customer_id = #{customerId} AND cu.owner_id = #{ownerId}
+          AND o.deleted = 0 AND cu.deleted = 0
+        ORDER BY o.create_time DESC
     </select>
 
-    <select id="selectByContractId" resultMap="BaseResultMap">
-        SELECT <include refid="BaseColumns" />
-        FROM opc_crm_order
-        WHERE contract_id = #{contractId} AND deleted = 0
-        ORDER BY create_time DESC
+    <!--
+      合同 id 是客户端给的 —— 光比订单自己的客户挡不住「拿我的订单去套别人的合同」,
+      所以这里要求**合同本身**也属于该 owner。
+    -->
+    <select id="selectByContractIdAndOwner" resultMap="BaseResultMap">
+        SELECT o.id, o.customer_id, o.contract_id, o.order_no, o.items_json, o.total,
+               o.status, o.paid_at, o.shipped_at, o.remark,
+               o.create_by, o.create_time, o.update_by, o.update_time, o.deleted
+        FROM opc_crm_order o
+        JOIN opc_crm_contract ct ON ct.id = o.contract_id
+        JOIN opc_crm_customer cu ON cu.id = ct.customer_id
+        WHERE o.contract_id = #{contractId} AND cu.owner_id = #{ownerId}
+          AND o.deleted = 0 AND ct.deleted = 0 AND cu.deleted = 0
+        ORDER BY o.create_time DESC
     </select>
 
     <select id="countByOrderNo" resultType="int">

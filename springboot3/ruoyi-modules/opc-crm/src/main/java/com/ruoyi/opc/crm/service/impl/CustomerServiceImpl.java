@@ -2,6 +2,7 @@ package com.ruoyi.opc.crm.service.impl;
 
 import com.ruoyi.opc.crm.domain.CrmCustomer;
 import com.ruoyi.opc.crm.mapper.CrmCustomerMapper;
+import com.ruoyi.opc.crm.service.CrmOwnership;
 import com.ruoyi.opc.crm.service.CustomerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,9 +38,11 @@ public class CustomerServiceImpl implements CustomerService {
     @Override
     @Transactional
     public CrmCustomer update(Long id, CrmCustomer update, Long operatorId) {
-        CrmCustomer existing = mapper.selectById(id);
+        // 取数就带 owner —— 「id 对上了但不是你的」在这里直接查不到,
+        // 不给探测方留存在性预言机(不存在 和 不是你的, 同一句话)。
+        CrmCustomer existing = mapper.selectByIdAndOwner(id, operatorId);
         if (existing == null) {
-            throw new IllegalArgumentException("Customer not found: " + id);
+            throw CrmOwnership.denied("客户");
         }
         if (update.getName() != null) existing.setName(update.getName());
         if (update.getSource() != null) existing.setSource(update.getSource());
@@ -57,9 +60,9 @@ public class CustomerServiceImpl implements CustomerService {
     @Override
     @Transactional
     public void delete(Long id, Long operatorId) {
-        CrmCustomer existing = mapper.selectById(id);
+        CrmCustomer existing = mapper.selectByIdAndOwner(id, operatorId);
         if (existing == null) {
-            throw new IllegalArgumentException("Customer not found: " + id);
+            throw CrmOwnership.denied("客户");
         }
         existing.setDeleted(1);
         existing.setUpdateBy(String.valueOf(operatorId));
@@ -67,10 +70,10 @@ public class CustomerServiceImpl implements CustomerService {
     }
 
     @Override
-    public CrmCustomer getById(Long id) {
-        CrmCustomer c = mapper.selectById(id);
+    public CrmCustomer getById(Long id, Long ownerId) {
+        CrmCustomer c = mapper.selectByIdAndOwner(id, ownerId);
         if (c == null) {
-            throw new IllegalArgumentException("Customer not found: " + id);
+            throw CrmOwnership.denied("客户");
         }
         return c;
     }

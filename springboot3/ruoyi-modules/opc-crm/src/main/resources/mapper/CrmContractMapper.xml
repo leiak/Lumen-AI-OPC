@@ -48,17 +48,28 @@
         WHERE id = #{id} AND deleted = 0
     </update>
 
-    <select id="selectById" resultMap="BaseResultMap">
-        SELECT <include refid="BaseColumns" />
-        FROM opc_crm_contract
-        WHERE id = #{id} AND deleted = 0
+    <!--
+      归属版取数: 合同自己不带 owner_id, 归属沿客户走, 所以 join 客户表比 owner_id。
+    -->
+    <select id="selectByIdAndOwner" resultMap="BaseResultMap">
+        SELECT ct.id, ct.customer_id, ct.opportunity_id, ct.contract_no, ct.title, ct.amount,
+               ct.status, ct.signed_at, ct.expire_at, ct.file_url, ct.remark,
+               ct.create_by, ct.create_time, ct.update_by, ct.update_time, ct.deleted
+        FROM opc_crm_contract ct
+        JOIN opc_crm_customer cu ON cu.id = ct.customer_id
+        WHERE ct.id = #{id} AND cu.owner_id = #{ownerId}
+          AND ct.deleted = 0 AND cu.deleted = 0
     </select>
 
-    <select id="selectByCustomerId" resultMap="BaseResultMap">
-        SELECT <include refid="BaseColumns" />
-        FROM opc_crm_contract
-        WHERE customer_id = #{customerId} AND deleted = 0
-        ORDER BY create_time DESC
+    <select id="selectByCustomerIdAndOwner" resultMap="BaseResultMap">
+        SELECT ct.id, ct.customer_id, ct.opportunity_id, ct.contract_no, ct.title, ct.amount,
+               ct.status, ct.signed_at, ct.expire_at, ct.file_url, ct.remark,
+               ct.create_by, ct.create_time, ct.update_by, ct.update_time, ct.deleted
+        FROM opc_crm_contract ct
+        JOIN opc_crm_customer cu ON cu.id = ct.customer_id
+        WHERE ct.customer_id = #{customerId} AND cu.owner_id = #{ownerId}
+          AND ct.deleted = 0 AND cu.deleted = 0
+        ORDER BY ct.create_time DESC
     </select>
 
     <select id="countByContractNo" resultType="int">

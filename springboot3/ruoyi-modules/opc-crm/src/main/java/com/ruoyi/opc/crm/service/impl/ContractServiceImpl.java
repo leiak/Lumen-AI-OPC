@@ -3,7 +3,10 @@ package com.ruoyi.opc.crm.service.impl;
 import com.ruoyi.opc.crm.domain.CrmContract;
 import com.ruoyi.opc.crm.enums.ContractStatus;
 import com.ruoyi.opc.crm.mapper.CrmContractMapper;
+import com.ruoyi.opc.crm.mapper.CrmCustomerMapper;
+import com.ruoyi.opc.crm.mapper.CrmOpportunityMapper;
 import com.ruoyi.opc.crm.service.ContractService;
+import com.ruoyi.opc.crm.service.CrmOwnership;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,10 +21,15 @@ import java.util.List;
 public class ContractServiceImpl implements ContractService {
 
     private final CrmContractMapper mapper;
+    private final CrmCustomerMapper customerMapper;
+    private final CrmOpportunityMapper opportunityMapper;
 
     @Override
     @Transactional
     public CrmContract create(CrmContract contract, Long operatorId) {
+        if (contract.getCustomerId() == null) {
+            throw new IllegalArgumentException("customerId required");
+        }
         if (contract.getContractNo() == null || contract.getContractNo().isBlank()) {
             throw new IllegalArgumentException("contract_no required (合同编号必填)");
         }
@@ -30,6 +38,9 @@ public class ContractServiceImpl implements ContractService {
                 "contract_no already exists: " + contract.getContractNo() +
                 " (合同编号已存在)");
         }
+        // 合同挂在别人客户/商机下 = 越权写入
+        CrmOwnership.requireCustomer(customerMapper, contract.getCustomerId(), operatorId);
+        CrmOwnership.requireOpportunity(opportunityMapper, contract.getOpportunityId(), operatorId);
         if (contract.getStatus() == null) contract.setStatus(ContractStatus.DRAFT.name());
         contract.setCreateBy(String.valueOf(operatorId));
         contract.setUpdateBy(String.valueOf(operatorId));
@@ -43,9 +54,9 @@ public class ContractServiceImpl implements ContractService {
     @Override
     @Transactional
     public CrmContract update(Long id, CrmContract update, Long operatorId) {
-        CrmContract existing = mapper.selectById(id);
+        CrmContract existing = mapper.selectByIdAndOwner(id, operatorId);
         if (existing == null) {
-            throw new IllegalArgumentException("Contract not found: " + id);
+            throw CrmOwnership.denied("合同");
         }
         if (update.getTitle() != null) existing.setTitle(update.getTitle());
         if (update.getAmount() != null) existing.setAmount(update.getAmount());
@@ -60,9 +71,9 @@ public class ContractServiceImpl implements ContractService {
     @Override
     @Transactional
     public CrmContract activate(Long id, Long operatorId) {
-        CrmContract c = mapper.selectById(id);
+        CrmContract c = mapper.selectByIdAndOwner(id, operatorId);
         if (c == null) {
-            throw new IllegalArgumentException("Contract not found: " + id);
+            throw CrmOwnership.denied("合同");
         }
         if (!ContractStatus.DRAFT.name().equals(c.getStatus())) {
             throw new IllegalStateException(
@@ -78,9 +89,9 @@ public class ContractServiceImpl implements ContractService {
     @Override
     @Transactional
     public CrmContract expire(Long id, Long operatorId) {
-        CrmContract c = mapper.selectById(id);
+        CrmContract c = mapper.selectByIdAndOwner(id, operatorId);
         if (c == null) {
-            throw new IllegalArgumentException("Contract not found: " + id);
+            throw CrmOwnership.denied("合同");
         }
         if (!ContractStatus.ACTIVE.name().equals(c.getStatus())) {
             throw new IllegalStateException(
@@ -96,9 +107,9 @@ public class ContractServiceImpl implements ContractService {
     @Override
     @Transactional
     public CrmContract terminate(Long id, String reason, Long operatorId) {
-        CrmContract c = mapper.selectById(id);
+        CrmContract c = mapper.selectByIdAndOwner(id, operatorId);
         if (c == null) {
-            throw new IllegalArgumentException("Contract not found: " + id);
+            throw CrmOwnership.denied("合同");
         }
         if (ContractStatus.TERMINATED.name().equals(c.getStatus()) ||
             ContractStatus.EXPIRED.name().equals(c.getStatus())) {
@@ -115,16 +126,16 @@ public class ContractServiceImpl implements ContractService {
     }
 
     @Override
-    public CrmContract getById(Long id) {
-        CrmContract c = mapper.selectById(id);
+    public CrmContract getById(Long id, Long ownerId) {
+        CrmContract c = mapper.selectByIdAndOwner(id, ownerId);
         if (c == null) {
-            throw new IllegalArgumentException("Contract not found: " + id);
+            throw CrmOwnership.denied("合同");
         }
         return c;
     }
 
     @Override
-    public List<CrmContract> listByCustomer(Long customerId) {
-        return mapper.selectByCustomerId(customerId);
+    public List<CrmContract> listByCustomer(Long customerId, Long ownerId) {
+        return mapper.selectByCustomerIdAndOwner(customerId, ownerId);
     }
 }

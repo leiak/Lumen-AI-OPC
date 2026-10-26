@@ -1,5 +1,6 @@
 package com.ruoyi.opc.crm.service;
 
+import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.opc.crm.domain.CrmCustomer;
 import com.ruoyi.opc.crm.mapper.CrmCustomerMapper;
 import com.ruoyi.opc.crm.service.impl.CustomerServiceImpl;
@@ -56,7 +57,7 @@ class CustomerServiceTest {
     @Test
     void should_update_existing_customer() {
         CrmCustomer existing = CrmCustomer.builder().id(1L).name("Old").ownerId(1L).level("C").source("OTHER").build();
-        when(mapper.selectById(1L)).thenReturn(existing);
+        when(mapper.selectByIdAndOwner(1L, 1L)).thenReturn(existing);
 
         CrmCustomer update = CrmCustomer.builder().name("New").level("B").build();
         CrmCustomer result = service.update(1L, update, 1L);
@@ -68,15 +69,18 @@ class CustomerServiceTest {
 
     @Test
     void should_throw_when_update_nonexistent() {
-        when(mapper.selectById(99L)).thenReturn(null);
-        assertThatThrownBy(() -> service.update(99L, CrmCustomer.builder().name("X").build(), 1L))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("not found");
+        when(mapper.selectByIdAndOwner(99L, 1L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(
+            () -> service.update(99L, CrmCustomer.builder().name("X").build(), 1L),
+            ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(403);
+        assertThat(ex.getMessage()).contains("无权访问");
     }
 
     @Test
     void should_soft_delete_by_id() {
-        when(mapper.selectById(1L)).thenReturn(CrmCustomer.builder().id(1L).name("X").build());
+        when(mapper.selectByIdAndOwner(1L, 1L)).thenReturn(CrmCustomer.builder().id(1L).name("X").build());
         service.delete(1L, 1L);
         verify(mapper).updateById(argThat(c -> c.getDeleted() == 1));
     }
@@ -91,14 +95,55 @@ class CustomerServiceTest {
 
     @Test
     void should_throw_when_get_nonexistent() {
-        when(mapper.selectById(99L)).thenReturn(null);
-        assertThatThrownBy(() -> service.getById(99L))
-            .isInstanceOf(IllegalArgumentException.class);
+        when(mapper.selectByIdAndOwner(99L, 1L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(() -> service.getById(99L, 1L), ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(403);
     }
 
     @Test
     void should_count_by_owner() {
         when(mapper.countByOwner(1L)).thenReturn(42);
         assertThat(service.countByOwner(1L)).isEqualTo(42);
+    }
+
+    // ---------- 越权回归护栏 ----------
+
+    @Test
+    void should_not_read_another_owners_customer() {
+        // 客户 11 属于 owner 101 —— owner 1 来取, 归属查询查不到
+        when(mapper.selectByIdAndOwner(11L, 1L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(() -> service.getById(11L, 1L), ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(403);
+    }
+
+    @Test
+    void should_not_leak_existence_through_error_message() {
+        // 「不存在」和「不是你的」必须是同一句话 ——
+        // 分开报就等于送出一个存在性预言机, 探测方能把别人的 id 一个一个试出来
+        when(mapper.selectByIdAndOwner(11L, 1L)).thenReturn(null);
+        when(mapper.selectByIdAndOwner(999999L, 1L)).thenReturn(null);
+        String foreign = catchThrowableOfType(() -> service.getById(11L, 1L), ServiceException.class).getMessage();
+        String absent = catchThrowableOfType(() -> service.getById(999999L, 1L), ServiceException.class).getMessage();
+        assertThat(foreign).isEqualTo(absent);
+    }
+
+    @Test
+    void should_not_update_another_owners_customer() {
+        when(mapper.selectByIdAndOwner(11L, 1L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(
+            () -> service.update(11L, CrmCustomer.builder().name("X").build(), 1L),
+            ServiceException.class);
+        assertThat(ex).isNotNull();
+        verify(mapper, never()).updateById(any());
+    }
+
+    @Test
+    void should_not_delete_another_owners_customer() {
+        when(mapper.selectByIdAndOwner(11L, 1L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(() -> service.delete(11L, 1L), ServiceException.class);
+        assertThat(ex).isNotNull();
+        verify(mapper, never()).updateById(any());
     }
 }

@@ -28,12 +28,12 @@ public class ContractController {
 
     @GetMapping
     public R<List<CrmContract>> list(@RequestParam Long customerId) {
-        return R.ok(contractService.listByCustomer(customerId));
+        return R.ok(contractService.listByCustomer(customerId, SecurityUtils.getUserId()));
     }
 
     @GetMapping("/{id}")
     public R<CrmContract> getById(@PathVariable Long id) {
-        return R.ok(contractService.getById(id));
+        return R.ok(contractService.getById(id, SecurityUtils.getUserId()));
     }
 
     @PostMapping

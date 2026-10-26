@@ -44,10 +44,11 @@
         WHERE id = #{id} AND deleted = 0
     </update>
 
-    <select id="selectById" resultMap="BaseResultMap">
+    <!-- 归属版取数: 商机自带 owner_id, 直接比 -->
+    <select id="selectByIdAndOwner" resultMap="BaseResultMap">
         SELECT <include refid="BaseColumns" />
         FROM opc_crm_opportunity
-        WHERE id = #{id} AND deleted = 0
+        WHERE id = #{id} AND owner_id = #{ownerId} AND deleted = 0
     </select>
 
     <select id="selectList" resultMap="BaseResultMap">
@@ -62,17 +63,18 @@
         ORDER BY create_time DESC
     </select>
 
-    <select id="selectByCustomerId" resultMap="BaseResultMap">
+    <select id="selectByCustomerIdAndOwner" resultMap="BaseResultMap">
         SELECT <include refid="BaseColumns" />
         FROM opc_crm_opportunity
-        WHERE customer_id = #{customerId} AND deleted = 0
+        WHERE customer_id = #{customerId} AND owner_id = #{ownerId} AND deleted = 0
         ORDER BY create_time DESC
     </select>
 
-    <select id="selectByStage" resultMap="BaseResultMap">
+    <!-- 阶段是全局枚举 —— 不带 owner 就是全员数据, 必须带上 -->
+    <select id="selectByStageAndOwner" resultMap="BaseResultMap">
         SELECT <include refid="BaseColumns" />
         FROM opc_crm_opportunity
-        WHERE stage = #{stage} AND deleted = 0
+        WHERE stage = #{stage} AND owner_id = #{ownerId} AND deleted = 0
         ORDER BY create_time DESC
     </select>
 

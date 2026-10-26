@@ -40,16 +40,17 @@
         WHERE id = #{id} AND deleted = 0
     </update>
 
-    <select id="selectById" resultMap="BaseResultMap">
+    <!-- 归属版取数: 跟进记录自带 owner_id, 直接比 -->
+    <select id="selectByIdAndOwner" resultMap="BaseResultMap">
         SELECT <include refid="BaseColumns" />
         FROM opc_crm_follow_up
-        WHERE id = #{id} AND deleted = 0
+        WHERE id = #{id} AND owner_id = #{ownerId} AND deleted = 0
     </select>
 
-    <select id="selectByCustomerId" resultMap="BaseResultMap">
+    <select id="selectByCustomerIdAndOwner" resultMap="BaseResultMap">
         SELECT <include refid="BaseColumns" />
         FROM opc_crm_follow_up
-        WHERE customer_id = #{customerId} AND deleted = 0
+        WHERE customer_id = #{customerId} AND owner_id = #{ownerId} AND deleted = 0
         ORDER BY create_time DESC
     </select>
 
@@ -71,11 +72,5 @@
         </where>
         ORDER BY next_at ASC
     </select>
-
-    <update id="deleteById">
-        UPDATE opc_crm_follow_up
-        SET deleted = 1, update_time = NOW()
-        WHERE id = #{id} AND deleted = 0
-    </update>
 
 </mapper>

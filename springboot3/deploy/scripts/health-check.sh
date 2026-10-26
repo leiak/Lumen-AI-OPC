@@ -18,6 +18,7 @@
 #  11) opc-marketplace 10 项健康检查 (W80 P1)
 #  12) 网关白名单 method 限定 (3c 回归护栏)
 #  13) 租户守卫 + LLM 计量 (3b / 3a 回归护栏)
+#  14) CRM 归属守卫 (per-user IDOR 回归护栏)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -1412,6 +1413,317 @@ except Exception:
   fi
 }
 
+# ---------- 14. CRM 归属守卫 (per-user IDOR 回归护栏) ----------
+#
+# 租户隔离管的是「A 公司别看 B 公司」; 这条管的是**公司内部**:
+# 销售 A 不该翻销售 B 的客户档案。CRM 六个实体的 list / 仪表盘本来就按 owner
+# 过滤, 但 getById / update / delete / 按 id 的子表查询全是「只按 id 取数」,
+# 而 ownerId / customerId 又由客户端给 —— 把路径里的 id 换成别人的就看到了。
+#
+# 拿 admin(user_id=1) 当登录态, 拿 owner_id=101 的数据当「别人家的」。
+#
+# 探针原则: **只读**。不往库里塞夹具, 不删数据。
+#   - 读别人的   → 必须 403
+#   - 读自己的   → 必须 200 (正对照, 证明守卫没收得太狠)
+#   - 往别人客户下写 → 必须 403, 且库里一条都不许多
+#   - PUT 用「同值写回」(幂等): 守卫万一失效, 也只是 update_time 变一下, 内容不改
+#   - DELETE 用**不存在的 id**: 万一守卫失效, 删 0 行, 不动演示数据
+#
+# 「不存在」和「不是你的」必须同一句话 —— 分开报就等于送出一个存在性预言机。
+# 所以读不到就认 403, 不去区分是哪种情况。
+
+# 从返回体里取值的小助手(RuoYi 的业务错误是 HTTP 200 + body.code, 不是 HTTP 错误码)
+crm_body_code() {
+  printf '%s' "$1" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null
+}
+
+crm_body_id() {
+  printf '%s' "$1" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data')
+    print(d.get('id') if isinstance(d,dict) and d.get('id') is not None else 'NONE')
+except Exception:
+    print('NONE')
+" 2>/dev/null
+}
+
+crm_body_codelen() {
+  # 返回 "code|条数"。列表接口被拒时 data 是 null, 条数算 0 ——
+  # 「一条都没给」和「直接拒了」同样安全, 但 code 能区分这两种情况。
+  printf '%s' "$1" | python -c "
+import sys,json
+try:
+    j = json.load(sys.stdin)
+    code = j.get('code','-1')
+    d = j.get('data')
+    if isinstance(d, list):
+        n = len(d)
+    elif isinstance(d, dict):
+        rows = d.get('rows') or d.get('list') or []
+        n = len(rows) if isinstance(rows, list) else -1
+    else:
+        n = 0
+    print('%s|%d' % (code, n))
+except Exception:
+    print('-1|-1')
+" 2>/dev/null
+}
+
+check_crm_ownership() {
+  hr
+  echo "[14] CRM 归属守卫 (per-user IDOR 回归护栏)"
+  hr
+  local base="http://${GATEWAY_HOST}:${GATEWAY_PORT}"
+
+  # --- 14.0 登录 (admin → user_id 1 → 客户负责人 owner 1) ---
+  local login_body token
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "${base}/login" 2>/dev/null) || true
+  token=$(echo "${login_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data', {})
+    print(d.get('token','') or d.get('access_token',''))
+except Exception:
+    print('')
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    nok "登录失败, CRM 归属护栏无法验证"
+    return
+  fi
+  ok "登录成功 (admin → owner 1)"
+
+  # --- 14.0.1 靶子: 一个 owner ≠ 1 的客户, 和一个自己的客户 ---
+  local foreign_cust own_cust
+  foreign_cust=$(db_q "SELECT id FROM opc_crm_customer WHERE owner_id <> 1 AND deleted = 0 ORDER BY id LIMIT 1;" | tr -d '\r')
+  own_cust=$(db_q "SELECT id FROM opc_crm_customer WHERE owner_id = 1 AND deleted = 0 ORDER BY id LIMIT 1;" | tr -d '\r')
+  if [[ -z "${foreign_cust}" || -z "${own_cust}" ]]; then
+    nok "取不到对照客户 (别人家=${foreign_cust:-无} 自家=${own_cust:-无}) — 护栏跳过"
+    return
+  fi
+  ok "靶子: 客户 ${foreign_cust}(别人的) / ${own_cust}(自己的)"
+
+  # --- 14.0.2 别人的子表记录 id ---
+  #   客户/商机/跟进记录自带 owner_id, 直接查; 联系人/订单/合同自己不带,
+  #   归属沿客户走 —— 所以要 join 客户表。
+  local f_contact f_opp f_followup f_order f_contract
+  f_contact=$(db_q "SELECT ct.id FROM opc_crm_contact ct JOIN opc_crm_customer cu ON cu.id=ct.customer_id WHERE cu.owner_id <> 1 AND ct.deleted=0 AND cu.deleted=0 ORDER BY ct.id LIMIT 1;" | tr -d '\r')
+  f_opp=$(db_q "SELECT id FROM opc_crm_opportunity WHERE owner_id <> 1 AND deleted = 0 ORDER BY id LIMIT 1;" | tr -d '\r')
+  f_followup=$(db_q "SELECT id FROM opc_crm_follow_up WHERE owner_id <> 1 AND deleted = 0 ORDER BY id LIMIT 1;" | tr -d '\r')
+  f_order=$(db_q "SELECT o.id FROM opc_crm_order o JOIN opc_crm_customer cu ON cu.id=o.customer_id WHERE cu.owner_id <> 1 AND o.deleted=0 AND cu.deleted=0 ORDER BY o.id LIMIT 1;" | tr -d '\r')
+  f_contract=$(db_q "SELECT ct.id FROM opc_crm_contract ct JOIN opc_crm_customer cu ON cu.id=ct.customer_id WHERE cu.owner_id <> 1 AND ct.deleted=0 AND cu.deleted=0 ORDER BY ct.id LIMIT 1;" | tr -d '\r')
+
+  local b c
+
+  # --- 14.1 读别人的客户 → 403 ---
+  b=$(curl -s -m 15 -H "Authorization: Bearer ${token}" "${base}/opc/crm/customer/${foreign_cust}" 2>/dev/null) || b=""
+  c=$(crm_body_code "${b}")
+  if [[ "${c}" == "403" ]]; then
+    ok "14.1 GET /opc/crm/customer/${foreign_cust} (别人的) → 403"
+  else
+    nok "14.1 GET /opc/crm/customer/${foreign_cust} → body.code=${c} — 越权读到了别人的客户"
+  fi
+
+  # --- 14.2 读自己的客户 → 200 (正对照) ---
+  b=$(curl -s -m 15 -H "Authorization: Bearer ${token}" "${base}/opc/crm/customer/${own_cust}" 2>/dev/null) || b=""
+  c=$(crm_body_code "${b}")
+  local own_id_back
+  own_id_back=$(crm_body_id "${b}")
+  if [[ "${c}" == "200" && "${own_id_back}" == "${own_cust}" ]]; then
+    ok "14.2 GET /opc/crm/customer/${own_cust} (自己的) → 200 (正对照通过)"
+  else
+    nok "14.2 GET /opc/crm/customer/${own_cust} → code=${c} id=${own_id_back} — 自家数据也读不到, 守卫可能收得太狠"
+  fi
+
+  # --- 14.3~14.7 读别人的子表记录 → 403 ---
+  #   库里若没有别人的订单/合同, 那两项跳过并说明 —— 不假装验过了。
+  local kind pid what rest
+  for probe in "contact:${f_contact}:联系人" "opportunity:${f_opp}:商机" "follow-up:${f_followup}:跟进记录" "order:${f_order}:订单" "contract:${f_contract}:合同"; do
+    kind="${probe%%:*}"; rest="${probe#*:}"
+    pid="${rest%%:*}"; what="${rest##*:}"
+    if [[ -z "${pid}" ]]; then
+      warn "14.x 库里没有别人的${what}记录, 该项跳过 (没验过, 不是验过了)"
+      continue
+    fi
+    b=$(curl -s -m 15 -H "Authorization: Bearer ${token}" "${base}/opc/crm/${kind}/${pid}" 2>/dev/null) || b=""
+    c=$(crm_body_code "${b}")
+    if [[ "${c}" == "403" ]]; then
+      ok "14.x GET /opc/crm/${kind}/${pid} (别人的${what}) → 403"
+    else
+      nok "14.x GET /opc/crm/${kind}/${pid} (别人的${what}) → body.code=${c} — 越权读到了别人的${what}"
+    fi
+  done
+
+  # --- 14.8 别人的客户名下不该有子表记录 ---
+  #   「0 行」和「直接 403 拒了」都算没泄漏; 「200 且有行」才是泄漏。
+  local cid cl cl_code cl_len
+  for probe in "contact:${foreign_cust}:联系人" "order:${foreign_cust}:订单" "contract:${foreign_cust}:合同"; do
+    kind="${probe%%:*}"; rest="${probe#*:}"
+    cid="${rest%%:*}"; what="${rest##*:}"
+    b=$(curl -s -m 15 -H "Authorization: Bearer ${token}" "${base}/opc/crm/${kind}?customerId=${cid}" 2>/dev/null) || b=""
+    cl=$(crm_body_codelen "${b}")
+    cl_code="${cl%%|*}"; cl_len="${cl##*|}"
+    if [[ "${cl_code}" == "403" ]]; then
+      ok "14.8 GET /opc/crm/${kind}?customerId=${cid} (别人的客户) → 403 直接拒了"
+    elif [[ "${cl_code}" == "200" && "${cl_len}" == "0" ]]; then
+      ok "14.8 GET /opc/crm/${kind}?customerId=${cid} (别人的客户) → 0 行"
+    elif [[ "${cl_code}" == "-1" ]]; then
+      nok "14.8 GET /opc/crm/${kind}?customerId=${cid} → 返回体解析不了 — 端点可能已变形"
+    else
+      nok "14.8 GET /opc/crm/${kind}?customerId=${cid} → code=${cl_code} ${cl_len} 行 — 列出了别人客户名下的${what}"
+    fi
+  done
+
+  # --- 14.9 阶段的商机列表只能有自己的 ---
+  b=$(curl -s -m 15 -H "Authorization: Bearer ${token}" "${base}/opc/crm/opportunity?stage=LEAD" 2>/dev/null) || b=""
+  local stage_stat s_total s_bad
+  stage_stat=$(printf '%s' "${b}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin)
+    rows = d.get('data') or []
+    if not isinstance(rows, list): print('-1|0'); raise SystemExit
+    bad = 0
+    for r in rows:
+        if not isinstance(r, dict): continue
+        v = r.get('ownerId', r.get('owner_id'))
+        if v is None: continue
+        if str(v) != '1': bad += 1
+    print('%d|%d' % (len(rows), bad))
+except Exception:
+    print('-1|0')
+" 2>/dev/null)
+  s_total="$(cut -d'|' -f1 <<<"${stage_stat}")"
+  s_bad="$(cut -d'|' -f2 <<<"${stage_stat}")"
+  if [[ "${s_total}" == "-1" ]]; then
+    nok "14.9 /opc/crm/opportunity?stage=LEAD 返回体解析不了 — 端点可能已变形"
+  elif [[ "${s_bad}" -gt 0 ]]; then
+    nok "14.9 /opc/crm/opportunity?stage=LEAD → ${s_bad}/${s_total} 行不是自己的 (阶段列表没按 owner 过滤)"
+  else
+    ok "14.9 /opc/crm/opportunity?stage=LEAD → ${s_total} 行全是自己的"
+  fi
+
+  # --- 14.10 客户端传的 ownerId 不作数 ---
+  #     这里跟 14.8 一样: 客户端传别人的 ownerId, 回来的必须还是**自己的**数据
+  #     (归属由服务端按登录态定), 而不是别人的、更不是空。
+  local foreign_owner
+  foreign_owner=$(db_q "SELECT owner_id FROM opc_crm_customer WHERE id=${foreign_cust} LIMIT 1;" | tr -d '\r')
+  b=$(curl -s -m 15 -H "Authorization: Bearer ${token}" "${base}/opc/crm/follow-up?ownerId=${foreign_owner}" 2>/dev/null) || b=""
+  local fu_stat fu_code fu_len fu_bad fu_stat_rest
+  fu_stat=$(printf '%s' "${b}" | python -c "
+import sys,json
+try:
+    j = json.load(sys.stdin)
+    code = j.get('code','-1')
+    rows = j.get('data') or []
+    if not isinstance(rows, list): print('%s|-1|0' % code); raise SystemExit
+    bad = 0
+    for r in rows:
+        if not isinstance(r, dict): continue
+        v = r.get('ownerId', r.get('owner_id'))
+        if v is not None and str(v) != '1': bad += 1
+    print('%s|%d|%d' % (code, len(rows), bad))
+except Exception:
+    print('-1|-1|0')
+" 2>/dev/null)
+  fu_code="${fu_stat%%|*}"; fu_stat_rest="${fu_stat#*|}"; fu_len="${fu_stat_rest%%|*}"; fu_bad="${fu_stat_rest##*|}"
+  if [[ "${fu_code}" != "200" ]]; then
+    nok "14.10 GET /opc/crm/follow-up?ownerId=${foreign_owner} → code=${fu_code} — 端点可能已变形"
+  elif [[ "${fu_bad}" -gt 0 ]]; then
+    nok "14.10 GET /opc/crm/follow-up?ownerId=${foreign_owner} → ${fu_bad}/${fu_len} 行是别人的 — 客户端能指定别人的 ownerId"
+  else
+    ok "14.10 GET /opc/crm/follow-up?ownerId=${foreign_owner} → ${fu_len} 行全是自己的 (客户端 ownerId 不作数)"
+  fi
+
+  # --- 14.11 往别人的客户下写 → 403, 且库里一条都不许多 ---
+  #     标记用一次性时间戳, 事后用 SELECT COUNT 证明「一条都没写进去」。
+  local tag payload sql left
+  tag="HC-PROBE-$(date +%s)"
+  for probe in \
+    "contact:{\"customerId\":${foreign_cust},\"name\":\"${tag}\"}:SELECT COUNT(*) FROM opc_crm_contact WHERE name='${tag}'" \
+    "opportunity:{\"customerId\":${foreign_cust},\"name\":\"${tag}\"}:SELECT COUNT(*) FROM opc_crm_opportunity WHERE name='${tag}'" \
+    "follow-up:{\"customerId\":${foreign_cust},\"content\":\"${tag}\"}:SELECT COUNT(*) FROM opc_crm_follow_up WHERE content='${tag}'" \
+    "order:{\"customerId\":${foreign_cust},\"orderNo\":\"${tag}\",\"itemsJson\":\"[]\",\"total\":0}:SELECT COUNT(*) FROM opc_crm_order WHERE order_no='${tag}'" \
+    "contract:{\"customerId\":${foreign_cust},\"contractNo\":\"${tag}\",\"title\":\"${tag}\"}:SELECT COUNT(*) FROM opc_crm_contract WHERE contract_no='${tag}'" ; do
+    kind="${probe%%:*}"; rest="${probe#*:}"
+    payload="${rest%:*}"; sql="${rest##*:}"
+    b=$(curl -s -m 15 -X POST \
+      -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+      -d "${payload}" "${base}/opc/crm/${kind}" 2>/dev/null) || b=""
+    c=$(crm_body_code "${b}")
+    left=$(db_q "${sql}" | tr -d '\r')
+    if [[ "${c}" == "403" && "${left}" == "0" ]]; then
+      ok "14.11 POST /opc/crm/${kind} (挂到别人客户下) → 403, 库里 0 行"
+    elif [[ "${c}" == "403" ]]; then
+      nok "14.11 POST /opc/crm/${kind} → 403, 但库里多了 ${left} 行 (标记 ${tag}, 需手工清理)"
+    elif [[ "${left}" != "0" ]]; then
+      nok "14.11 POST /opc/crm/${kind} → body.code=${c}, 库里多了 ${left} 行 — 归属守卫没挡住写入 (标记 ${tag}, 需手工清理)"
+    else
+      nok "14.11 POST /opc/crm/${kind} → body.code=${c} — 归属守卫没挡住写入"
+    fi
+  done
+
+  # --- 14.12 改别人的客户 → 403 ---
+  #     用「同值写回」(幂等): 守卫万一失效, 也只是 update_time 变一下, 内容不改。
+  local foreign_name put_body name_now
+  foreign_name=$(db_q "SELECT name FROM opc_crm_customer WHERE id=${foreign_cust} LIMIT 1;" | tr -d '\r')
+  put_body=$(python -c "
+import json,sys
+print(json.dumps({'name': sys.argv[1]}, ensure_ascii=False))
+" "${foreign_name}" 2>/dev/null)
+  b=$(curl -s -m 15 -X PUT \
+    -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+    -d "${put_body}" "${base}/opc/crm/customer/${foreign_cust}" 2>/dev/null) || b=""
+  c=$(crm_body_code "${b}")
+  name_now=$(db_q "SELECT name FROM opc_crm_customer WHERE id=${foreign_cust} LIMIT 1;" | tr -d '\r')
+  if [[ "${c}" == "403" && "${name_now}" == "${foreign_name}" ]]; then
+    ok "14.12 PUT /opc/crm/customer/${foreign_cust} (别人的) → 403, 内容未变"
+  elif [[ "${c}" == "403" ]]; then
+    nok "14.12 PUT /opc/crm/customer/${foreign_cust} → 403, 但内容变了 (${foreign_name} → ${name_now})"
+  else
+    nok "14.12 PUT /opc/crm/customer/${foreign_cust} → body.code=${c} — 越权改到了别人的客户"
+  fi
+
+  # --- 14.13 删别人的客户 → 403 ---
+  #     这里用**不存在的 id**: 真的去删别人的记录, 万一守卫失效就 soft-delete 了
+  #     演示数据。改用不存在的 id 一样能验出「删除路径走的是带归属的查询」——
+  #     老代码这里会抛 IllegalArgumentException(body.code=500),
+  #     新代码抛 ServiceException(403)。
+  b=$(curl -s -m 15 -X DELETE \
+    -H "Authorization: Bearer ${token}" \
+    "${base}/opc/crm/customer/999999999" 2>/dev/null) || b=""
+  c=$(crm_body_code "${b}")
+  if [[ "${c}" == "403" ]]; then
+    ok "14.13 DELETE /opc/crm/customer/999999999 → 403 (删除路径走的是带归属的查询)"
+  else
+    nok "14.13 DELETE /opc/crm/customer/999999999 → body.code=${c} — 删除路径没走带归属的查询"
+  fi
+
+  # --- 14.14 看板不能是空的 ---
+  #     以前「什么都不传」直接返回空数组, 商机看板因此永远是空的;
+  #     现在返回当前用户自己的商机。
+  b=$(curl -s -m 15 -H "Authorization: Bearer ${token}" "${base}/opc/crm/opportunity" 2>/dev/null) || b=""
+  local kb kb_code kb_len
+  kb=$(crm_body_codelen "${b}")
+  kb_code="${kb%%|*}"; kb_len="${kb##*|}"
+  if [[ "${kb_code}" != "200" ]]; then
+    nok "14.14 GET /opc/crm/opportunity → code=${kb_code} — 端点可能已变形"
+  elif [[ "${kb_len}" -gt 0 ]]; then
+    ok "14.14 GET /opc/crm/opportunity (不带参数) → ${kb_len} 行 (商机看板不再是空的)"
+  else
+    nok "14.14 GET /opc/crm/opportunity (不带参数) → 0 行 — 商机看板还是空的"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -1430,6 +1742,7 @@ main() {
   check_marketplace
   check_gateway_whitelist
   check_tenant_guard
+  check_crm_ownership
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"

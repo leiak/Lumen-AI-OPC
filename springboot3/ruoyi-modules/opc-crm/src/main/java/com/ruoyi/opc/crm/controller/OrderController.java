@@ -27,15 +27,17 @@ public class OrderController {
     private final OrderService orderService;
 
     @GetMapping
-    public R<List<CrmOrder>> list(@RequestParam Long customerId,
+    public R<List<CrmOrder>> list(@RequestParam(required = false) Long customerId,
                                   @RequestParam(required = false) Long contractId) {
-        if (contractId != null) return R.ok(orderService.listByContract(contractId));
-        return R.ok(orderService.listByCustomer(customerId));
+        Long uid = SecurityUtils.getUserId();
+        if (contractId != null) return R.ok(orderService.listByContract(contractId, uid));
+        if (customerId != null) return R.ok(orderService.listByCustomer(customerId, uid));
+        return R.ok(List.of());
     }
 
     @GetMapping("/{id}")
     public R<CrmOrder> getById(@PathVariable Long id) {
-        return R.ok(orderService.getById(id));
+        return R.ok(orderService.getById(id, SecurityUtils.getUserId()));
     }
 
     @PostMapping

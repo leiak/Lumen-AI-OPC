@@ -1,8 +1,14 @@
 package com.ruoyi.opc.crm.service;
 
+import com.ruoyi.common.core.exception.ServiceException;
+import com.ruoyi.opc.crm.domain.CrmContact;
+import com.ruoyi.opc.crm.domain.CrmCustomer;
 import com.ruoyi.opc.crm.domain.CrmFollowUp;
+import com.ruoyi.opc.crm.mapper.CrmContactMapper;
+import com.ruoyi.opc.crm.mapper.CrmCustomerMapper;
 import com.ruoyi.opc.crm.mapper.CrmFollowUpMapper;
 import com.ruoyi.opc.crm.service.impl.FollowUpServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -16,6 +22,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 
@@ -24,7 +31,17 @@ import static org.mockito.Mockito.*;
 class FollowUpServiceTest {
 
     @Mock CrmFollowUpMapper mapper;
+    @Mock CrmCustomerMapper customerMapper;
+    @Mock CrmContactMapper contactMapper;
     @InjectMocks FollowUpServiceImpl service;
+
+    @BeforeEach
+    void setUp() {
+        when(customerMapper.selectByIdAndOwner(anyLong(), anyLong()))
+            .thenReturn(CrmCustomer.builder().id(1L).ownerId(1L).build());
+        when(contactMapper.selectByIdAndOwner(anyLong(), anyLong()))
+            .thenReturn(CrmContact.builder().id(2L).customerId(1L).build());
+    }
 
     @Test
     void should_create_follow_up() {
@@ -57,11 +74,11 @@ class FollowUpServiceTest {
 
     @Test
     void should_list_by_customer() {
-        when(mapper.selectByCustomerId(1L)).thenReturn(List.of(
+        when(mapper.selectByCustomerIdAndOwner(1L, 10L)).thenReturn(List.of(
             CrmFollowUp.builder().id(1L).customerId(1L).content("A").build(),
             CrmFollowUp.builder().id(2L).customerId(1L).content("B").build()
         ));
-        List<CrmFollowUp> list = service.listByCustomer(1L);
+        List<CrmFollowUp> list = service.listByCustomer(1L, 10L);
         assertThat(list).hasSize(2);
         assertThat(list.get(0).getCustomerId()).isEqualTo(1L);
         assertThat(list.get(1).getCustomerId()).isEqualTo(1L);
@@ -93,7 +110,7 @@ class FollowUpServiceTest {
 
     @Test
     void should_mark_follow_up_completed() {
-        when(mapper.selectById(1L)).thenReturn(
+        when(mapper.selectByIdAndOwner(1L, 10L)).thenReturn(
             CrmFollowUp.builder().id(1L).customerId(1L)
                 .content("待跟进").nextAt(LocalDateTime.of(2026, 9, 15, 10, 0)).build()
         );
@@ -104,5 +121,46 @@ class FollowUpServiceTest {
         assertThat(result.getNextAt()).isNull();
         assertThat(result.getUpdateBy()).isEqualTo("10");
         verify(mapper).updateById(argThat(f -> f.getNextAt() == null));
+    }
+
+    // ---------- 越权回归护栏 ----------
+
+    @Test
+    void should_not_read_another_owners_follow_up() {
+        when(mapper.selectByIdAndOwner(56L, 10L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(() -> service.getById(56L, 10L), ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(403);
+    }
+
+    @Test
+    void should_not_complete_another_owners_follow_up() {
+        when(mapper.selectByIdAndOwner(56L, 10L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(() -> service.markCompleted(56L, 10L), ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(403);
+        verify(mapper, never()).updateById(any());
+    }
+
+    @Test
+    void should_not_create_follow_up_under_another_owners_customer() {
+        when(customerMapper.selectByIdAndOwner(11L, 10L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(() -> service.create(
+            CrmFollowUp.builder().customerId(11L).content("越权").build(), 10L),
+            ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(403);
+        verify(mapper, never()).insert(any());
+    }
+
+    @Test
+    void should_not_create_follow_up_referencing_another_owners_contact() {
+        when(contactMapper.selectByIdAndOwner(30L, 10L)).thenReturn(null);
+        ServiceException ex = catchThrowableOfType(() -> service.create(
+            CrmFollowUp.builder().customerId(1L).contactId(30L).content("越权").build(), 10L),
+            ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(403);
+        verify(mapper, never()).insert(any());
     }
 }
