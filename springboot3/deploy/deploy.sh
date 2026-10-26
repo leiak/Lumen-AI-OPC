@@ -191,7 +191,17 @@ cmd_rebuild() {
       warn "  模块 ${module} 不存在,跳过"
       return
     fi
-    if ! docker compose config --services 2>/dev/null | grep -qx "${svc}"; then
+    # 注意: cmd_rebuild 里已经 cd 到 ${PROJECT_ROOT} 了, 这里的 cwd 不是
+    # deploy/ —— 所以必须用 -f 把 compose 文件指出来, 否则 docker compose
+    # 找不到文件, 这道检查会误判成「服务名拼错了」。
+    #
+    # 还有: 不能写成 `docker compose ... | grep -qx`。grep -q 一匹配就退出、
+    # 关掉管道, docker compose 还在写就吃 SIGPIPE(141), 遇上 pipefail
+    # 整个管道被判成失败 —— 服务名明明是对的也报「拼错了」。所以先收进
+    # 变量再匹配。
+    local services
+    services="$(docker compose -f "${SCRIPT_DIR}/docker-compose.yml" config --services 2>/dev/null || true)"
+    if ! grep -qx "${svc}" <<<"${services}"; then
       fail "compose 里没有服务 '${svc}' (模块 ${module}) —— 服务名拼错了"
     fi
     log "[${module}] mvn clean package + copy-dependencies"
