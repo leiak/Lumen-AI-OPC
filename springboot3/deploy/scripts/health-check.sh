@@ -16,6 +16,8 @@
 #   9) opc-erp 9 项健康检查 (W72 Task 12)
 #  10) opc-content 10 项健康检查 (W74 Task 15)
 #  11) opc-marketplace 10 项健康检查 (W80 P1)
+#  12) 网关白名单 method 限定 (3c 回归护栏)
+#  13) 租户守卫 + LLM 计量 (3b / 3a 回归护栏)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -47,6 +49,19 @@ ok()   { echo -e "${GRN}[OK]${NC}   $*"; pass=$((pass + 1)); }
 nok()  { echo -e "${RED}[FAIL]${NC} $*"; fail=$((fail + 1)); failed_items+=("$*"); }
 warn() { echo -e "${YEL}[WARN]${NC} $*"; }
 hr()   { echo "--------------------------------------------------"; }
+
+# 查库: 走宿主机 mysql 客户端 + ~/.my.cnf, 口令留在文件里, 不落命令行。
+#
+# 不用 `docker exec aiopc-mysql mysql -uroot -p'...'` —— 那会把库口令
+# 暴露在进程的命令行里(ps aux / /proc/*/cmdline 都看得到)。
+# 宿主机这边本来就有 /root/.my.cnf(host/port/user), mysql 客户端会自动读。
+# 没有 my.cnf 的机器上, 查库这一段会安静地跳过, 而不是拿口令去撞命令行。
+db_q() {
+  command -v mysql >/dev/null 2>&1 || return 1
+  local out
+  out="$(mysql -N -B ry-vue-opc -e "$1" 2>/dev/null)" || return 1
+  printf '%s' "${out}" | tr -d '\r'
+}
 
 # ---------- 1. 容器 Up 检查 ----------
 check_containers() {
@@ -190,8 +205,7 @@ check_mysql() {
   echo "[5] MySQL 抽查"
   hr
   local table_count
-  table_count=$(docker exec aiopc-mysql mysql -uroot -p'Opc@2026!' -N -B ry-vue-opc \
-    -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='ry-vue-opc';" 2>/dev/null) || table_count=0
+  table_count=$(db_q "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='ry-vue-opc';") || table_count=0
   if [[ "${table_count}" -ge 50 ]]; then
     ok "MySQL ry-vue-opc 有 ${table_count} 张表"
   else
@@ -199,8 +213,7 @@ check_mysql() {
   fi
 
   local admin_count
-  admin_count=$(docker exec aiopc-mysql mysql -uroot -p'Opc@2026!' -N -B ry-vue-opc \
-    -e "SELECT COUNT(*) FROM sys_user WHERE user_name='admin';" 2>/dev/null) || admin_count=0
+  admin_count=$(db_q "SELECT COUNT(*) FROM sys_user WHERE user_name='admin';") || admin_count=0
   if [[ "${admin_count}" -ge 1 ]]; then
     ok "sys_user.admin 存在"
   else
@@ -1184,6 +1197,221 @@ except Exception:
   done
 }
 
+# ---------- 13. 租户守卫 + LLM 计量 (3b / 3a 回归护栏) ----------
+#
+# 3b 的洞: ERP/HR/Content 的 list/detail 端点把 companyId 当普通客户端参数收下,
+# 客户端把它改成 2 就能看别家公司的数据。修法是租户守卫在服务端按登录态覆写
+# (ruoyi-common-security 的 TenantGuard)。
+#
+# 3a 的洞: /opc/llm/chat 从 body 里取 companyId/userId 记计量, 而前端两个调用点
+# (llm/chat.vue、agent/instance.vue) 都不发这两个字段 → company_id NOT NULL 违例
+# → 异常被 TokenMeter 的 catch 吞掉 → 每一次 LLM 调用的用量/成本记录都静默丢失
+# (账单页面读的就是这张表)。
+#
+# 这条护栏拿 admin(公司1) 当登录态, 拿公司2 的数据当「别家」:
+#   13.1 带 companyId=2 列岗位 → 回来的必须全是公司1的
+#   13.2 带 companyId=2 取公司2的岗位详情 → 必须拿不到
+#   13.3 带 companyId=1 取公司1的岗位详情 → 必须拿得到(正对照, 证明没误伤)
+#   13.4 匿名 DELETE 一个**不存在的**商品 → 必须被网关挡下(3c, 真实写方法;
+#        用不存在的 id, 万一没挡住也只是删 0 行, 不会动数据)
+#   13.5 调一次 /opc/llm/chat → 计量表必须多一行, company_id = 登录态的公司
+#   13.6 body 里塞 companyId=2 再调一次 → 新行仍必须是公司1(客户端说了不算数)
+#
+# ⚠️ LlmCache 的缓存命中路径**不计量**(LlmGateway:32-35 直接 return), 所以
+#    13.5/13.6 的消息里必须带一次性随机串, 否则第二次会命中缓存, 计量表不会长。
+check_tenant_guard() {
+  hr
+  echo "[13] 租户守卫 + LLM 计量 (3b / 3a 回归护栏)"
+  hr
+  local base="http://${GATEWAY_HOST}:${GATEWAY_PORT}"
+
+  # 13.0 登录 (admin → 公司1)
+  local login_body token
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "${base}/login" 2>/dev/null) || true
+  token=$(echo "${login_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data', {})
+    print(d.get('token','') or d.get('access_token',''))
+except Exception:
+    print('')
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    nok "登录失败, 3a/3b 护栏无法验证"
+    return
+  fi
+  ok "登录成功 (admin → 公司1)"
+
+  # 13.0.1 取一个「别家」(公司2) 的岗位 id 和一个「自家」(公司1) 的岗位 id
+  local other_id own_id
+  other_id=$(db_q "SELECT id FROM opc_hr_job WHERE company_id=2 ORDER BY id LIMIT 1;" | tr -d '\r')
+  own_id=$(db_q "SELECT id FROM opc_hr_job WHERE company_id=1 ORDER BY id LIMIT 1;" | tr -d '\r')
+  if [[ -z "${other_id}" || -z "${own_id}" ]]; then
+    nok "取不到对照数据 (公司2岗位 id=${other_id:-无} 公司1岗位 id=${own_id:-无}) — 护栏跳过"
+    return
+  fi
+
+  # 13.1 带 companyId=2 列岗位 → 回来的必须全是公司1的
+  local list_body
+  list_body=$(curl -s -m 15 -H "Authorization: Bearer ${token}" \
+    "${base}/opc/hr/job/list?companyId=2&pageNum=1&pageSize=100" 2>/dev/null) || list_body=""
+  local list_stat
+  list_stat=$(echo "${list_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin)
+    rows = d.get('data') or []
+    if isinstance(rows, dict):
+        rows = rows.get('rows') or rows.get('list') or []
+    if not isinstance(rows, list):
+        print('-1|0|0'); raise SystemExit
+    total = len(rows); bad = 0; unknown = 0
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        # 实体上标了 @JsonProperty('company_id'), 序列化出来的是 company_id;
+        # 两种写法都认, 都取不到就算「无法判定」而不是「泄漏」。
+        v = r.get('companyId', r.get('company_id'))
+        if v is None:
+            unknown += 1
+        elif str(v) != '1':
+            bad += 1
+    print('%d|%d|%d' % (total, bad, unknown))
+except Exception:
+    print('-1|0|0')
+" 2>/dev/null)
+  local list_total list_bad list_unknown
+  list_total="$(cut -d'|' -f1 <<<"${list_stat}")"
+  list_bad="$(cut -d'|' -f2 <<<"${list_stat}")"
+  list_unknown="$(cut -d'|' -f3 <<<"${list_stat}")"
+  if [[ "${list_total}" == "-1" ]]; then
+    nok "13.1 /opc/hr/job/list 返回体解析不了 — 端点可能已变形"
+  elif [[ "${list_total}" -eq 0 ]]; then
+    nok "13.1 /opc/hr/job/list?companyId=2 返回 0 行 — 护栏空转, 证明不了什么"
+  elif [[ "${list_bad}" -gt 0 ]]; then
+    nok "13.1 /opc/hr/job/list?companyId=2 → ${list_bad}/${list_total} 行属于公司2 (跨租户泄漏)"
+  elif [[ "${list_unknown}" -gt 0 ]]; then
+    warn "13.1 ${list_unknown}/${list_total} 行没带公司字段, 无法判定归属 (不判通过也不判泄漏)"
+  else
+    ok "13.1 /opc/hr/job/list?companyId=2 → ${list_total} 行全是公司1的 (没有串到公司2)"
+  fi
+
+  # 13.2 带 companyId=2 取公司2的岗位详情 → 必须拿不到
+  local other_body
+  other_body=$(curl -s -m 15 -H "Authorization: Bearer ${token}" \
+    "${base}/opc/hr/job/${other_id}?companyId=2" 2>/dev/null) || other_body=""
+  local other_got
+  other_got=$(echo "${other_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin)
+    rows = d.get('data')
+    if isinstance(rows, dict) and rows.get('id') is not None:
+        # 实体上 @JsonProperty('company_id') → 两种写法都认
+        print('LEAK:' + str(rows.get('companyId', rows.get('company_id'))))
+    else:
+        print('NO')
+except Exception:
+    print('NO')
+" 2>/dev/null)
+  if [[ "${other_got}" == "NO" ]]; then
+    ok "13.2 /opc/hr/job/${other_id}?companyId=2 (公司2的岗位) → 拿不到"
+  else
+    nok "13.2 /opc/hr/job/${other_id}?companyId=2 → ${other_got} — 跨租户读到别家数据"
+  fi
+
+  # 13.3 正对照: 公司1的岗位必须拿得到 (证明端点本身没被误伤)
+  local own_body
+  own_body=$(curl -s -m 15 -H "Authorization: Bearer ${token}" \
+    "${base}/opc/hr/job/${own_id}?companyId=1" 2>/dev/null) || own_body=""
+  local own_id_back
+  own_id_back=$(echo "${own_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin)
+    rows = d.get('data')
+    print(str(rows.get('id')) if isinstance(rows, dict) and rows.get('id') is not None else 'NONE')
+except Exception:
+    print('NONE')
+" 2>/dev/null)
+  if [[ "${own_id_back}" == "${own_id}" ]]; then
+    ok "13.3 /opc/hr/job/${own_id}?companyId=1 (公司1的岗位) → 正常返回 (正对照通过)"
+  else
+    nok "13.3 /opc/hr/job/${own_id}?companyId=1 → 拿到 ${own_id_back} — 自家数据也读不到, 守卫可能收得太狠"
+  fi
+
+  # 13.4 匿名 DELETE 一个**不存在的**商品 → 必须被网关挡下
+  #     (第 12 节用 OPTIONS 证明了 method 比较逻辑; 这里再补一个真实的写方法)
+  local del_body del_code
+  del_body=$(curl -s -m 10 -X DELETE "${base}/opc/erp/product/999999999" 2>/dev/null) || del_body=""
+  del_code=$(echo "${del_body}" | python -c "
+import sys,json
+try:
+    print(json.load(sys.stdin).get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${del_code}" == "401" || "${del_code}" == "403" ]]; then
+    ok "13.4 匿名 DELETE /opc/erp/product/999999999 被挡下 (body.code=${del_code})"
+  else
+    nok "13.4 匿名 DELETE /opc/erp/product/999999999 未被挡 (body.code=${del_code}) — 白名单放行了 DELETE"
+  fi
+
+  # 13.5 / 13.6 LLM 计量归属
+  #      消息里带一次性随机串 —— LlmCache 命中时不计量, 用固定消息第二次会落空。
+  local usage_count_before usage_count_after row_company row_user
+  usage_count_before=$(db_q "SELECT COUNT(*) FROM opc_agent_token_usage;" | tr -d '\r')
+  local nonce chat_body
+  nonce="n$(date +%s%N | tail -c 7)"
+  chat_body=$(curl -s -m 90 -X POST \
+    -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+    -d "{\"messages\":[{\"role\":\"user\",\"content\":\"只回复一个字:好 ${nonce}\"}]}" \
+    "${base}/opc/llm/chat" 2>/dev/null) || chat_body=""
+  sleep 3
+  usage_count_after=$(db_q "SELECT COUNT(*) FROM opc_agent_token_usage;" | tr -d '\r')
+  row_company=$(db_q "SELECT company_id FROM opc_agent_token_usage ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+  row_user=$(db_q "SELECT user_id FROM opc_agent_token_usage ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+
+  local chat_code
+  chat_code=$(echo "${chat_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('code','-1'))
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  if [[ "${chat_code}" != "200" ]]; then
+    warn "13.5 /opc/llm/chat 没成功 (body.code=${chat_code}) — 计量归属未能验证 (可能是 provider 不可用)"
+  elif [[ "${usage_count_after}" -gt "${usage_count_before}" ]]; then
+    ok "13.5 /opc/llm/chat 计量落库 (${usage_count_before} → ${usage_count_after} 行, company_id=${row_company} user_id=${row_user})"
+  else
+    nok "13.5 /opc/llm/chat 调用成功但计量表没长 (仍是 ${usage_count_after} 行) — 用量/成本记录在丢"
+  fi
+
+  # 13.6 body 里塞 companyId=2 → 计量仍必须记到公司1(登录态说了算)
+  nonce="n$(date +%s%N | tail -c 7)"
+  usage_count_before="${usage_count_after}"
+  chat_body=$(curl -s -m 90 -X POST \
+    -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+    -d "{\"companyId\":2,\"userId\":101,\"messages\":[{\"role\":\"user\",\"content\":\"只回复一个字:好 ${nonce}\"}]}" \
+    "${base}/opc/llm/chat" 2>/dev/null) || chat_body=""
+  sleep 3
+  usage_count_after=$(db_q "SELECT COUNT(*) FROM opc_agent_token_usage;" | tr -d '\r')
+  row_company=$(db_q "SELECT company_id FROM opc_agent_token_usage ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+  row_user=$(db_q "SELECT user_id FROM opc_agent_token_usage ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+  if [[ "${usage_count_after}" -gt "${usage_count_before}" && "${row_company}" == "1" && "${row_user}" == "1" ]]; then
+    ok "13.6 body 里塞 companyId=2/userId=101 → 计量仍记到 company_id=${row_company} user_id=${row_user} (登录态说了算)"
+  elif [[ "${usage_count_after}" -le "${usage_count_before}" ]]; then
+    nok "13.6 body 里塞 companyId=2 → 计量表没长 (${usage_count_after} 行) — 用量记录在丢"
+  else
+    nok "13.6 body 里塞 companyId=2 → 计量记到了 company_id=${row_company} user_id=${row_user} (客户端说了算)"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -1201,6 +1429,7 @@ main() {
   check_content
   check_marketplace
   check_gateway_whitelist
+  check_tenant_guard
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"
