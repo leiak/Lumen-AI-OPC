@@ -58,8 +58,9 @@ import {
   deletePlatformAccount,
   type OpcContentPlatformAccount,
 } from '@/api/opc/content'
+import { useCompanyId } from '@/composables/useCompanyId'
 
-const companyId = 1
+const companyId = useCompanyId()
 const list = ref<OpcContentPlatformAccount[]>([])
 const loading = ref(false)
 

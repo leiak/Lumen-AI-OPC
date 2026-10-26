@@ -105,8 +105,9 @@ import {
   type OpcErpMonthlyReport,
 } from '@/api/opc/erp'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
+import { useCompanyId } from '@/composables/useCompanyId'
 
-const companyId = 1
+const companyId = useCompanyId()
 const activeTab = ref('low')
 
 const lowStock = ref<OpcErpProductSku[]>([])

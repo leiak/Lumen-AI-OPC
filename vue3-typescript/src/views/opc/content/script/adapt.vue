@@ -61,10 +61,11 @@ import {
   getScript,
   type OpcContentScript,
 } from '@/api/opc/content'
+import { useCompanyId } from '@/composables/useCompanyId'
 
 const route = useRoute()
 const router = useRouter()
-const companyId = 1
+const companyId = useCompanyId()
 
 const sourceScriptId = Number(route.params.id)
 const sourceTitle = ref('')

@@ -117,9 +117,10 @@ import {
   createSale,
   type OpcErpProductSku,
 } from '@/api/opc/erp'
+import { useCompanyId } from '@/composables/useCompanyId'
 
 const router = useRouter()
-const companyId = 1
+const companyId = useCompanyId()
 
 const submitting = ref(false)
 const allSkus = ref<OpcErpProductSku[]>([])

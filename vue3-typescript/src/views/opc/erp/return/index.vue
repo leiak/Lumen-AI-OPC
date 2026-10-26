@@ -142,9 +142,10 @@ import {
   type OpcErpReturn,
 } from '@/api/opc/erp'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
+import { useCompanyId } from '@/composables/useCompanyId'
 
 const router = useRouter()
-const companyId = 1
+const companyId = useCompanyId()
 
 const returns = ref<OpcErpReturn[]>([])
 const loading = ref(false)

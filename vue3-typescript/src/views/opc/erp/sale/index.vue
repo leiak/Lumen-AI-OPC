@@ -74,9 +74,10 @@ import {
   type OpcErpSale,
 } from '@/api/opc/erp'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
+import { useCompanyId } from '@/composables/useCompanyId'
 
 const router = useRouter()
-const companyId = 1
+const companyId = useCompanyId()
 
 const sales = ref<OpcErpSale[]>([])
 const loading = ref(false)

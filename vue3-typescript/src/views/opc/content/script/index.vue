@@ -108,9 +108,10 @@ import {
   type ContentScriptType,
 } from '@/api/opc/content'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
+import { useCompanyId } from '@/composables/useCompanyId'
 
 const router = useRouter()
-const companyId = 1
+const companyId = useCompanyId()
 
 const list = ref<OpcContentScript[]>([])
 const loading = ref(false)

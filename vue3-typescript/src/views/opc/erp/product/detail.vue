@@ -119,10 +119,11 @@ import {
   type OpcErpInventoryLog,
 } from '@/api/opc/erp'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
+import { useCompanyId } from '@/composables/useCompanyId'
 
 const route = useRoute()
 const router = useRouter()
-const companyId = 1
+const companyId = useCompanyId()
 const productId = computed(() => Number(route.params.id))
 
 const product = ref<OpcErpProduct | null>(null)

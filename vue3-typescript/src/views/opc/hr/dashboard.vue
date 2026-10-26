@@ -116,8 +116,9 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getHrDashboard, type OpcHrDashboard } from '@/api/opc/hr'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
+import { useCompanyId } from '@/composables/useCompanyId'
 
-const companyId = 1
+const companyId = useCompanyId()
 const data = ref<OpcHrDashboard | null>(null)
 const loading = ref(true)
 

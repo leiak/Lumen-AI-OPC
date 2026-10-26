@@ -166,10 +166,11 @@ import {
   type OpcHrInterview,
 } from '@/api/opc/hr'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
+import { useCompanyId } from '@/composables/useCompanyId'
 
 const route = useRoute()
 const router = useRouter()
-const companyId = 1
+const companyId = useCompanyId()
 const jobId = computed(() => Number(route.params.id))
 
 const job = ref<OpcHrJob | null>(null)

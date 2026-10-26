@@ -78,9 +78,10 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getContentDashboard, type OpcContentDashboard, type OpcContentScript } from '@/api/opc/content'
+import { useCompanyId } from '@/composables/useCompanyId'
 
 const router = useRouter()
-const companyId = 1
+const companyId = useCompanyId()
 
 const data = ref<OpcContentDashboard | null>(null)
 const loading = ref(true)

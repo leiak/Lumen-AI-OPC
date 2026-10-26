@@ -21,6 +21,10 @@ export interface UserInfoResult extends AjaxResult {
   isDefaultModifyPwd?: boolean
   /** 密码是否过期 */
   isPasswordExpired?: boolean
+  /** 所属公司（租户）id —— 前端据此决定 companyId，不再硬编码 */
+  companyId?: number
+  /** 密码字符规则（缓存到 session，密码框按它校验） */
+  pwdChrtype?: string
 }
 
 /** 验证码响应 */

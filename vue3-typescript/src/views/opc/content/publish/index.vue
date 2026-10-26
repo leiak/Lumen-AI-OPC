@@ -87,8 +87,9 @@ import {
   type OpcContentPublish,
   type ContentPublishStatus,
 } from '@/api/opc/content'
+import { useCompanyId } from '@/composables/useCompanyId'
 
-const companyId = 1
+const companyId = useCompanyId()
 const list = ref<OpcContentPublish[]>([])
 const loading = ref(false)
 const total = ref(0)

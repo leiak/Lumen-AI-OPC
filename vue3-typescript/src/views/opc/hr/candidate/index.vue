@@ -93,9 +93,10 @@ import {
   type HrSearchResult,
 } from '@/api/opc/hr'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
+import { useCompanyId } from '@/composables/useCompanyId'
 
 const router = useRouter()
-const companyId = 1
+const companyId = useCompanyId()
 
 const candidates = ref<OpcHrCandidate[]>([])
 const loading = ref(false)

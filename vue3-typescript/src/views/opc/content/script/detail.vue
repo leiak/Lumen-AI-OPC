@@ -182,10 +182,11 @@ import {
   type OpcContentPublish,
   type OpcContentPlatformAccount,
 } from '@/api/opc/content'
+import { useCompanyId } from '@/composables/useCompanyId'
 
 const route = useRoute()
 const router = useRouter()
-const companyId = 1
+const companyId = useCompanyId()
 
 const script = ref<OpcContentScript | null>(null)
 const loading = ref(false)

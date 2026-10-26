@@ -121,7 +121,7 @@ describe('AgentCard — interactions', () => {
     expect(routerPush).toHaveBeenCalledWith('/opc/agent/detail/1')
   })
 
-  it('clicking 雇佣 triggers router.push to hire with stopPropagation', async () => {
+  it('clicking 雇佣 triggers router.push to the hire form (same page as detail) with stopPropagation', async () => {
     routerPush.mockClear()
     const wrapper = mount(AgentCard, {
       ...mountOpts,
@@ -133,7 +133,8 @@ describe('AgentCard — interactions', () => {
     const hireBtn = buttons.find((b) => b.text() === '雇佣')
     expect(hireBtn).toBeTruthy()
     await hireBtn!.trigger('click')
-    expect(routerPush).toHaveBeenCalledWith('/opc/agent/hire/1')
+    // 雇佣表单与详情同页 —— 组件里 hire() 跳的是 detail（陈旧断言：曾指向 /opc/agent/hire/{id}）
+    expect(routerPush).toHaveBeenCalledWith('/opc/agent/detail/1')
     // Verify it was called only ONCE — the .stop on the button should prevent
     // the card click handler from also firing.
     expect(routerPush).toHaveBeenCalledTimes(1)

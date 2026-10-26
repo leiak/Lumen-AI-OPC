@@ -15,6 +15,8 @@ interface UserState {
   avatar: string
   roles: string[]
   permissions: string[]
+  /** 所属公司（租户）id —— 后端 getInfo 下发，前端据此决定 companyId。 */
+  companyId: number
 }
 
 const useUserStore = defineStore(
@@ -27,7 +29,8 @@ const useUserStore = defineStore(
       nickName: '',
       avatar: '',
       roles: [],
-      permissions: []
+      permissions: [],
+      companyId: 0
     }),
     actions: {
       // 登录
@@ -64,7 +67,9 @@ const useUserStore = defineStore(
             this.name = user.userName || ''
             this.nickName = user.nickName || ''
             this.avatar = avatar
-            cache.session.set('pwrChrtype', res.pwdChrtype)
+            // 租户（公司）归属 —— 服务端以登录态为准，前端不再硬编码 companyId
+            this.companyId = Number(res.companyId) || 0
+            cache.session.set('pwrChrtype', res.pwdChrtype || '')
             /* 初始密码提示 */
             if(res.isDefaultModifyPwd) {
               ElMessageBox.confirm('您的密码还是初始密码，请修改密码！',  '安全提示', {  confirmButtonText: '确定',  cancelButtonText: '取消',  type: 'warning' }).then(() => {
