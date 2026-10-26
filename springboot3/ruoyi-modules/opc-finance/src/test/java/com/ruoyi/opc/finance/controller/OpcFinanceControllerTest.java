@@ -1,5 +1,6 @@
 package com.ruoyi.opc.finance.controller;
 
+import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.common.core.web.domain.AjaxResult;
 import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.common.exception.OpcException;
@@ -9,6 +10,7 @@ import com.ruoyi.opc.finance.service.IOpcFinanceBankFlowService;
 import com.ruoyi.opc.finance.service.IOpcFinanceTaxReportService;
 import com.ruoyi.opc.finance.service.IOpcFinanceTokenUsageService;
 import com.ruoyi.opc.finance.service.IOpcFinanceVoucherService;
+import com.ruoyi.system.api.model.LoginUser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -88,6 +90,17 @@ class OpcFinanceControllerTest {
     void setupSecurityMock() {
         securityMock = mockStatic(SecurityUtils.class);
         securityMock.when(SecurityUtils::getUsername).thenReturn(USERNAME);
+        // 归属校验用 LoginUser.companyId —— 与 COMPANY_ID 一致＝本公司的凭证
+        securityMock.when(SecurityUtils::getLoginUser).thenReturn(loginUserOf(COMPANY_ID));
+    }
+
+    /** 构造一个属于指定公司的登录上下文。 */
+    private LoginUser loginUserOf(Long companyId) {
+        LoginUser loginUser = new LoginUser();
+        loginUser.setUserid(1L);
+        loginUser.setUsername(USERNAME);
+        loginUser.setCompanyId(companyId);
+        return loginUser;
     }
 
     @AfterEach
@@ -176,7 +189,11 @@ class OpcFinanceControllerTest {
         AjaxResult result = controller.createVoucher(v);
 
         assertEquals(200, result.get("code"));
-        assertEquals(123L, result.get("voucherId"),
+        // controller 走 success(data) —— voucherId 在 data 里（AjaxResult.success 把载荷放在 data 键下）
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) result.get("data");
+        assertNotNull(data);
+        assertEquals(123L, data.get("voucherId"),
                 "data.voucherId 应等于 service.create 返回值");
         assertEquals(USERNAME, v.getCreateBy(),
                 "W8 修复：controller 必须 override createBy = SecurityUtils.getUsername()");
@@ -193,7 +210,11 @@ class OpcFinanceControllerTest {
         AjaxResult result = controller.createVoucher(v);
 
         assertEquals(200, result.get("code"));
-        assertNull(result.get("voucherId"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) result.get("data");
+        assertNotNull(data);
+        assertNull(data.get("voucherId"));
+        verify(voucherService).create(v);
         verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
@@ -212,6 +233,7 @@ class OpcFinanceControllerTest {
                 "rows > 0 → data 应为 true");
         assertEquals(USERNAME, v.getUpdateBy(),
                 "W10.3 修复：controller 必须 override updateBy = SecurityUtils.getUsername()");
+        verify(voucherService).update(v);
         verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
@@ -228,6 +250,7 @@ class OpcFinanceControllerTest {
                 "rows == 0 → data 应为 false（controller 不主动 error）");
         assertEquals(USERNAME, v.getUpdateBy(),
                 "即使 update 失败（rows==0），controller 仍必须 override updateBy（防止伪造身份）");
+        verify(voucherService).update(v);
         verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
@@ -256,6 +279,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.TRUE, result.get("data"));
+        verify(voucherService).getById(VOUCHER_ID);
         verify(voucherService).reviewPass(VOUCHER_ID, USERNAME);
         securityMock.verify(() -> SecurityUtils.getUsername(), atLeastOnce());
         verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
@@ -270,6 +294,8 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.FALSE, result.get("data"));
+        verify(voucherService).getById(VOUCHER_ID);
+        verify(voucherService).reviewPass(VOUCHER_ID, USERNAME);
         verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
@@ -285,6 +311,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.TRUE, result.get("data"));
+        verify(voucherService).getById(VOUCHER_ID);
         verify(voucherService).reviewReject(VOUCHER_ID, USERNAME, "凭证借贷不平衡");
         verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
@@ -297,6 +324,7 @@ class OpcFinanceControllerTest {
         AjaxResult result = controller.reviewReject(VOUCHER_ID, null);
 
         assertEquals(200, result.get("code"));
+        verify(voucherService).getById(VOUCHER_ID);
         verify(voucherService).reviewReject(VOUCHER_ID, USERNAME, null);
         verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
@@ -310,6 +338,8 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.FALSE, result.get("data"));
+        verify(voucherService).getById(VOUCHER_ID);
+        verify(voucherService).reviewReject(VOUCHER_ID, USERNAME, "opinion");
         verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
@@ -324,6 +354,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.TRUE, result.get("data"));
+        verify(voucherService).getById(VOUCHER_ID);
         verify(voucherService).post(VOUCHER_ID, USERNAME);
         verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
@@ -337,6 +368,8 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(Boolean.FALSE, result.get("data"));
+        verify(voucherService).getById(VOUCHER_ID);
+        verify(voucherService).post(VOUCHER_ID, USERNAME);
         verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
@@ -349,6 +382,8 @@ class OpcFinanceControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.post(VOUCHER_ID));
         assertTrue(ex.getMessage().contains("未通过审核"));
+        verify(voucherService).getById(VOUCHER_ID);
+        verify(voucherService).post(VOUCHER_ID, USERNAME);
         verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
@@ -378,6 +413,7 @@ class OpcFinanceControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(0, result.get("data"));
+        verify(bankFlowService).uploadBatch(anyList(), anyString());
         verifyNoMoreInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
 
@@ -411,7 +447,7 @@ class OpcFinanceControllerTest {
                 "taskCode 应非 null（同步生成的占位 taskCode）");
         assertTrue(data.get("taskCode").toString().startsWith("EXTRACT-"),
                 "taskCode 应以 EXTRACT- 开头，实际: " + data.get("taskCode"));
-        assertEquals(LocalDate.now().toString(), data.get("date"));
+        // 注意：extractFlows 只返回 taskCode（date 是 dailyReport 才带的，前端也只用 taskCode）
         // 验证不调任何 service
         verifyNoInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
     }
@@ -431,5 +467,63 @@ class OpcFinanceControllerTest {
                 "taskCode 应以 DAILY- 开头");
         assertEquals(LocalDate.now().toString(), data.get("date"));
         verifyNoInteractions(voucherService, bankFlowService, taxReportService, tokenUsageService);
+    }
+
+    // ==================== 归属校验（跨租户防护） ====================
+
+    @Test
+    @DisplayName("voucherDetail — 凭证属于别的公司 → ServiceException(403)")
+    void voucherDetail_crossTenantRejected() {
+        // 登录上下文的公司是 9999，凭证挂在 1001 —— 改一下 id 就能看别家的凭证，必须挡住
+        securityMock.when(SecurityUtils::getLoginUser).thenReturn(loginUserOf(9999L));
+        OpcFinanceVoucher v = sampleVoucher();
+        when(voucherService.getById(VOUCHER_ID)).thenReturn(v);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> controller.voucherDetail(VOUCHER_ID));
+
+        assertEquals(Integer.valueOf(403), ex.getCode());
+        assertTrue(ex.getMessage().contains("无权访问"));
+    }
+
+    @Test
+    @DisplayName("voucherDetail — 没有登录上下文 → ServiceException(403)（无公司 ≠ 哪家公司都能看）")
+    void voucherDetail_noLoginUserRejected() {
+        securityMock.when(SecurityUtils::getLoginUser).thenReturn(null);
+        OpcFinanceVoucher v = sampleVoucher();
+        when(voucherService.getById(VOUCHER_ID)).thenReturn(v);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> controller.voucherDetail(VOUCHER_ID));
+
+        assertEquals(Integer.valueOf(403), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("reviewPass — 凭证属于别的公司 → 403，且不落到 service 的审核动作")
+    void reviewPass_crossTenantRejected() {
+        securityMock.when(SecurityUtils::getLoginUser).thenReturn(loginUserOf(9999L));
+        OpcFinanceVoucher v = sampleVoucher();
+        when(voucherService.getById(VOUCHER_ID)).thenReturn(v);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> controller.reviewPass(VOUCHER_ID));
+
+        assertEquals(Integer.valueOf(403), ex.getCode());
+        verify(voucherService, never()).reviewPass(anyLong(), anyString());
+    }
+
+    @Test
+    @DisplayName("post — 凭证属于别的公司 → 403，且不落到 service 的入账动作")
+    void post_crossTenantRejected() {
+        securityMock.when(SecurityUtils::getLoginUser).thenReturn(loginUserOf(9999L));
+        OpcFinanceVoucher v = sampleVoucher();
+        when(voucherService.getById(VOUCHER_ID)).thenReturn(v);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> controller.post(VOUCHER_ID));
+
+        assertEquals(Integer.valueOf(403), ex.getCode());
+        verify(voucherService, never()).post(anyLong(), anyString());
     }
 }

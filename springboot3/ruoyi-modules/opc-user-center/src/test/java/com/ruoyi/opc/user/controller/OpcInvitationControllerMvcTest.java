@@ -18,7 +18,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.util.Date;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -46,7 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>覆盖维度：
  * <ul>
  *   <li><b>HTTP status</b>：200 正常 + 200 service 异常（OpcException → handleServiceException）</li>
- *   <li><b>JSON 序列化</b>：{@code $.data.code / $.data.inviterRewardAmount / $.data.status}</li>
+ *   <li><b>JSON 序列化</b>：{@code $.data.inviteCode / $.data.inviter.realName / $.data.rewardAmount}</li>
  *   <li><b>公开 vs 登录</b>：{@code GET /{code}} 即使 SecurityContextHolder 为空也能成功（验证 gateway 白名单设计）</li>
  *   <li><b>W7 修复回归</b>：{@code OpcException(400, "...")} 走 handleServiceException → HTTP 200 + JSON code=400</li>
  * </ul>
@@ -55,8 +55,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <ul>
  *   <li>gateway 的 {@code security.ignore.whites} 是 path-only（AntPathMatcher），{@code /opc/user/invitations/*} 同时匹配 GET 和 POST
  *       — 但实际只有 GET 暴露给公网；POST 仍走 gateway 鉴权链</li>
- *   <li>{@code GET /{code}} 是匿名安全的（仅返回公开信息：邀请人昵称/奖励金额），不返回 userId/手机号</li>
+ *   <li>{@code GET /{code}} 是匿名安全的（仅返回公开信息：邀请人昵称/头像），不返回 userId/手机号</li>
  * </ul>
+ *
+ * <p><b>断言已对齐当前 API 形状</b>：本文件此前断言的是一套更早的数据形状
+ * （{@code OpcInvitation.code / inviterNickname / inviterRewardAmount / expireAt}，
+ * 且 {@code getPublicByCode} / {@code accept} 返回的是领域对象）。
+ * 现在的实现里邀请码字段叫 {@code inviteCode}、过期时间叫 {@code expireTime}，
+ * 而 {@code getPublicByCode} / {@code accept} 返回的是
+ * {@code Map<String,Object>}（公开信息 / 接受结果）——
+ * 那套字段在领域对象上<b>根本不存在</b>，测试连编译都过不去，
+ * 等于这个模块的测试一直是<b>没在跑</b>的状态。断言按当前实现改齐，
+ * 覆盖的路径与原来一致。</p>
  *
  * @author OAC
  */
@@ -89,31 +99,46 @@ class OpcInvitationControllerMvcTest {
         SecurityContextHolder.remove();
     }
 
-    private OpcInvitation samplePublicInvitation() {
+    /** getPublicByCode 的返回形状：邀请码 + 过期时间 + 邀请人公开信息。 */
+    private Map<String, Object> samplePublicInfo() {
+        return Map.of(
+                "inviteCode", INVITE_CODE,
+                "expireTime", new Date(System.currentTimeMillis() + 90L * 86400_000),
+                "inviter", Map.of(
+                        "userId", 4001L,
+                        "realName", "李四",
+                        "avatarUrl", "",
+                        "industry", "软件",
+                        "city", "杭州"
+                )
+        );
+    }
+
+    /** generate 的返回形状：领域对象本身。 */
+    private OpcInvitation sampleInvitation() {
         OpcInvitation inv = new OpcInvitation();
-        inv.setCode(INVITE_CODE);
-        inv.setInviterNickname("李四");
-        inv.setInviterRewardAmount(new BigDecimal("50.00"));
+        inv.setInviteCode(INVITE_CODE);
+        inv.setInviterId(4001L);
         inv.setStatus("ACTIVE");
-        inv.setExpireAt(LocalDateTime.now().plusDays(90));
+        inv.setExpireTime(new Date(System.currentTimeMillis() + 90L * 86400_000));
         inv.setMaxUses(1);
+        inv.setUsedCount(0);
         return inv;
     }
 
     // ==================== GET /opc/user/invitations/{code} — 公开 ====================
 
     @Test
-    @DisplayName("getPublic — 已登录 → service 调通 → HTTP 200 + JSON $.data.code + inviterRewardAmount")
+    @DisplayName("getPublic — 已登录 → service 调通 → HTTP 200 + JSON $.data.inviteCode + 邀请人公开信息")
     void getPublic_authenticated_returnsPublicInvitation() throws Exception {
-        when(invitationService.getPublicByCode(INVITE_CODE)).thenReturn(samplePublicInvitation());
+        when(invitationService.getPublicByCode(INVITE_CODE)).thenReturn(samplePublicInfo());
 
         mockMvc.perform(get("/opc/user/invitations/{code}", INVITE_CODE))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.code").value(INVITE_CODE))
-                .andExpect(jsonPath("$.data.inviterRewardAmount").value(50.00))
-                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
-                .andExpect(jsonPath("$.data.inviterNickname").value("李四"));
+                .andExpect(jsonPath("$.data.inviteCode").value(INVITE_CODE))
+                .andExpect(jsonPath("$.data.inviter.realName").value("李四"))
+                .andExpect(jsonPath("$.data.inviter.userId").value(4001));
 
         verify(invitationService).getPublicByCode(INVITE_CODE);
     }
@@ -122,12 +147,12 @@ class OpcInvitationControllerMvcTest {
     @DisplayName("getPublic — 匿名调用（SecurityContextHolder 清空）→ 仍能查到（gateway 白名单设计）")
     void getPublic_anonymous_stillWorksBecauseEndpointIsPublic() throws Exception {
         SecurityContextHolder.remove();
-        when(invitationService.getPublicByCode(INVITE_CODE)).thenReturn(samplePublicInvitation());
+        when(invitationService.getPublicByCode(INVITE_CODE)).thenReturn(samplePublicInfo());
 
         mockMvc.perform(get("/opc/user/invitations/{code}", INVITE_CODE))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.code").value(INVITE_CODE));
+                .andExpect(jsonPath("$.data.inviteCode").value(INVITE_CODE));
     }
 
     @Test
@@ -156,16 +181,16 @@ class OpcInvitationControllerMvcTest {
     // ==================== POST /opc/user/invitations/generate — 需登录 ====================
 
     @Test
-    @DisplayName("generate — 已登录 → service.generate(userId) 被调 → HTTP 200 + JSON $.data.code")
+    @DisplayName("generate — 已登录 → service.generate(userId) 被调 → HTTP 200 + JSON $.data.inviteCode")
     void generate_authenticated_createsInvitation() throws Exception {
-        OpcInvitation inv = samplePublicInvitation();
-        inv.setCode("NEWCDEFG");
+        OpcInvitation inv = sampleInvitation();
+        inv.setInviteCode("NEWCDEFG");
         when(invitationService.generate(USER_ID)).thenReturn(inv);
 
         mockMvc.perform(post("/opc/user/invitations/generate"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.code").value("NEWCDEFG"));
+                .andExpect(jsonPath("$.data.inviteCode").value("NEWCDEFG"));
 
         verify(invitationService).generate(USER_ID);
     }
@@ -197,28 +222,33 @@ class OpcInvitationControllerMvcTest {
     // ==================== POST /opc/user/invitations/accept — 需登录 + JSON body ====================
 
     @Test
-    @DisplayName("accept — 正常 → service.accept(code, userId, mobile) 被调 → HTTP 200 + JSON $.data.code")
+    @DisplayName("accept — 正常 → service.accept(code, userId, mobile) 被调 → HTTP 200 + JSON $.data.inviterId")
     void accept_withValidBody_serviceAcceptsInvitation() throws Exception {
-        OpcInvitation inv = samplePublicInvitation();
-        when(invitationService.accept(eq(INVITE_CODE), eq(USER_ID), eq(MOBILE))).thenReturn(inv);
+        when(invitationService.accept(eq(INVITE_CODE), eq(USER_ID), eq(MOBILE)))
+                .thenReturn(Map.of("inviterId", 4001L, "companyId", 7L, "rewardAmount", new BigDecimal("50.00")));
 
         mockMvc.perform(post("/opc/user/invitations/accept")
                         .contentType("application/json")
                         .content("{\"code\":\"" + INVITE_CODE + "\",\"mobile\":\"" + MOBILE + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.code").value(INVITE_CODE));
+                .andExpect(jsonPath("$.data.inviterId").value(4001))
+                .andExpect(jsonPath("$.data.companyId").value(7));
 
         verify(invitationService).accept(INVITE_CODE, USER_ID, MOBILE);
     }
 
     @Test
-    @DisplayName("accept — 缺 @RequestBody → HTTP 400（HttpMessageNotReadableException）")
-    void accept_emptyBody_returns400() throws Exception {
+    @DisplayName("accept — 缺 @RequestBody → HTTP 200 + code=500（HttpMessageNotReadableException 被全局 advice 兜住）")
+    void accept_emptyBody_returns200WithCode500() throws Exception {
+        // HttpMessageNotReadableException 是 RuntimeException 的子类 → 被 GlobalExceptionHandler
+        // 的 @ExceptionHandler(RuntimeException.class) 接管 → HTTP 200 + body.code=500
+        // （不是 Spring 默认的 400：ExceptionHandlerExceptionResolver 优先于 DefaultHandlerExceptionResolver）
         mockMvc.perform(post("/opc/user/invitations/accept")
                         .contentType("application/json")
                         .content(""))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(500));
     }
 
     @Test
@@ -241,13 +271,13 @@ class OpcInvitationControllerMvcTest {
     @DisplayName("myInvitations — 已登录 → service.listByInviter(userId) 被调 → HTTP 200 + JSON data 是数组")
     void myInvitations_authenticated_returnsList() throws Exception {
         when(invitationService.listByInviter(USER_ID))
-                .thenReturn(java.util.Arrays.asList(samplePublicInvitation()));
+                .thenReturn(java.util.Arrays.asList(sampleInvitation()));
 
         mockMvc.perform(get("/opc/user/invitations"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data[0].code").value(INVITE_CODE));
+                .andExpect(jsonPath("$.data[0].inviteCode").value(INVITE_CODE));
 
         verify(invitationService).listByInviter(USER_ID);
     }

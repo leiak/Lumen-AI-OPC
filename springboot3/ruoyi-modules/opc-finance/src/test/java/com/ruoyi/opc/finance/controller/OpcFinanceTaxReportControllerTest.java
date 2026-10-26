@@ -1,11 +1,13 @@
 package com.ruoyi.opc.finance.controller;
 
 import com.ruoyi.common.core.constant.HttpStatus;
+import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.common.core.web.domain.AjaxResult;
 import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.finance.domain.OpcFinanceTaxReport;
 import com.ruoyi.opc.finance.service.IOpcFinanceTaxReportService;
+import com.ruoyi.system.api.model.LoginUser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -69,6 +71,17 @@ class OpcFinanceTaxReportControllerTest {
     void setupSecurityMock() {
         securityMock = mockStatic(SecurityUtils.class);
         securityMock.when(SecurityUtils::getUsername).thenReturn(USERNAME);
+        // 归属校验用 LoginUser.companyId —— 与 COMPANY_ID 一致＝本公司的报表
+        securityMock.when(SecurityUtils::getLoginUser).thenReturn(loginUserOf(COMPANY_ID));
+    }
+
+    /** 构造一个属于指定公司的登录上下文。 */
+    private LoginUser loginUserOf(Long companyId) {
+        LoginUser loginUser = new LoginUser();
+        loginUser.setUserid(1L);
+        loginUser.setUsername(USERNAME);
+        loginUser.setCompanyId(companyId);
+        return loginUser;
     }
 
     @AfterEach
@@ -170,6 +183,7 @@ class OpcFinanceTaxReportControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.generate(COMPANY_ID, PERIOD));
         assertTrue(ex.getMessage().contains("公司不存在"));
+        verify(taxReportService).generateMonthlyReport(COMPANY_ID, PERIOD, USERNAME);
         verifyNoMoreInteractions(taxReportService);
     }
 
@@ -251,6 +265,7 @@ class OpcFinanceTaxReportControllerTest {
         assertEquals(HttpStatus.SUCCESS, result.get("code"));
         assertNotNull(result.get("data"));
         assertEquals(0, ((List<?>) result.get("data")).size());
+        verify(taxReportService).listByCompany(COMPANY_ID, null, null, 20);
         verifyNoMoreInteractions(taxReportService);
     }
 
@@ -282,5 +297,35 @@ class OpcFinanceTaxReportControllerTest {
         assertEquals("报表不存在", result.get("msg"));
         verify(taxReportService).getById(999L);
         verifyNoMoreInteractions(taxReportService);
+    }
+
+    // ==================== 归属校验（跨租户防护） ====================
+
+    @Test
+    @DisplayName("detail — 报表属于别的公司 → ServiceException(403)")
+    void detail_crossTenantRejected() {
+        // 详情端点只按 id 取数 —— 改 id 就能看别家的税务报表，必须挡住
+        securityMock.when(SecurityUtils::getLoginUser).thenReturn(loginUserOf(9999L));
+        OpcFinanceTaxReport r = sampleReport();
+        when(taxReportService.getById(REPORT_PK_ID)).thenReturn(r);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> controller.detail(REPORT_PK_ID));
+
+        assertEquals(Integer.valueOf(403), ex.getCode());
+        assertTrue(ex.getMessage().contains("无权访问"));
+    }
+
+    @Test
+    @DisplayName("detail — 没有登录上下文 → ServiceException(403)（无公司 ≠ 哪家公司都能看）")
+    void detail_noLoginUserRejected() {
+        securityMock.when(SecurityUtils::getLoginUser).thenReturn(null);
+        OpcFinanceTaxReport r = sampleReport();
+        when(taxReportService.getById(REPORT_PK_ID)).thenReturn(r);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> controller.detail(REPORT_PK_ID));
+
+        assertEquals(Integer.valueOf(403), ex.getCode());
     }
 }

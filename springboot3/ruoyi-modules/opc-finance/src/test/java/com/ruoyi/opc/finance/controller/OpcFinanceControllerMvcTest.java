@@ -209,15 +209,15 @@ class OpcFinanceControllerMvcTest {
     // ==================== POST /voucher — 异常路径 ====================
 
     @Test
-    @DisplayName("createVoucher — service 抛 OpcException → HTTP 500 + JSON msg（via @RestControllerAdvice）")
-    void createVoucher_serviceThrowsOpcException_returns500ViaAdvice() throws Exception {
+    @DisplayName("createVoucher — service 抛 OpcException → HTTP 200 + JSON code=500 + msg（业务错误约定）")
+    void createVoucher_serviceThrowsOpcException_returns200WithCode500() throws Exception {
         when(voucherService.create(any(OpcFinanceVoucher.class)))
                 .thenThrow(new OpcException("Mapper insert 失败：唯一键冲突"));
 
         mockMvc.perform(post("/opc/finance/voucher")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(voucherJson()))
-                .andExpect(status().isInternalServerError())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(500))
                 .andExpect(jsonPath("$.msg").value("Mapper insert 失败：唯一键冲突"));
     }
@@ -241,12 +241,16 @@ class OpcFinanceControllerMvcTest {
     // ==================== POST /voucher — 边界 ====================
 
     @Test
-    @DisplayName("createVoucher — 缺 @RequestBody → HTTP 400（HttpMessageNotReadableException）")
-    void createVoucher_emptyBody_returns400() throws Exception {
+    @DisplayName("createVoucher — 缺 @RequestBody → HTTP 200 + code=500（HttpMessageNotReadableException 被全局 advice 兜住）")
+    void createVoucher_emptyBody_returns200WithCode500() throws Exception {
+        // HttpMessageNotReadableException 是 RuntimeException 的子类 → 被 GlobalExceptionHandler
+        // 的 @ExceptionHandler(RuntimeException.class) 接管 → HTTP 200 + body.code=500
+        // （不是 Spring 默认的 400：ExceptionHandlerExceptionResolver 优先于 DefaultHandlerExceptionResolver）
         mockMvc.perform(post("/opc/finance/voucher")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(""))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(500));
         verify(voucherService, never()).create(any(OpcFinanceVoucher.class));
     }
 
@@ -324,15 +328,15 @@ class OpcFinanceControllerMvcTest {
     }
 
     @Test
-    @DisplayName("updateVoucher — service 抛 OpcException → HTTP 500 + JSON msg（via @RestControllerAdvice）")
-    void updateVoucher_serviceThrowsOpcException_returns500ViaAdvice() throws Exception {
+    @DisplayName("updateVoucher — service 抛 OpcException → HTTP 200 + JSON code=500 + msg（业务错误约定）")
+    void updateVoucher_serviceThrowsOpcException_returns200WithCode500() throws Exception {
         when(voucherService.update(any(OpcFinanceVoucher.class)))
                 .thenThrow(new OpcException("更新失败：乐观锁冲突"));
 
         mockMvc.perform(put("/opc/finance/voucher")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(voucherUpdateJson()))
-                .andExpect(status().isInternalServerError())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(500))
                 .andExpect(jsonPath("$.msg").value("更新失败：乐观锁冲突"));
     }

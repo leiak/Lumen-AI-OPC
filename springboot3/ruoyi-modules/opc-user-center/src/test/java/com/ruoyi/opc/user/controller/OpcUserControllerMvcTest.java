@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -29,10 +30,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>覆盖维度：
  * <ul>
- *   <li><b>HTTP status</b>：200 正常 + 200 空 profile + 500 service 异常</li>
+ *   <li><b>HTTP status</b>：200 正常 + 200 空 profile + 200（body.code=500）service 异常</li>
  *   <li><b>JSON 序列化</b>：{@code $.data.realName} + {@code $.data.userId} 字段验证</li>
- *   <li><b>401 鉴权</b>：匿名 → SecurityUtils.getUserId() null → service 抛 OpcException</li>
- *   <li><b>@RestControllerAdvice</b>：OpcException → HTTP 500 + msg</li>
+ *   <li><b>匿名调用</b>：SecurityUtils.getUserId() null → service 抛 OpcException</li>
+ *   <li><b>业务错误约定</b>：OpcException → HTTP 200 + {@code $.code=500} + msg</li>
  * </ul>
  *
  * <p>本 controller 关键设计：{@code myProfile} 在 service 返回 null 时自动构造空 profile —
@@ -117,13 +118,14 @@ class OpcUserControllerMvcTest {
     // ==================== GET /profile — 异常路径 ====================
 
     @Test
-    @DisplayName("myProfile — service 抛 OpcException → HTTP 500 + JSON msg（via @RestControllerAdvice）")
-    void myProfile_serviceThrowsOpcException_returns500ViaAdvice() throws Exception {
+    @DisplayName("myProfile — service 抛 OpcException → HTTP 200 + JSON code=500 + msg（业务错误约定）")
+    void myProfile_serviceThrowsOpcException_returns200WithCode500() throws Exception {
         when(userProfileService.getByUserId(anyLong()))
                 .thenThrow(new OpcException("查询 user_profile 失败"));
 
+        // 业务错误在本项目里一律是 HTTP 200 + body.code（见 OpcUserController 的 @ExceptionHandler(OpcException.class) → R.fail）
         mockMvc.perform(get("/opc/user/profile"))
-                .andExpect(status().isInternalServerError())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(500))
                 .andExpect(jsonPath("$.msg").value("查询 user_profile 失败"));
     }
@@ -131,14 +133,15 @@ class OpcUserControllerMvcTest {
     // ==================== GET /profile — 匿名场景 ====================
 
     @Test
-    @DisplayName("myProfile — 匿名调用 → service 收到 null userId → 抛 OpcException → 500")
+    @DisplayName("myProfile — 匿名调用 → service 收到 null userId → 抛 OpcException → HTTP 200 + code=500")
     void myProfile_anonymous_userIdNull_throwsOpcException() throws Exception {
         SecurityContextHolder.remove();
         when(userProfileService.getByUserId(any()))
                 .thenThrow(new OpcException("userId 不能为空"));
 
         mockMvc.perform(get("/opc/user/profile"))
-                .andExpect(status().isInternalServerError())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(500))
                 .andExpect(jsonPath("$.msg").value("userId 不能为空"));
     }
 }

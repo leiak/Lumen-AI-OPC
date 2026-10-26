@@ -1,5 +1,6 @@
 package com.ruoyi.opc.billing.controller;
 
+import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.common.core.web.domain.AjaxResult;
 import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.billing.controller.OpcBillingController.RechargeRequest;
@@ -8,6 +9,7 @@ import com.ruoyi.opc.billing.domain.OpcWallet;
 import com.ruoyi.opc.billing.mapper.OpcBillingOrderMapper;
 import com.ruoyi.opc.billing.service.IOpcWalletService;
 import com.ruoyi.opc.common.exception.OpcException;
+import com.ruoyi.system.api.model.LoginUser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -70,6 +72,16 @@ class OpcBillingControllerTest {
     void setupSecurityMock() {
         securityMock = mockStatic(SecurityUtils.class);
         securityMock.when(SecurityUtils::getUserId).thenReturn(USER_ID);
+        // 归属校验用 LoginUser.companyId —— 与 COMPANY_ID 一致＝本公司的订单
+        securityMock.when(SecurityUtils::getLoginUser).thenReturn(loginUserOf(COMPANY_ID));
+    }
+
+    /** 构造一个属于指定公司的登录上下文。 */
+    private LoginUser loginUserOf(Long companyId) {
+        LoginUser loginUser = new LoginUser();
+        loginUser.setUserid(USER_ID);
+        loginUser.setCompanyId(companyId);
+        return loginUser;
     }
 
     @AfterEach
@@ -132,6 +144,7 @@ class OpcBillingControllerTest {
 
         assertEquals(200, result.get("code"));
         assertNull(result.get("data"));
+        verify(walletService).getOrCreate(COMPANY_ID, USER_ID);
         verifyNoMoreInteractions(walletService, orderMapper);
     }
 
@@ -143,8 +156,10 @@ class OpcBillingControllerTest {
         RechargeRequest req = rechargeRequest();
         req.payMethod = "WECHAT";
 
-        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString(), anyString()))
-                .thenReturn(null);
+        // controller 调的是 5 参旧路径 (companyId,userId,amount,payMethod,tradeNo) ——
+        // IOpcWalletService 里 6 参那版是 (…, bizType, bizId, description)，语义不同，别搞混
+        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString()))
+                .thenReturn(1);
 
         controller.recharge(req);
 
@@ -167,6 +182,9 @@ class OpcBillingControllerTest {
         assertEquals("PENDING", order.getPayStatus(),
                 "insert 时 payStatus 应为 PENDING（标记已支付前）");
         assertEquals(String.valueOf(USER_ID), order.getCreateBy());
+        verify(orderMapper).markPaid(anyString(), eq("WECHAT"), anyString());
+        verify(walletService).recharge(eq(COMPANY_ID), eq(USER_ID), eq(AMOUNT),
+                eq("WECHAT"), argThat(s -> s != null && s.startsWith("MOCK-")));
         verifyNoMoreInteractions(walletService, orderMapper);
     }
 
@@ -174,8 +192,10 @@ class OpcBillingControllerTest {
     @DisplayName("recharge — payMethod=null → 默认 ALIPAY")
     void recharge_payMethodNull_defaultsToAlipay() {
         RechargeRequest req = rechargeRequest(); // payMethod 默认 null
-        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString(), anyString()))
-                .thenReturn(null);
+        // controller 调的是 5 参旧路径 (companyId,userId,amount,payMethod,tradeNo) ——
+        // IOpcWalletService 里 6 参那版是 (…, bizType, bizId, description)，语义不同，别搞混
+        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString()))
+                .thenReturn(1);
 
         controller.recharge(req);
 
@@ -183,6 +203,9 @@ class OpcBillingControllerTest {
         verify(orderMapper).insert(captor.capture());
         assertEquals("ALIPAY", captor.getValue().getPayMethod(),
                 "payMethod 为 null 时应默认 ALIPAY");
+        verify(orderMapper).markPaid(anyString(), eq("ALIPAY"), anyString());
+        verify(walletService).recharge(eq(COMPANY_ID), eq(USER_ID), eq(AMOUNT),
+                eq("ALIPAY"), argThat(s -> s != null && s.startsWith("MOCK-")));
         verifyNoMoreInteractions(walletService, orderMapper);
     }
 
@@ -191,16 +214,19 @@ class OpcBillingControllerTest {
     void recharge_payMethodProvided_passesThrough() {
         RechargeRequest req = rechargeRequest();
         req.payMethod = "WECHAT";
-        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString(), anyString()))
-                .thenReturn(null);
+        // controller 调的是 5 参旧路径 (companyId,userId,amount,payMethod,tradeNo) ——
+        // IOpcWalletService 里 6 参那版是 (…, bizType, bizId, description)，语义不同，别搞混
+        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString()))
+                .thenReturn(1);
 
         controller.recharge(req);
 
         // 验证 markPaid 的 payMethod 参数
+        verify(orderMapper).insert(any(OpcBillingOrder.class));
         verify(orderMapper).markPaid(anyString(), eq("WECHAT"), anyString());
         // 验证 walletService.recharge 的 bizType 参数
         verify(walletService).recharge(eq(COMPANY_ID), eq(USER_ID), eq(AMOUNT),
-                eq("WECHAT"), anyString(), anyString());
+                eq("WECHAT"), argThat(s -> s != null && s.startsWith("MOCK-")));
         verifyNoMoreInteractions(walletService, orderMapper);
     }
 
@@ -208,8 +234,10 @@ class OpcBillingControllerTest {
     @DisplayName("recharge — markPaid 和 walletService.recharge 都被调，参数含 MOCK- 前缀")
     void recharge_marksPaidAndCallsWalletRecharge() {
         RechargeRequest req = rechargeRequest();
-        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString(), anyString()))
-                .thenReturn(null);
+        // controller 调的是 5 参旧路径 (companyId,userId,amount,payMethod,tradeNo) ——
+        // IOpcWalletService 里 6 参那版是 (…, bizType, bizId, description)，语义不同，别搞混
+        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString()))
+                .thenReturn(1);
 
         controller.recharge(req);
 
@@ -220,8 +248,7 @@ class OpcBillingControllerTest {
                 s != null && s.startsWith("MOCK-")));
         // 3) walletService.recharge
         verify(walletService, times(1)).recharge(eq(COMPANY_ID), eq(USER_ID), eq(AMOUNT),
-                eq("ALIPAY"), argThat(s -> s != null && s.startsWith("MOCK-")),
-                anyString());
+                eq("ALIPAY"), argThat(s -> s != null && s.startsWith("MOCK-")));
         verifyNoMoreInteractions(walletService, orderMapper);
     }
 
@@ -229,8 +256,10 @@ class OpcBillingControllerTest {
     @DisplayName("recharge — 返回 success({orderNo, status:'PAID'})")
     void recharge_returnsOrderNoAndPaidStatus() {
         RechargeRequest req = rechargeRequest();
-        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString(), anyString()))
-                .thenReturn(null);
+        // controller 调的是 5 参旧路径 (companyId,userId,amount,payMethod,tradeNo) ——
+        // IOpcWalletService 里 6 参那版是 (…, bizType, bizId, description)，语义不同，别搞混
+        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString()))
+                .thenReturn(1);
 
         AjaxResult result = controller.recharge(req);
 
@@ -242,6 +271,10 @@ class OpcBillingControllerTest {
         assertTrue(data.get("orderNo").toString().startsWith("O"));
         assertEquals("PAID", data.get("status"),
                 "controller 模拟立即到账 → 返回 status='PAID'");
+        verify(orderMapper).insert(any(OpcBillingOrder.class));
+        verify(orderMapper).markPaid(anyString(), eq("ALIPAY"), anyString());
+        verify(walletService).recharge(eq(COMPANY_ID), eq(USER_ID), eq(AMOUNT),
+                eq("ALIPAY"), argThat(s -> s != null && s.startsWith("MOCK-")));
         verifyNoMoreInteractions(walletService, orderMapper);
     }
 
@@ -249,7 +282,7 @@ class OpcBillingControllerTest {
     @DisplayName("recharge — walletService.recharge 抛 OpcException（余额更新失败）→ 异常透传")
     void recharge_serviceThrowsPropagates() {
         RechargeRequest req = rechargeRequest();
-        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString(), anyString()))
+        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString()))
                 .thenThrow(new OpcException("余额更新失败"));
 
         OpcException ex = assertThrows(OpcException.class,
@@ -258,6 +291,8 @@ class OpcBillingControllerTest {
         // 验证前面两步（insert + markPaid）已经执行
         verify(orderMapper).insert(any(OpcBillingOrder.class));
         verify(orderMapper).markPaid(anyString(), anyString(), anyString());
+        verify(walletService).recharge(eq(COMPANY_ID), eq(USER_ID), eq(AMOUNT),
+                anyString(), anyString());
         verifyNoMoreInteractions(walletService, orderMapper);
     }
 
@@ -266,14 +301,19 @@ class OpcBillingControllerTest {
     void recharge_titleIncludesAmount() {
         RechargeRequest req = rechargeRequest();
         req.amount = new BigDecimal("250.50");
-        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString(), anyString()))
-                .thenReturn(null);
+        // controller 调的是 5 参旧路径 (companyId,userId,amount,payMethod,tradeNo) ——
+        // IOpcWalletService 里 6 参那版是 (…, bizType, bizId, description)，语义不同，别搞混
+        when(walletService.recharge(anyLong(), anyLong(), any(), anyString(), anyString()))
+                .thenReturn(1);
 
         controller.recharge(req);
 
         ArgumentCaptor<OpcBillingOrder> captor = ArgumentCaptor.forClass(OpcBillingOrder.class);
         verify(orderMapper).insert(captor.capture());
         assertEquals("钱包充值 ¥250.50", captor.getValue().getTitle());
+        verify(orderMapper).markPaid(anyString(), eq("ALIPAY"), anyString());
+        verify(walletService).recharge(eq(COMPANY_ID), eq(USER_ID), eq(new BigDecimal("250.50")),
+                eq("ALIPAY"), argThat(s -> s != null && s.startsWith("MOCK-")));
         verifyNoMoreInteractions(walletService, orderMapper);
     }
 
@@ -330,6 +370,7 @@ class OpcBillingControllerTest {
 
         assertEquals(200, result.get("code"));
         assertNull(result.get("data"));
+        verify(orderMapper).selectByOrderNo("NOTFOUND");
         verifyNoMoreInteractions(walletService, orderMapper);
     }
 }

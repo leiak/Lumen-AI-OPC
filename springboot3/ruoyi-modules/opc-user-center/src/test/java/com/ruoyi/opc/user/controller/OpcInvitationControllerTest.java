@@ -111,6 +111,7 @@ class OpcInvitationControllerTest {
 
         assertEquals(200, result.get("code"));
         assertNull(result.get("data"));
+        verify(invitationService).generate(USER_ID);
         verifyNoMoreInteractions(invitationService);
     }
 
@@ -123,6 +124,7 @@ class OpcInvitationControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.generate());
         assertTrue(ex.getMessage().contains("50"));
+        verify(invitationService).generate(USER_ID);
         verifyNoMoreInteractions(invitationService);
     }
 
@@ -152,6 +154,7 @@ class OpcInvitationControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(0, ((List<?>) result.get("data")).size());
+        verify(invitationService).listByInviter(USER_ID);
         verifyNoMoreInteractions(invitationService);
     }
 
@@ -185,17 +188,18 @@ class OpcInvitationControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.getPublic("NOPE"));
         assertTrue(ex.getMessage().contains("不存在"));
+        verify(invitationService).getPublicByCode("NOPE");
         verifyNoMoreInteractions(invitationService);
     }
 
     @Test
     @DisplayName("getPublic — inviter profile 缺失 → service 返回 inviter=null（透传，不抛）")
     void getPublic_inviterProfileMissing() {
-        Map<String, Object> mockResult = Map.of(
-                "inviteCode", CODE,
-                "expireTime", new Date(),
-                "inviter", null
-        );
+        // Map.of 不允许 null value（会 NPE），这里要表达"inviter 缺失"，只能用 HashMap
+        Map<String, Object> mockResult = new HashMap<>();
+        mockResult.put("inviteCode", CODE);
+        mockResult.put("expireTime", new Date());
+        mockResult.put("inviter", null);
         when(invitationService.getPublicByCode(CODE)).thenReturn(mockResult);
 
         AjaxResult result = controller.getPublic(CODE);
@@ -203,6 +207,7 @@ class OpcInvitationControllerTest {
         assertEquals(200, result.get("code"));
         assertEquals(CODE, ((Map<?, ?>) result.get("data")).get("inviteCode"));
         assertNull(((Map<?, ?>) result.get("data")).get("inviter"));
+        verify(invitationService).getPublicByCode(CODE);
         verifyNoMoreInteractions(invitationService);
     }
 
@@ -274,6 +279,7 @@ class OpcInvitationControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.accept(new HashMap<>()));
         assertTrue(ex.getMessage().contains("邀请码不能为空"));
+        verify(invitationService).accept(null, USER_ID, null);
         verifyNoMoreInteractions(invitationService);
     }
 
@@ -290,6 +296,7 @@ class OpcInvitationControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.accept(body));
         assertTrue(ex.getMessage().contains("不能接受自己"));
+        verify(invitationService).accept(CODE, USER_ID, MOBILE);
         verifyNoMoreInteractions(invitationService);
     }
 

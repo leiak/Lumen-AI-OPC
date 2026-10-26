@@ -1,6 +1,7 @@
 package com.ruoyi.opc.user.controller;
 
 import com.ruoyi.common.core.domain.R;
+import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.common.core.web.controller.BaseController;
 import com.ruoyi.common.core.web.domain.AjaxResult;
 import com.ruoyi.common.security.annotation.InnerAuth;
@@ -71,13 +72,47 @@ public class OpcUserController extends BaseController {
     @Operation(summary = "公司详情")
     @GetMapping("/company/{id}")
     public AjaxResult getCompany(@PathVariable Long id) {
-        return success(userProfileService.getCompany(id));
+        OpcCompanyProfile company = userProfileService.getCompany(id);
+        if (company != null) {
+            requireCompanyAccess(company);
+        }
+        return success(company);
     }
 
     @Operation(summary = "更新公司")
     @PutMapping("/company")
     public AjaxResult updateCompany(@RequestBody OpcCompanyProfile company) {
+        if (company == null || company.getId() == null) {
+            return error("公司 id 不能为空");
+        }
+        // 更新按 id 定位 —— 不校验归属的话, 任何登录用户改一下 id 就能改别家的公司资料
+        // (营业执照号、税号、法人、联系方式都在这张表里)。
+        requireCompanyAccess(company);
         return success(userProfileService.updateCompany(company) > 0);
+    }
+
+    /**
+     * 校验「调用方有权访问这家公司」。
+     *
+     * <p>公司档案是按 id 取数的，客户端能改的只有 id。公司档案里有营业执照号、
+     * 税号、法人、联系电话、邮箱 —— 不校验归属就等于任何登录用户可读可改别家公司。</p>
+     *
+     * <p>放行两种身份：<b>所有者</b>（{@code owner_user_id}）与
+     * <b>在职成员</b>（{@code opc_company_member.status='ACTIVE'}）——
+     * 后者与登录期租户解析（{@code UserCompanyResolver}）用的是同一张表，口径一致。</p>
+     */
+    private void requireCompanyAccess(OpcCompanyProfile company) {
+        Long userId = SecurityUtils.getUserId();
+        if (userId == null) {
+            throw new ServiceException("未关联企业, 无法访问公司资料", 403);
+        }
+        if (userId.equals(company.getOwnerUserId())) {
+            return;
+        }
+        if (userProfileService.isCompanyMember(company.getId(), userId)) {
+            return;
+        }
+        throw new ServiceException("无权访问其它公司的资料", 403);
     }
 
     @Operation(summary = "用户中心首页聚合")

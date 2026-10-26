@@ -1,5 +1,6 @@
 package com.ruoyi.opc.marketplace.service.impl;
 
+import com.ruoyi.common.core.domain.R;
 import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.marketplace.domain.MpInstall;
 import com.ruoyi.opc.marketplace.domain.MpPublication;
@@ -140,7 +141,7 @@ class InstallServiceTest {
                 .productType("AGENT").agentDefinitionId(50L).name("AI 助手").build();
         when(publicationMapper.selectById(1L)).thenReturn(p);
         when(installMapper.selectUnique(1L, 1L, 1L)).thenReturn(null);
-        when(agentHubClient.createAgentInstance(any())).thenReturn(Map.of("id", 100L));
+        when(agentHubClient.createAgentInstance(any())).thenReturn(R.ok(Map.<String, Object>of("id", 100L)));
         when(installMapper.insert(any(MpInstall.class))).thenAnswer(inv -> {
             MpInstall i = inv.getArgument(0);
             i.setId(200L);
@@ -196,7 +197,7 @@ class InstallServiceTest {
         MpInstall existing = MpInstall.builder().id(99L).status("UNINSTALLED")
                 .publicationId(1L).tenantCompanyId(1L).userId(1L).build();
         when(installMapper.selectUnique(1L, 1L, 1L)).thenReturn(existing);
-        when(agentHubClient.createAgentInstance(any())).thenReturn(Map.of("id", 100L));
+        when(agentHubClient.createAgentInstance(any())).thenReturn(R.ok(Map.<String, Object>of("id", 100L)));
 
         MpInstall result = installService.install(1L, 1L, 1L);
 
@@ -251,7 +252,7 @@ class InstallServiceTest {
                 .productType("AGENT").agentDefinitionId(50L).name("AI 助手").build();
         when(publicationMapper.selectById(1L)).thenReturn(p);
         when(installMapper.selectUnique(1L, 1L, 1L)).thenReturn(null);
-        when(agentHubClient.createAgentInstance(any())).thenReturn(Map.of("id", "not-a-number"));
+        when(agentHubClient.createAgentInstance(any())).thenReturn(R.ok(Map.<String, Object>of("id", "not-a-number")));
 
         assertThatThrownBy(() -> installService.install(1L, 1L, 1L))
                 .isInstanceOf(OpcException.class)
@@ -267,7 +268,7 @@ class InstallServiceTest {
                 .productType("AGENT").agentDefinitionId(50L).name("AI 助手").build();
         when(publicationMapper.selectById(1L)).thenReturn(p);
         when(installMapper.selectUnique(1L, 1L, 1L)).thenReturn(null);
-        when(agentHubClient.createAgentInstance(any())).thenReturn(Map.of("id", 100L));
+        when(agentHubClient.createAgentInstance(any())).thenReturn(R.ok(Map.<String, Object>of("id", 100L)));
         when(installMapper.insert(any(MpInstall.class))).thenThrow(new RuntimeException("db down"));
 
         assertThatThrownBy(() -> installService.install(1L, 1L, 1L))
@@ -289,7 +290,7 @@ class InstallServiceTest {
                 .productType("AGENT").agentDefinitionId(50L).name("AI 助手").build();
         when(publicationMapper.selectById(1L)).thenReturn(p);
         when(installMapper.selectUnique(1L, 1L, 1L)).thenReturn(null);
-        when(agentHubClient.createAgentInstance(any())).thenReturn(Map.of("id", 100L));
+        when(agentHubClient.createAgentInstance(any())).thenReturn(R.ok(Map.<String, Object>of("id", 100L)));
         when(installMapper.insert(any(MpInstall.class))).thenThrow(new RuntimeException("db down"));
         when(agentHubClient.revokeAgentInstance(anyLong(), any()))
                 .thenThrow(new RuntimeException("revoke down"));

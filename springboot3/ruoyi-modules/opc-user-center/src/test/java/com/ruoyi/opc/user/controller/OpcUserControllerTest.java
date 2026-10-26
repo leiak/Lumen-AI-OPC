@@ -1,5 +1,6 @@
 package com.ruoyi.opc.user.controller;
 
+import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.common.core.web.domain.AjaxResult;
 import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.common.exception.OpcException;
@@ -189,6 +190,7 @@ class OpcUserControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.saveProfile(incoming));
         assertTrue(ex.getMessage().contains("userId"));
+        verify(userProfileService).createOrUpdate(incoming);
         verifyNoMoreInteractions(userProfileService);
     }
 
@@ -219,6 +221,7 @@ class OpcUserControllerTest {
 
         assertEquals(200, result.get("code"));
         assertEquals(0, ((List<?>) result.get("data")).size());
+        verify(userProfileService).listCompaniesByOwner(USER_ID);
         verifyNoMoreInteractions(userProfileService);
     }
 
@@ -254,6 +257,7 @@ class OpcUserControllerTest {
         Map<String, Object> data = (Map<String, Object>) result.get("data");
         assertNotNull(data);
         assertEquals(NEW_COMPANY_ID, data.get("companyId"));
+        verify(userProfileService).createCompany(incoming);
         verifyNoMoreInteractions(userProfileService);
     }
 
@@ -267,6 +271,7 @@ class OpcUserControllerTest {
         OpcException ex = assertThrows(OpcException.class,
                 () -> controller.createCompany(incoming));
         assertTrue(ex.getMessage().contains("ownerUserId"));
+        verify(userProfileService).createCompany(incoming);
         verifyNoMoreInteractions(userProfileService);
     }
 
@@ -295,6 +300,7 @@ class OpcUserControllerTest {
 
         assertEquals(200, result.get("code"));
         assertNull(result.get("data"));
+        verify(userProfileService).getCompany(9999L);
         verifyNoMoreInteractions(userProfileService);
     }
 
@@ -305,6 +311,7 @@ class OpcUserControllerTest {
     void updateCompany_rowsGreaterThanZeroReturnsTrue() {
         OpcCompanyProfile c = new OpcCompanyProfile();
         c.setId(COMPANY_ID);
+        c.setOwnerUserId(USER_ID);   // 归属校验：调用方是所有者 → 放行
         when(userProfileService.updateCompany(c)).thenReturn(1);
 
         AjaxResult result = controller.updateCompany(c);
@@ -321,6 +328,7 @@ class OpcUserControllerTest {
     void updateCompany_rowsZeroReturnsFalse() {
         OpcCompanyProfile c = new OpcCompanyProfile();
         c.setId(COMPANY_ID);
+        c.setOwnerUserId(USER_ID);
         when(userProfileService.updateCompany(c)).thenReturn(0);
 
         AjaxResult result = controller.updateCompany(c);
@@ -328,7 +336,82 @@ class OpcUserControllerTest {
         assertEquals(200, result.get("code"),
                 "rows=0 不应抛 HTTP 500，应返回 success(false) 让前端判断");
         assertEquals(Boolean.FALSE, result.get("data"));
+        verify(userProfileService).updateCompany(c);
         verifyNoMoreInteractions(userProfileService);
+    }
+
+    // ---------- 归属校验（跨租户防护） ----------
+
+    @Test
+    @DisplayName("updateCompany — 调用方是公司成员（opc_company_member ACTIVE）→ 放行")
+    void updateCompany_memberAllowed() {
+        OpcCompanyProfile c = new OpcCompanyProfile();
+        c.setId(COMPANY_ID);
+        c.setOwnerUserId(3003L);   // 所有者是别人
+        when(userProfileService.isCompanyMember(COMPANY_ID, USER_ID)).thenReturn(true);
+        when(userProfileService.updateCompany(c)).thenReturn(1);
+
+        AjaxResult result = controller.updateCompany(c);
+
+        assertEquals(200, result.get("code"));
+        assertEquals(Boolean.TRUE, result.get("data"));
+        verify(userProfileService).updateCompany(c);
+    }
+
+    @Test
+    @DisplayName("updateCompany — 非所有者也非成员 → ServiceException(403)，不落到 service")
+    void updateCompany_strangerRejected() {
+        OpcCompanyProfile c = new OpcCompanyProfile();
+        c.setId(COMPANY_ID);
+        c.setOwnerUserId(3003L);
+        when(userProfileService.isCompanyMember(COMPANY_ID, USER_ID)).thenReturn(false);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> controller.updateCompany(c));
+
+        assertEquals(Integer.valueOf(403), ex.getCode());
+        assertTrue(ex.getMessage().contains("无权访问"));
+        verify(userProfileService, never()).updateCompany(any());
+    }
+
+    @Test
+    @DisplayName("updateCompany — id 为空 → error(公司 id 不能为空)，不查归属")
+    void updateCompany_nullIdRejected() {
+        OpcCompanyProfile c = new OpcCompanyProfile();
+
+        AjaxResult result = controller.updateCompany(c);
+
+        assertEquals(500, result.get("code"));
+        assertTrue(String.valueOf(result.get("msg")).contains("id 不能为空"));
+        verify(userProfileService, never()).updateCompany(any());
+    }
+
+    @Test
+    @DisplayName("getCompany — 非所有者也非成员 → ServiceException(403)")
+    void getCompany_strangerRejected() {
+        OpcCompanyProfile c = new OpcCompanyProfile();
+        c.setId(COMPANY_ID);
+        c.setOwnerUserId(3003L);
+        when(userProfileService.getCompany(COMPANY_ID)).thenReturn(c);
+        when(userProfileService.isCompanyMember(COMPANY_ID, USER_ID)).thenReturn(false);
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> controller.getCompany(COMPANY_ID));
+
+        assertEquals(Integer.valueOf(403), ex.getCode());
+    }
+
+    @Test
+    @DisplayName("getCompany — 调用方是成员 → 正常返回")
+    void getCompany_memberAllowed() {
+        OpcCompanyProfile c = new OpcCompanyProfile();
+        c.setId(COMPANY_ID);
+        c.setOwnerUserId(3003L);
+        when(userProfileService.getCompany(COMPANY_ID)).thenReturn(c);
+        when(userProfileService.isCompanyMember(COMPANY_ID, USER_ID)).thenReturn(true);
+
+        AjaxResult result = controller.getCompany(COMPANY_ID);
+
+        assertEquals(200, result.get("code"));
+        assertSame(c, result.get("data"));
     }
 
     // ==================== GET /home ====================
@@ -369,6 +452,8 @@ class OpcUserControllerTest {
         assertNull(data.get("profile"),
                 "service 返回 null → controller 透传 null（不像 myProfile 自动建空）");
         assertNotNull(data.get("companies"));
+        verify(userProfileService).getByUserId(USER_ID);
+        verify(userProfileService).listCompaniesByOwner(USER_ID);
         verifyNoMoreInteractions(userProfileService);
     }
 }

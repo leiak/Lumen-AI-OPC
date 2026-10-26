@@ -1,6 +1,7 @@
 package com.ruoyi.opc.finance.controller;
 
 import com.ruoyi.common.core.domain.R;
+import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.common.core.web.controller.BaseController;
 import com.ruoyi.common.core.web.domain.AjaxResult;
 import com.ruoyi.common.security.annotation.InnerAuth;
@@ -16,6 +17,7 @@ import com.ruoyi.opc.finance.service.IOpcFinanceVoucherService;
 import com.ruoyi.opc.finance.vo.FlowAggVo;
 import com.ruoyi.opc.finance.vo.TokenUsageVo;
 import com.ruoyi.opc.finance.vo.VoucherAggVo;
+import com.ruoyi.system.api.model.LoginUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -53,7 +55,11 @@ public class OpcFinanceController extends BaseController {
     @Operation(summary = "凭证详情")
     @GetMapping("/voucher/{id}")
     public AjaxResult voucherDetail(@PathVariable Long id) {
-        return success(voucherService.getById(id));
+        OpcFinanceVoucher voucher = voucherService.getById(id);
+        if (voucher != null) {
+            requireOwnCompany(voucher.getCompanyId(), "凭证");
+        }
+        return success(voucher);
     }
 
     @Operation(summary = "创建凭证")
@@ -78,18 +84,21 @@ public class OpcFinanceController extends BaseController {
     @Operation(summary = "审核通过")
     @PostMapping("/voucher/{id}/review-pass")
     public AjaxResult reviewPass(@PathVariable Long id) {
+        requireOwnVoucher(id);
         return success(voucherService.reviewPass(id, SecurityUtils.getUsername()) > 0);
     }
 
     @Operation(summary = "审核拒绝")
     @PostMapping("/voucher/{id}/review-reject")
     public AjaxResult reviewReject(@PathVariable Long id, @RequestParam(required = false) String opinion) {
+        requireOwnVoucher(id);
         return success(voucherService.reviewReject(id, SecurityUtils.getUsername(), opinion) > 0);
     }
 
     @Operation(summary = "入账")
     @PostMapping("/voucher/{id}/post")
     public AjaxResult post(@PathVariable Long id) {
+        requireOwnVoucher(id);
         return success(voucherService.post(id, SecurityUtils.getUsername()) > 0);
     }
 
@@ -176,6 +185,41 @@ public class OpcFinanceController extends BaseController {
     @ExceptionHandler(OpcException.class)
     public R<Void> handleOpcException(OpcException e) {
         return R.fail(e.getCode().intValue(), e.getMessage());
+    }
+
+    // ==================== 归属校验 ====================
+
+    /**
+     * 校验「这张凭证属于当前登录用户所在的公司」。
+     *
+     * <p>为什么要有这个：凭证的列表端点带 {@code companyId} 参数，租户隔离由
+     * {@code listByCompany(companyId, ...)} 在 SQL 层做（改写后由服务端判定作用域）。
+     * 但<b>详情与审核类端点只按 id 取数</b> —— 客户端能改的只有 id，
+     * 改 id 就能看/审别家的凭证。这里把归属钉死。</p>
+     */
+    private void requireOwnVoucher(Long id) {
+        OpcFinanceVoucher voucher = voucherService.getById(id);
+        if (voucher != null) {
+            requireOwnCompany(voucher.getCompanyId(), "凭证");
+        }
+    }
+
+    /**
+     * 校验「这家公司就是当前登录用户所在的公司」。
+     *
+     * <p>取的是 {@code LoginUser.companyId}（登录时由 {@code UserCompanyResolver}
+     * 依据 {@code opc_company_member} 解析、随 token 下发）——
+     * 与列表端点改写后拿到的作用域是同一个来源，两边口径一致。</p>
+     *
+     * <p>没有登录上下文、或者用户没加入任何公司时一律拒绝：那种情况下
+     * 「无公司」不能被当成「哪家公司都能看」（用 0 兜底即越权）。</p>
+     */
+    private void requireOwnCompany(Long companyId, String what) {
+        LoginUser loginUser = SecurityUtils.getLoginUser();
+        Long own = loginUser == null ? null : loginUser.getCompanyId();
+        if (own == null || !own.equals(companyId)) {
+            throw new ServiceException("无权访问其它公司的" + what, 403);
+        }
     }
 
 }

@@ -121,13 +121,13 @@ class OpcBillingControllerMvcTest {
     // ==================== GET /wallet — 异常路径 ====================
 
     @Test
-    @DisplayName("wallet — service 抛 OpcException → HTTP 500 + JSON msg（via @RestControllerAdvice）")
-    void wallet_serviceThrowsOpcException_returns500ViaAdvice() throws Exception {
+    @DisplayName("wallet — service 抛 OpcException → HTTP 200 + JSON code=500 + msg（业务错误约定）")
+    void wallet_serviceThrowsOpcException_returns200WithCode500() throws Exception {
         when(walletService.getOrCreate(anyLong(), anyLong()))
                 .thenThrow(new OpcException("DB 连接超时"));
 
         mockMvc.perform(get("/opc/billing/wallet").param("companyId", String.valueOf(COMPANY_ID)))
-                .andExpect(status().isInternalServerError())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(500))
                 .andExpect(jsonPath("$.msg").value("DB 连接超时"));
     }
@@ -135,7 +135,7 @@ class OpcBillingControllerMvcTest {
     // ==================== GET /wallet — 鉴权场景（匿名）===================
 
     @Test
-    @DisplayName("wallet — 匿名调用（无 SecurityContextHolder）→ service 收到 null userId → 抛 OpcException → 500")
+    @DisplayName("wallet — 匿名调用（无 SecurityContextHolder）→ service 收到 null userId → 抛 OpcException → HTTP 200 + code=500")
     void wallet_anonymous_serviceCalledWithNullUserId_throwsOpcException() throws Exception {
         // 模拟 gateway 未写入上下文（生产环境：gateway 拦截返回 401，controller 不会被调到）
         // 本测试模拟「如果 controller 被绕过直接调到」的行为，验证 controller 的健壮性
@@ -144,16 +144,19 @@ class OpcBillingControllerMvcTest {
                 .thenThrow(new OpcException("userId 不能为空"));
 
         mockMvc.perform(get("/opc/billing/wallet").param("companyId", String.valueOf(COMPANY_ID)))
-                .andExpect(status().isInternalServerError())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(500))
                 .andExpect(jsonPath("$.msg").value("userId 不能为空"));
     }
 
     // ==================== GET /wallet — 参数缺失 ====================
 
     @Test
-    @DisplayName("wallet — 缺 companyId → HTTP 500（MissingServletRequestParameterException 走 advice）")
-    void wallet_missingCompanyId_returns500() throws Exception {
+    @DisplayName("wallet — 缺 companyId → HTTP 200 + code=500（MissingServletRequestParameterException 走 advice）")
+    void wallet_missingCompanyId_returns200WithCode500() throws Exception {
+        // MissingServletRequestParameterException 是 RuntimeException 的子类 → 被全局 advice 接管
         mockMvc.perform(get("/opc/billing/wallet"))
-                .andExpect(status().isInternalServerError());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(500));
     }
 }

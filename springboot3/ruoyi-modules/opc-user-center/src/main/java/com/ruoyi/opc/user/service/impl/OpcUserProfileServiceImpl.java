@@ -8,6 +8,7 @@ import com.ruoyi.opc.user.mapper.OpcCompanyProfileMapper;
 import com.ruoyi.opc.user.mapper.OpcUserProfileMapper;
 import com.ruoyi.opc.user.service.IOpcUserProfileService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,8 @@ public class OpcUserProfileServiceImpl implements IOpcUserProfileService {
 
     private final OpcUserProfileMapper userMapper;
     private final OpcCompanyProfileMapper companyMapper;
+    /** 成员关系（opc_company_member）没有 mapper，用 JdbcTemplate 直查 —— 与 OpcInvitationServiceImpl 一致。 */
+    private final JdbcTemplate jdbcTemplate;
 
     @Override
     public OpcUserProfile getByUserId(Long userId) {
@@ -88,6 +91,18 @@ public class OpcUserProfileServiceImpl implements IOpcUserProfileService {
     @Override
     public OpcCompanyProfile getCompany(Long id) {
         return companyMapper.selectById(id);
+    }
+
+    @Override
+    public boolean isCompanyMember(Long companyId, Long userId) {
+        if (companyId == null || userId == null) {
+            return false;
+        }
+        // 租户归属的唯一事实来源 —— 与 UserCompanyResolver(SysUserCompanyMapper) 同一张表。
+        Integer count = jdbcTemplate.queryForObject(
+                "select count(1) from opc_company_member where company_id = ? and user_id = ? and status = 'ACTIVE'",
+                Integer.class, companyId, userId);
+        return count != null && count > 0;
     }
 
 }

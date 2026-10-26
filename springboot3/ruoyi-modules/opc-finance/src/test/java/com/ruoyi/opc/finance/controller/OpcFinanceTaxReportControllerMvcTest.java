@@ -124,39 +124,39 @@ class OpcFinanceTaxReportControllerMvcTest {
         // 而非 controller 内部 if (period == null) 校验
         mockMvc.perform(post("/opc/finance/tax-reports/generate")
                         .param("companyId", String.valueOf(COMPANY_ID)))
-                .andExpect(status().isInternalServerError());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(500));
 
         verify(taxReportService, never()).generateMonthlyReport(any(), any(), any());
     }
 
     @Test
-    @DisplayName("generate — period=\"\" 空字符串 → 透传给 service，由 service 决定（现状：抛 OpcException → 500）")
-    void generate_emptyPeriod_passesThroughToService() throws Exception {
-        // W5.1 M5 mutation 关注点：controller 当前只校验 period == null，未校验 isEmpty()
-        // period="" 会透传到 service，由 service 抛 OpcException → advice → 500
-        // 这与 W5.1 单元测试 `generate_periodEmptyString_returnsError` 是不同维度
-        when(taxReportService.generateMonthlyReport(COMPANY_ID, "", USERNAME))
-                .thenThrow(new OpcException("期间格式错误"));
-
+    @DisplayName("generate — period=\"\" 空字符串 → controller 直接拦（HTTP 200 + code=500），不透传给 service")
+    void generate_emptyPeriod_rejectedByController() throws Exception {
+        // W5.1 M5：controller 现在同时校验 period == null 与 isBlank(period) ——
+        // 空 period 会生成一份"所属期为空"的垃圾报表，在 controller 层就挡住。
         mockMvc.perform(post("/opc/finance/tax-reports/generate")
                         .param("companyId", String.valueOf(COMPANY_ID))
                         .param("period", ""))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.msg").value("期间格式错误"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(500))
+                .andExpect(jsonPath("$.msg").value("companyId 和 period 不能为空"));
+
+        verify(taxReportService, never()).generateMonthlyReport(any(), any(), any());
     }
 
     // ==================== POST /generate — 异常路径 ====================
 
     @Test
-    @DisplayName("generate — service 抛 OpcException（公司不存在）→ HTTP 500 + JSON msg（via @RestControllerAdvice）")
-    void generate_serviceThrowsOpcException_returns500ViaAdvice() throws Exception {
+    @DisplayName("generate — service 抛 OpcException（公司不存在）→ HTTP 200 + JSON code=500 + msg（业务错误约定）")
+    void generate_serviceThrowsOpcException_returns200WithCode500() throws Exception {
         when(taxReportService.generateMonthlyReport(COMPANY_ID, PERIOD, USERNAME))
                 .thenThrow(new OpcException("公司不存在"));
 
         mockMvc.perform(post("/opc/finance/tax-reports/generate")
                         .param("companyId", String.valueOf(COMPANY_ID))
                         .param("period", PERIOD))
-                .andExpect(status().isInternalServerError())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(500))
                 .andExpect(jsonPath("$.msg").value("公司不存在"));
     }
@@ -164,7 +164,7 @@ class OpcFinanceTaxReportControllerMvcTest {
     // ==================== POST /generate — 匿名场景 ====================
 
     @Test
-    @DisplayName("generate — 匿名调用 → SecurityUtils.getUsername() null → service 抛 OpcException → 500")
+    @DisplayName("generate — 匿名调用 → SecurityUtils.getUsername() null → service 抛 OpcException → HTTP 200 + code=500")
     void generate_anonymous_usernameNull_throwsOpcException() throws Exception {
         SecurityContextHolder.remove();
         when(taxReportService.generateMonthlyReport(any(), any(), any()))
@@ -173,7 +173,8 @@ class OpcFinanceTaxReportControllerMvcTest {
         mockMvc.perform(post("/opc/finance/tax-reports/generate")
                         .param("companyId", String.valueOf(COMPANY_ID))
                         .param("period", PERIOD))
-                .andExpect(status().isInternalServerError())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(500))
                 .andExpect(jsonPath("$.msg").value("username 不能为空"));
     }
 }

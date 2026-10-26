@@ -22,7 +22,13 @@ public class DailyReportController {
         return R.ok(dailyReportService.listByDateRange(resolveCompanyId(), LocalDate.parse(from), LocalDate.parse(to), limit));
     }
     @GetMapping("/{id}")
-    public R<DailyReportVo> detail(@PathVariable Long id) { return R.ok(dailyReportService.getById(id)); }
+    public R<DailyReportVo> detail(@PathVariable Long id) {
+        DailyReportVo vo = dailyReportService.getById(id);
+        // 详情端点只按 id 取数 —— 改一下 id 就能看别家公司的日报，必须挡住
+        InsightTenantGuard.requireOwned(vo == null ? null : vo.getCompanyId(),
+                resolveCompanyId(), "日报");
+        return R.ok(vo);
+    }
     @PostMapping("/generate")
     public R<Void> generate(@RequestParam String date) { dailyReportService.generate(resolveCompanyId(), date); return R.ok(); }
     private Long resolveCompanyId() {

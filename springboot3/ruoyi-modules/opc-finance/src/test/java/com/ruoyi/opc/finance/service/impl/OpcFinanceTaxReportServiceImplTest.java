@@ -126,7 +126,8 @@ class OpcFinanceTaxReportServiceImplTest {
         assertEquals(0, saved.getTaxAmount().compareTo(new BigDecimal("8000.00")),
                 "taxAmount 应等于 8000.00，实际 " + saved.getTaxAmount());
         assertEquals(0, saved.getPayAmount().compareTo(new BigDecimal("8000.00")));
-        assertEquals(BigDecimal.ZERO, saved.getPaidAmount());
+        // BigDecimal.equals 会比 scale（0 vs 0.00 不相等）—— 用 compareTo
+        assertEquals(0, saved.getPaidAmount().compareTo(BigDecimal.ZERO));
 
         // advice 来源于 LLM
         assertNotNull(saved.getAttachments());

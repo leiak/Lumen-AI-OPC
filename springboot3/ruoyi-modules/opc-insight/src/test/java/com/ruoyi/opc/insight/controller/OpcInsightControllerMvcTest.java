@@ -1,11 +1,15 @@
 package com.ruoyi.opc.insight.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ruoyi.common.core.constant.SecurityConstants;
 import com.ruoyi.common.core.context.SecurityContextHolder;
 import com.ruoyi.common.security.handler.GlobalExceptionHandler;
 import com.ruoyi.opc.insight.enums.AnomalyLevel;
 import com.ruoyi.opc.insight.service.*;
+import com.ruoyi.opc.insight.vo.AdviceVo;
 import com.ruoyi.opc.insight.vo.AnomalyVo;
+import com.ruoyi.opc.insight.vo.DailyReportVo;
+import com.ruoyi.system.api.model.LoginUser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,9 +31,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 4 个 INSIGHT Controller 的 MockMvc 单测（M4 Task 10）。
  * 使用 Standalone MockMvc 模式绕开 @WebMvcTest 的 @MapperScan 引导。
+ *
+ * <p><b>租户上下文</b>：洞察模块的作用域取自 {@code LoginUser.companyId}
+ * （不是 userId —— 见 {@code DashboardController.resolveCompanyId()} 的注释），
+ * 所以只 {@code setUserId} 不够，必须把一个带 companyId 的 {@code LoginUser}
+ * 放进 {@code SecurityContextHolder}，否则所有端点都会先炸在"取不到公司"上。</p>
  */
 @ExtendWith(MockitoExtension.class)
 class OpcInsightControllerMvcTest {
+    private static final Long COMPANY_ID = 1001L;
+    private static final Long OTHER_COMPANY_ID = 9999L;
+
     private MockMvc mvc;
     @Mock private IKpiService kpiService;
     @Mock private IAnomalyService anomalyService;
@@ -47,8 +59,23 @@ class OpcInsightControllerMvcTest {
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(new ObjectMapper()))
                 .build();
         SecurityContextHolder.setUserId("1001");
+        SecurityContextHolder.set(SecurityConstants.LOGIN_USER, loginUserOf(COMPANY_ID));
     }
     @AfterEach void teardown() { SecurityContextHolder.remove(); }
+
+    /** 构造一个属于指定公司的登录上下文。 */
+    private LoginUser loginUserOf(Long companyId) {
+        LoginUser loginUser = new LoginUser();
+        loginUser.setUserid(1001L);
+        loginUser.setUsername("tester");
+        loginUser.setCompanyId(companyId);
+        return loginUser;
+    }
+
+    private AnomalyVo anomalyOf(Long companyId) {
+        return AnomalyVo.builder().id(1L).companyId(companyId)
+                .description("test").level(AnomalyLevel.MEDIUM).status("OPEN").build();
+    }
 
     @Test void dashboard_returns200() throws Exception {
         when(anomalyService.listOpen(1001L, 5)).thenReturn(List.of());
@@ -90,15 +117,14 @@ class OpcInsightControllerMvcTest {
      * ACK 状态永远 500。现在走 {@code anomalyService.getById(id)}，状态无关。
      */
     @Test void alerts_detail() throws Exception {
-        AnomalyVo stub = AnomalyVo.builder().id(1L).companyId(1001L)
-                .description("test").level(AnomalyLevel.MEDIUM).status("OPEN").build();
-        when(anomalyService.getById(1L)).thenReturn(stub);
+        when(anomalyService.getById(1L)).thenReturn(anomalyOf(COMPANY_ID));
         mvc.perform(get("/opc/insight/alerts/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value(1));
     }
     @Test void alerts_ack() throws Exception {
+        when(anomalyService.getById(1L)).thenReturn(anomalyOf(COMPANY_ID));
         mvc.perform(post("/opc/insight/alerts/1/ack")).andExpect(status().isOk());
         verify(anomalyService).acknowledge(1L);
     }
@@ -109,6 +135,8 @@ class OpcInsightControllerMvcTest {
                 .andExpect(status().isOk());
     }
     @Test void daily_detail() throws Exception {
+        when(dailyReportService.getById(1L)).thenReturn(
+                DailyReportVo.builder().id(1L).companyId(COMPANY_ID).period("2026-09-01").build());
         mvc.perform(get("/opc/insight/daily/1")).andExpect(status().isOk());
         verify(dailyReportService).getById(1L);
     }
@@ -122,11 +150,66 @@ class OpcInsightControllerMvcTest {
         mvc.perform(get("/opc/insight/advice")).andExpect(status().isOk());
     }
     @Test void advice_detail() throws Exception {
+        when(adviceService.getById(1L)).thenReturn(
+                AdviceVo.builder().id(1L).companyId(COMPANY_ID).topic("降本").build());
         mvc.perform(get("/opc/insight/advice/1")).andExpect(status().isOk());
         verify(adviceService).getById(1L);
     }
     @Test void advice_regenerate() throws Exception {
+        when(adviceService.getById(1L)).thenReturn(
+                AdviceVo.builder().id(1L).companyId(COMPANY_ID).topic("降本").build());
         mvc.perform(post("/opc/insight/advice/1/regenerate")).andExpect(status().isOk());
         verify(adviceService).regenerate(1L);
+    }
+
+    // ==================== 跨租户防护（id-only 端点） ====================
+
+    /**
+     * 按 id 取数的端点，id 改了就能看别家公司的数据 —— 必须挡住。
+     */
+    @Test void alerts_detail_crossTenant_returns403() throws Exception {
+        when(anomalyService.getById(1L)).thenReturn(anomalyOf(OTHER_COMPANY_ID));
+        mvc.perform(get("/opc/insight/alerts/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
+    @Test void daily_detail_crossTenant_returns403() throws Exception {
+        when(dailyReportService.getById(1L)).thenReturn(
+                DailyReportVo.builder().id(1L).companyId(OTHER_COMPANY_ID).period("2026-09-01").build());
+        mvc.perform(get("/opc/insight/daily/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
+    @Test void advice_detail_crossTenant_returns403() throws Exception {
+        when(adviceService.getById(1L)).thenReturn(
+                AdviceVo.builder().id(1L).companyId(OTHER_COMPANY_ID).topic("降本").build());
+        mvc.perform(get("/opc/insight/advice/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
+    /**
+     * 写操作同样要挡 —— 否则改个 id 就能把别家的异常标记成已确认。
+     */
+    @Test void alerts_ack_crossTenant_returns403AndDoesNotAck() throws Exception {
+        when(anomalyService.getById(1L)).thenReturn(anomalyOf(OTHER_COMPANY_ID));
+        mvc.perform(post("/opc/insight/alerts/1/ack"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(403));
+        verify(anomalyService, never()).acknowledge(anyLong());
+    }
+
+    /**
+     * 重生成会覆写原行 —— 不校验归属就等于允许改别家的建议。
+     */
+    @Test void advice_regenerate_crossTenant_returns403AndDoesNotRegenerate() throws Exception {
+        when(adviceService.getById(1L)).thenReturn(
+                AdviceVo.builder().id(1L).companyId(OTHER_COMPANY_ID).topic("降本").build());
+        mvc.perform(post("/opc/insight/advice/1/regenerate"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(403));
+        verify(adviceService, never()).regenerate(anyLong());
     }
 }

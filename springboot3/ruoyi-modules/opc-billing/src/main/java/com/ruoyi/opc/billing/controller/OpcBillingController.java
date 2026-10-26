@@ -1,6 +1,7 @@
 package com.ruoyi.opc.billing.controller;
 
 import com.ruoyi.common.core.domain.R;
+import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.common.core.web.controller.BaseController;
 import com.ruoyi.common.core.web.domain.AjaxResult;
 import com.ruoyi.common.security.annotation.InnerAuth;
@@ -15,6 +16,7 @@ import com.ruoyi.opc.billing.vo.RechargeAggVo;
 import com.ruoyi.opc.billing.vo.WalletAggVo;
 import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.common.utils.OpcCodeGenerator;
+import com.ruoyi.system.api.model.LoginUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -90,7 +92,14 @@ public class OpcBillingController extends BaseController {
     @Operation(summary = "订单详情")
     @GetMapping("/order/{orderNo}")
     public AjaxResult orderDetail(@PathVariable String orderNo) {
-        return success(orderMapper.selectByOrderNo(orderNo));
+        OpcBillingOrder order = orderMapper.selectByOrderNo(orderNo);
+        // 详情端点只按订单号取数 —— 客户端能改的只有订单号，换一个就能看别家的订单
+        // （金额、支付方式、第三方流水号都在里面）。列表端点的 companyId 由服务端判定作用域，
+        // 这里用同一个来源比对，口径一致。
+        if (order != null) {
+            requireOwnCompany(order.getCompanyId());
+        }
+        return success(order);
     }
 
     // ==================== 聚合端点（M4 INSIGHT Day 2 / Task 2，供 opc-insight 经 Feign 拉取） ====================
@@ -143,6 +152,26 @@ public class OpcBillingController extends BaseController {
         public Long companyId;
         public BigDecimal amount;
         public String payMethod;
+    }
+
+    // ==================== 归属校验 ====================
+
+    /**
+     * 校验「这张订单属于当前登录用户所在的公司」。
+     *
+     * <p>取的是 {@code LoginUser.companyId}（登录时由 {@code UserCompanyResolver}
+     * 依据 {@code opc_company_member} 解析、随 token 下发）——
+     * 与列表端点改写后拿到的作用域是同一个来源，两边口径一致。</p>
+     *
+     * <p>没有登录上下文、或者用户没加入任何公司时一律拒绝：
+     * 「无公司」不能被当成「哪家公司都能看」（用 0 兜底即越权）。</p>
+     */
+    private void requireOwnCompany(Long companyId) {
+        LoginUser loginUser = SecurityUtils.getLoginUser();
+        Long own = loginUser == null ? null : loginUser.getCompanyId();
+        if (own == null || !own.equals(companyId)) {
+            throw new ServiceException("无权访问其它公司的订单", 403);
+        }
     }
 
 }
