@@ -63,6 +63,12 @@ opc:
       mock: true   # dev 默认 mock; prod 设 false 启用 DouyinClient
     frontend-redirect-base: http://127.0.0.1:8079/opc/content/platform-account
     token-encryption-key: b3BjLWNvbnRlbnQtYWVzMjU2LWtleS0zMmJ5dGVzISE=  # dev 32B; prod 必改 (W74 Task 12 fix)
+    # OAuth state 的 HMAC 签名密钥 —— state 带着「这次授权属于哪家公司」,
+    # 回调时服务端拿不到登录态, 所以公司号只能靠签名保证不可伪造。
+    # 留空 = 启动时随机生成 (单实例可用; 多实例必须配固定值)
+    oauth:
+      state-secret: ""
+      state-ttl-seconds: 600
 
 # 抖音开放平台 sandbox 配置 (W74 Task 7) — 占位段, 实际配置由 Nacos 推送
 douyin:

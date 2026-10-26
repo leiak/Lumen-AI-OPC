@@ -42,6 +42,14 @@ opc:
     # 平台客户端模式 (dev 用 mock 避免真抖音 sandbox 调用)
     platform:
       mock: true
+    # OAuth state 的 HMAC 签名密钥。
+    # state 里带着「这次授权属于哪家公司」, 回调时服务端拿不到登录态 ——
+    # 密钥只在服务端, 客户端就改不出能通过验签的 companyId。
+    # 留空 = 启动时随机生成一把 (单实例可用; 多实例部署必须配固定值,
+    # 否则 A 实例签发的 state 到 B 实例验不过)
+    oauth:
+      state-secret: ""
+      state-ttl-seconds: 600
   llm:
     scene-mapping:
       DRAMA: content_short_drama

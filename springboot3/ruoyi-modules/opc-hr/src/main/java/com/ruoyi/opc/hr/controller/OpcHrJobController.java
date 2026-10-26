@@ -1,8 +1,10 @@
 package com.ruoyi.opc.hr.controller;
 
 import com.ruoyi.common.core.domain.R;
+import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.opc.hr.domain.OpcHrJob;
 import com.ruoyi.opc.hr.dto.OpcHrJobDto;
+import com.ruoyi.opc.hr.dto.OpcHrJobLlmRequest;
 import com.ruoyi.opc.hr.service.IOpcHrJobService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -16,7 +18,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * HR 招聘需求 (JD) 管理 Controller
@@ -76,13 +77,14 @@ public class OpcHrJobController {
     }
 
     @PostMapping("/generate-llm")
-    public R<String> generateLlm(@RequestBody Map<String, String> req) {
-        String title = req.get("title");
-        String category = req.get("category");
-        String description = req.get("description");
-        Long companyId = req.get("companyId") == null
-                ? 1L
-                : Long.valueOf(req.get("companyId"));
-        return R.ok(jobService.generateLlm(companyId, title, category, description));
+    public R<String> generateLlm(@RequestBody OpcHrJobLlmRequest req) {
+        // companyId 由租户守卫按登录态改写过了 (CompanyIdBodyAdvice)。
+        // 还轮不到 null 只剩一种情况: 登录了但没加入任何公司 —— 没有作用域可用,
+        // 认 403; 拿 1 兜底等于把「无租户」当成「公开租户」, 白开一条跨租户的缝。
+        Long companyId = req.getCompanyId();
+        if (companyId == null) {
+            throw new ServiceException("当前账号未关联企业, 无法生成招聘 JD", 403);
+        }
+        return R.ok(jobService.generateLlm(companyId, req.getTitle(), req.getCategory(), req.getDescription()));
     }
 }

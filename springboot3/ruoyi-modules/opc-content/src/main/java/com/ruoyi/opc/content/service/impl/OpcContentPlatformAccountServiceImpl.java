@@ -6,25 +6,24 @@ import com.ruoyi.opc.content.domain.OpcContentPlatformAccount;
 import com.ruoyi.opc.content.enums.ContentPlatform;
 import com.ruoyi.opc.content.mapper.OpcContentPlatformAccountMapper;
 import com.ruoyi.opc.content.service.IOpcContentPlatformAccountService;
+import com.ruoyi.opc.content.service.platform.OAuthStateCodec;
 import com.ruoyi.opc.content.service.platform.PlatformClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.Base64;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * 内容平台账号 Service 实现 — 抖音 OAuth 绑定 + token 刷新 + 软删。
  *
  * <p>W74 Task 4: 实现 + 跨租户隔离 + PlatformClient 占位(Task 7 真实接入)。
  *
- * <p>OAuth state 设计: {@code base64(companyId + ":" + UUID)},callback 时反解得 companyId,
- * 同时 UUID 防 CSRF 重放。
+ * <p>OAuth state 设计: {@code base64url(companyId:nonce:issuedAt) + "." + HMAC 签名},
+ * callback 时先验签再反解得 companyId —— 详见 {@link OAuthStateCodec}。
+ * 以前 state 是裸 base64(companyId + ":" + UUID), 编码不是签名, 谁都能改。
  *
  * @author OAC
  */
@@ -36,9 +35,8 @@ public class OpcContentPlatformAccountServiceImpl implements IOpcContentPlatform
     private final OpcContentPlatformAccountMapper accountMapper;
     /** W74 Task 4 占位,Task 7 真实接入(DouyinClient / MockPlatformClient) */
     private final PlatformClient platformClient;
-
-    /** 抖音 OAuth state 拼接分隔符 */
-    private static final String STATE_DELIMITER = ":";
+    /** OAuth state 编解码 (HMAC 签名 + 时效校验) */
+    private final OAuthStateCodec stateCodec;
 
     // ============================================================
     // buildAuthorizeUrl
@@ -49,11 +47,9 @@ public class OpcContentPlatformAccountServiceImpl implements IOpcContentPlatform
         if (companyId == null) {
             throw new ServiceException("companyId 不能为空");
         }
-        // state = base64(companyId + ":" + uuid_nonce)
-        String nonce = UUID.randomUUID().toString().replace("-", "");
-        String raw = companyId + STATE_DELIMITER + nonce;
-        String state = Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+        // state = base64url(companyId:nonce:issuedAt) + "." + HMAC-SHA256 签名
+        // 签名密钥只在服务端 —— 客户端改不出一个能通过验签的 companyId
+        String state = stateCodec.encode(companyId);
 
         // TODO Task 12: 改读 douyin.client-key + redirect-uri (Nacos 配置)
         // Task 4 阶段: 用占位 client_key + 本机回调地址
@@ -83,8 +79,8 @@ public class OpcContentPlatformAccountServiceImpl implements IOpcContentPlatform
             throw new ServiceException("state 不能为空");
         }
 
-        // 1) 解析 state → companyId
-        Long companyId = decodeState(state);
+        // 1) 校验 state → companyId (验签 + 验时效, 伪造的一律 403)
+        Long companyId = stateCodec.decode(state);
 
         // 2) 调 PlatformClient.exchangeCode → token(Task 7 真实接入)
         PlatformClient.OAuthToken token = platformClient.exchangeCode(code);
@@ -198,24 +194,6 @@ public class OpcContentPlatformAccountServiceImpl implements IOpcContentPlatform
     // ============================================================
     // 内部辅助
     // ============================================================
-
-    /**
-     * 反解 OAuth state → companyId。
-     * state 格式: base64(companyId + ":" + uuid_nonce)
-     */
-    private Long decodeState(String state) {
-        try {
-            byte[] decoded = Base64.getUrlDecoder().decode(state);
-            String raw = new String(decoded, StandardCharsets.UTF_8);
-            int idx = raw.indexOf(STATE_DELIMITER);
-            if (idx <= 0) {
-                throw new ServiceException("state 格式非法: " + state);
-            }
-            return Long.parseLong(raw.substring(0, idx));
-        } catch (IllegalArgumentException e) {
-            throw new ServiceException("state 解码失败: " + e.getMessage());
-        }
-    }
 
     /**
      * unix epoch seconds → 系统时区 LocalDateTime。

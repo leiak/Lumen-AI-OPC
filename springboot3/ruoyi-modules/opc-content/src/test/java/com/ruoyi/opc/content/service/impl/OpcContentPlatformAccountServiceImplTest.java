@@ -4,6 +4,7 @@ import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.opc.content.domain.OpcContentPlatformAccount;
 import com.ruoyi.opc.content.enums.ContentPlatform;
 import com.ruoyi.opc.content.mapper.OpcContentPlatformAccountMapper;
+import com.ruoyi.opc.content.service.platform.OAuthStateCodec;
 import com.ruoyi.opc.content.service.platform.PlatformClient;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -47,6 +49,10 @@ class OpcContentPlatformAccountServiceImplTest {
 
     @Mock
     private PlatformClient platformClient;
+
+    /** 真的编解码 state —— 这里要验的是「伪造的 state 进不来」, 不是 mock 出来的返回。 */
+    @Spy
+    private OAuthStateCodec stateCodec = new OAuthStateCodec("unit-test-secret", 600L);
 
     @InjectMocks
     private OpcContentPlatformAccountServiceImpl accountService;
@@ -95,11 +101,10 @@ class OpcContentPlatformAccountServiceImplTest {
 
     /** Test 5 */
     @Test
-    @DisplayName("handleCallback - 合法 state(companyId:nonce) → 走 exchangeCode 流程")
+    @DisplayName("handleCallback - 合法 state(签名有效) → 走 exchangeCode 流程")
     void handleCallback_validState_callsExchangeCode() {
-        // state = base64("1:abc123nonce") — COMPANY_ID=1
-        String state = java.util.Base64.getUrlEncoder().withoutPadding()
-                .encodeToString("1:abc123nonce".getBytes());
+        // state = base64url(1:nonce:issuedAt) + "." + HMAC 签名 — COMPANY_ID=1
+        String state = stateCodec.encode(1L);
         long now = Instant.now().getEpochSecond();
         when(platformClient.exchangeCode("code_x")).thenReturn(new PlatformClient.OAuthToken(
                 "a", "r", now + 100, now + 200, "open_xyz", "video.create", "用户"));
@@ -121,8 +126,7 @@ class OpcContentPlatformAccountServiceImplTest {
     @Test
     @DisplayName("handleCallback - openId 已存在 → 走 updateTokens,不 insert")
     void handleCallback_existingOpenId_update() {
-        String state = java.util.Base64.getUrlEncoder().withoutPadding()
-                .encodeToString("1:nonce_xyz".getBytes());
+        String state = stateCodec.encode(1L);
         long now = Instant.now().getEpochSecond();
         when(platformClient.exchangeCode("code_y")).thenReturn(new PlatformClient.OAuthToken(
                 "new_a", "new_r", now + 100, now + 200, "open_existing", "video.create", "用户"));
@@ -136,6 +140,41 @@ class OpcContentPlatformAccountServiceImplTest {
 
         verify(accountMapper).updateTokens(eq(ACCOUNT_ID), eq(1L),
                 eq("new_a"), eq("new_r"), any(), any());
+        verify(accountMapper, never()).insert(any(OpcContentPlatformAccount.class));
+    }
+
+    /** Test 6b —— 3b 回归护栏 */
+    @Test
+    @DisplayName("handleCallback - 伪造的 state(裸 base64) → 拒绝, 连 exchangeCode 都不调")
+    void handleCallback_forgedState_isRejected() {
+        // 老格式: base64(2:nonce) —— 编码不是签名, 谁都能把公司号改成 2
+        String forged = java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("2:abc123nonce".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertThatThrownBy(() -> accountService.handleCallback("code_z", forged))
+                .isInstanceOf(ServiceException.class);
+
+        verify(platformClient, never()).exchangeCode(any());
+        verify(accountMapper, never()).insert(any(OpcContentPlatformAccount.class));
+    }
+
+    /** Test 6c —— 3b 回归护栏 */
+    @Test
+    @DisplayName("handleCallback - 改了载荷(换成别家公司)的 state → 拒绝")
+    void handleCallback_tamperedState_isRejected() {
+        String valid = stateCodec.encode(1L);
+        String body = valid.substring(0, valid.indexOf('.'));
+        String signature = valid.substring(valid.indexOf('.') + 1);
+        String payload = new String(java.util.Base64.getUrlDecoder().decode(body),
+                java.nio.charset.StandardCharsets.UTF_8);
+        String forgedBody = java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(("99" + payload.substring(1))
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertThatThrownBy(() -> accountService.handleCallback("code_z", forgedBody + "." + signature))
+                .isInstanceOf(ServiceException.class);
+
+        verify(platformClient, never()).exchangeCode(any());
         verify(accountMapper, never()).insert(any(OpcContentPlatformAccount.class));
     }
 

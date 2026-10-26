@@ -20,6 +20,7 @@
 #  13) 租户守卫 + LLM 计量 (3b / 3a 回归护栏)
 #  14) CRM 归属守卫 (per-user IDOR 回归护栏)
 #  15) 端口收敛护栏 (业务端口不得外露)
+#  16) 请求体租户归属 + OAuth state 签名 (3b 回归护栏)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -1816,6 +1817,105 @@ except Exception:
   fi
 }
 
+# ---------- 16. 请求体租户归属 + OAuth state 签名 (3b 回归护栏) ----------
+#
+# 16.1 generateLlm 的 body 里塞 companyId=2 → 租户守卫必须把它改回登录租户。
+#      以前这个端点收 Map<String,String>: 守卫靠反射在 body 类型上找 companyId
+#      字段, Map 没有字段可找 → 整条 body 路线失效, 客户端填什么就是什么
+#      (端点还拿 1L 兜底)。现在 body 是声明式 DTO, 守卫认得到。
+#      探针故意漏掉 title —— 服务层会先抛「title 不能为空」, 不用真调 LLM,
+#      而守卫的告警日志已经打出来了。
+# 16.2 抖音 authorize 的 state 必须带签名, 载荷里的公司号 = 登录租户。
+# 16.3 伪造的 state (老格式裸 base64) 必须被拒, 平台账号表一条都不多。
+check_body_tenant_and_oauth_state() {
+  hr
+  echo "[16] 请求体租户归属 + OAuth state 签名 (3b 回归护栏)"
+  hr
+
+  local base="http://${GATEWAY_HOST}:${GATEWAY_PORT}"
+
+  # --- 登录 (admin → 公司 1) ---
+  local login_body token
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "${base}/login" 2>/dev/null) || true
+  token=$(echo "${login_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data', {})
+    print(d.get('token','') or d.get('access_token',''))
+except Exception:
+    print('')
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    nok "登录失败, 请求体租户护栏无法验证"
+    return
+  fi
+  ok "登录成功 (admin → 公司1)"
+
+  # --- 16.1 body 里的 companyId=2 必须被改写 ---
+  #   故意不给 title: 守卫改写 companyId 之后, 服务层会先因为 title 为空退出,
+  #   不用花钱调 LLM, 而守卫自己的告警已经把「客户端填了 2、服务端按 1 算」写下来了。
+  local ts1 guard_log
+  ts1=$(date +%s)
+  curl -s -m 20 -X POST \
+    -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+    -d '{"companyId":2,"description":"探针"}' \
+    "${base}/opc/hr/job/generate-llm" >/dev/null 2>&1
+  guard_log=$(docker logs aiopc-hr --since "${ts1}" 2>&1 | grep -F "请求里的 companyId=2 与作用域 1" | tail -1)
+  if [[ -n "${guard_log}" ]]; then
+    ok "16.1 POST /opc/hr/job/generate-llm body 里塞 companyId=2 → 守卫改写为登录租户"
+  else
+    nok "16.1 POST /opc/hr/job/generate-llm body 里的 companyId 没被改写 (opc-hr 日志里没有守卫告警)"
+  fi
+
+  # --- 16.2 state 必须带签名, 且载荷里的公司号 = 登录租户 ---
+  local hdrs location state payload
+  hdrs=$(curl -s -m 15 -D - -o /dev/null \
+    -H "Authorization: Bearer ${token}" \
+    "${base}/opc/content/platform-account/oauth/douyin/authorize?companyId=2" 2>/dev/null) || hdrs=""
+  location=$(printf '%s' "${hdrs}" | grep -i '^location:' | tail -1 | tr -d '\r')
+  state=$(printf '%s' "${location}" | sed -n 's/.*[?&]state=\([^&[:space:]]*\).*/\1/p')
+  if [[ -z "${state}" ]]; then
+    nok "16.2 抖音 authorize 没拿到 state (响应头: $(printf '%s' "${hdrs}" | head -3 | tr '\n' ' '))"
+  elif [[ "${state}" != *"."* ]]; then
+    nok "16.2 抖音 authorize 的 state 没有签名 (不含 '.') —— 又变回裸 base64 了"
+  else
+    payload=$(printf '%s' "${state%%.*}" | python3 -c "
+import sys, base64
+try:
+    s = sys.stdin.read().strip()
+    raw = base64.urlsafe_b64decode(s + '=' * (-len(s) % 4))
+    print(raw.decode('utf-8', 'replace'))
+except Exception:
+    print('')
+" 2>/dev/null)
+    if [[ "${payload}" == 1:* ]]; then
+      ok "16.2 抖音 authorize 的 state 带签名, 载荷公司号 = 登录租户 (${payload%%:*})"
+    else
+      nok "16.2 抖音 authorize 的 state 载荷公司号 = ${payload:-解析不了} —— 不是登录租户 1"
+    fi
+  fi
+
+  # --- 16.3 伪造的 state 必须被拒, 且一条账号都不多 ---
+  local before after forged b c
+  before=$(db_q "SELECT COUNT(*) FROM opc_content_platform_account;" | tr -d '\r')
+  # 老格式: base64(companyId:nonce) —— 编码不是签名, 谁都能把公司号改成 2
+  forged=$(printf '%s' "2:hc-probe-nonce" | base64 | tr '+/' '-_' | tr -d '=\n')
+  b=$(curl -s -m 15 -H "Authorization: Bearer ${token}" \
+    "${base}/opc/content/platform-account/oauth/callback?code=HC-PROBE&state=${forged}" 2>/dev/null) || b=""
+  c=$(crm_body_code "${b}")
+  after=$(db_q "SELECT COUNT(*) FROM opc_content_platform_account;" | tr -d '\r')
+  if [[ "${c}" == "403" && "${after}" == "${before}" ]]; then
+    ok "16.3 伪造的 state (裸 base64) → 403, 平台账号表没多行"
+  elif [[ "${c}" != "403" ]]; then
+    nok "16.3 伪造的 state → body.code=${c} —— 伪造的 state 没被挡住"
+  else
+    nok "16.3 伪造的 state 被挡了, 但平台账号表从 ${before} 变成 ${after} 行"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -1836,6 +1936,7 @@ main() {
   check_tenant_guard
   check_crm_ownership
   check_port_exposure
+  check_body_tenant_and_oauth_state
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"
