@@ -1,6 +1,14 @@
 # ============================================================
 # AIOPC Docker Compose（开发与公测同栈）
 # Stack 名称: aiopc · 所有容器/镜像/网络统一 aiopc-* 前缀
+#
+# 端口策略（别改回去）：
+#   除 aiopc-frontend(8079) 外，所有宿主机端口一律绑 127.0.0.1。
+#   对外只有一个入口 = 前端 nginx(8079) → 反代 aiopc-gateway:8080（容器内网）。
+#   业务服务端口暴露到 0.0.0.0 等于把网关白送：网关做的鉴权、租户守卫、
+#   限流全部绕开，而且服务端口能直连就能伪造 from-source: inner 头
+#   去调所有 @InnerAuth 内部接口。
+#   跨容器互访一律用服务名(aiopc-net)，别用 host.docker.internal。
 # ============================================================
 
 version: '3.8'
@@ -11,7 +19,7 @@ services:
     image: nacos/nacos-server:v2.3.2
     container_name: aiopc-nacos-1
     hostname: nacos1
-    ports: ["8848:8848", "9848:9848"]
+    ports: ["127.0.0.1:8848:8848", "127.0.0.1:9848:9848"]
     environment:
       - MODE=standalone
       - NACOS_SERVERS=nacos1:8848
@@ -35,7 +43,7 @@ services:
     container_name: aiopc-mysql
     # 3308 避开 lumen-platform-mysql 占用的 3307
     # 容器内仍用 3306 (其他服务 MYSQL_PORT=3306 不变)
-    ports: ["3308:3306"]
+    ports: ["127.0.0.1:3308:3306"]
     environment:
       MYSQL_ROOT_PASSWORD: Opc@2026!
       MYSQL_DATABASE: ry-vue-opc
@@ -52,7 +60,7 @@ services:
   redis:
     image: redis:7.2-alpine
     container_name: aiopc-redis
-    ports: ["6379:6379"]
+    ports: ["127.0.0.1:6379:6379"]
     command: redis-server --appendonly yes --requirepass Opc@2026!
     volumes:
       - ./redis/data:/data
@@ -62,7 +70,7 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management
     container_name: aiopc-rabbitmq
-    ports: ["5672:5672", "15672:15672"]
+    ports: ["127.0.0.1:5672:5672", "127.0.0.1:15672:15672"]
     restart: unless-stopped
     networks: [aiopc-net]
 
@@ -70,7 +78,7 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.13.0
     container_name: aiopc-qdrant
-    ports: ["6333:6333", "6334:6334"]
+    ports: ["127.0.0.1:6333:6333", "127.0.0.1:6334:6334"]
     volumes:
       - ./qdrant/data:/qdrant/storage
     restart: unless-stopped
@@ -80,7 +88,7 @@ services:
   minio:
     image: minio/minio:RELEASE.2024-08-29T01-40-52Z
     container_name: aiopc-minio
-    ports: ["9000:9000", "9001:9001"]
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
     environment:
       MINIO_ROOT_USER: opcadmin
       MINIO_ROOT_PASSWORD: Opc@2026!
@@ -94,7 +102,7 @@ services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
     container_name: aiopc-elasticsearch
-    ports: ["9200:9200"]
+    ports: ["127.0.0.1:9200:9200"]
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -108,7 +116,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.54.0
     container_name: aiopc-prometheus
-    ports: ["9090:9090"]
+    ports: ["127.0.0.1:9090:9090"]
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
     restart: unless-stopped
@@ -117,7 +125,7 @@ services:
   grafana:
     image: grafana/grafana:11.2.0
     container_name: aiopc-grafana
-    ports: ["3000:3000"]
+    ports: ["127.0.0.1:3000:3000"]
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=Opc@2026!
     volumes:
@@ -129,14 +137,14 @@ services:
   skywalking-oap:
     image: apache/skywalking-oap-server:9.7.0
     container_name: aiopc-skywalking-oap
-    ports: ["11800:11800", "12800:12800"]
+    ports: ["127.0.0.1:11800:11800", "127.0.0.1:12800:12800"]
     restart: unless-stopped
     networks: [aiopc-net]
 
   skywalking-ui:
     image: apache/skywalking-ui:9.7.0
     container_name: aiopc-skywalking-ui
-    ports: ["8081:8080"]
+    ports: ["127.0.0.1:8081:8080"]
     environment:
       - SW_OAP_ADDRESS=http://aiopc-skywalking-oap:12800
     depends_on: [skywalking-oap]
@@ -151,7 +159,7 @@ services:
     image: aiopc-insight:latest
     container_name: aiopc-insight
     ports:
-      - "9306:9306"
+      - "127.0.0.1:9306:9306"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       # 覆盖 bootstrap.yml 硬编码的 127.0.0.1:8848
@@ -209,7 +217,7 @@ services:
     image: aiopc-gateway:latest
     container_name: aiopc-gateway
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -239,7 +247,7 @@ services:
     image: aiopc-auth:latest
     container_name: aiopc-auth
     ports:
-      - "19200:9200"  # host 19200 → container 9200 (host 9200 taken by elasticsearch)
+      - "127.0.0.1:19200:9200"  # host 19200 → container 9200 (host 9200 taken by elasticsearch)
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -269,7 +277,7 @@ services:
     image: aiopc-system:latest
     container_name: aiopc-system
     ports:
-      - "9201:9201"
+      - "127.0.0.1:9201:9201"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -304,7 +312,7 @@ services:
     image: aiopc-user-center:latest
     container_name: aiopc-user-center
     ports:
-      - "9302:9302"
+      - "127.0.0.1:9302:9302"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -340,7 +348,7 @@ services:
     image: aiopc-agent-hub:latest
     container_name: aiopc-agent-hub
     ports:
-      - "9303:9303"
+      - "127.0.0.1:9303:9303"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -379,7 +387,7 @@ services:
     image: aiopc-ai-core:latest
     container_name: aiopc-ai-core
     ports:
-      - "9301:9301"
+      - "127.0.0.1:9301:9301"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -424,7 +432,7 @@ services:
     image: aiopc-billing:latest
     container_name: aiopc-billing
     ports:
-      - "9304:9304"
+      - "127.0.0.1:9304:9304"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -460,7 +468,7 @@ services:
     image: aiopc-finance:latest
     container_name: aiopc-finance
     ports:
-      - "9305:9305"
+      - "127.0.0.1:9305:9305"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -496,7 +504,7 @@ services:
     image: aiopc-notification:latest
     container_name: aiopc-notification
     ports:
-      - "9310:9310"
+      - "127.0.0.1:9310:9310"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -532,7 +540,7 @@ services:
     image: aiopc-crm:latest
     container_name: aiopc-crm
     ports:
-      - "9312:9312"
+      - "127.0.0.1:9312:9312"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -568,7 +576,7 @@ services:
     image: aiopc-community:latest
     container_name: aiopc-community
     ports:
-      - "9316:9316"
+      - "127.0.0.1:9316:9316"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -601,7 +609,7 @@ services:
     image: aiopc-hr:latest
     container_name: aiopc-hr
     ports:
-      - "9322:9322"
+      - "127.0.0.1:9322:9322"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -642,7 +650,7 @@ services:
     image: aiopc-erp:latest
     container_name: aiopc-erp
     ports:
-      - "9311:9311"
+      - "127.0.0.1:9311:9311"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -676,7 +684,7 @@ services:
     image: aiopc-content:latest
     container_name: aiopc-content
     ports:
-      - "9325:9325"
+      - "127.0.0.1:9325:9325"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
@@ -716,7 +724,7 @@ services:
     image: aiopc-marketplace:latest
     container_name: aiopc-marketplace
     ports:
-      - "9317:9317"
+      - "127.0.0.1:9317:9317"
     environment:
       SPRING_PROFILES_ACTIVE: dev
       SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848

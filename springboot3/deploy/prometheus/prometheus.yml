@@ -13,57 +13,64 @@ scrape_configs:
       - targets: ['nacos1:8848']
 
   # OPC 后端服务（通过 Spring Boot Actuator）
+  #
+  # 走 compose 服务名而不是 host.docker.internal:<port>：
+  # 业务端口已收敛到 127.0.0.1（见 docker-compose.yml），宿主机回环口
+  # 在容器里是「容器自己」，Prometheus 容器连不到；而所有服务都在
+  # aiopc-net 上，用服务名直连容器端口才是对的。
   - job_name: 'opc-gateway'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['host.docker.internal:8080']
+      - targets: ['aiopc-gateway:8080']
 
   - job_name: 'opc-system'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['host.docker.internal:9201']
+      - targets: ['aiopc-system:9201']
 
   - job_name: 'opc-ai-core'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['host.docker.internal:9301']
+      - targets: ['aiopc-ai-core:9301']
 
   - job_name: 'opc-user-center'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['host.docker.internal:9302']
+      - targets: ['aiopc-user-center:9302']
 
   - job_name: 'opc-agent-hub'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['host.docker.internal:9303']
+      - targets: ['aiopc-agent-hub:9303']
 
   - job_name: 'opc-billing'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['host.docker.internal:9304']
+      - targets: ['aiopc-billing:9304']
 
   - job_name: 'opc-finance'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['host.docker.internal:9305']
+      - targets: ['aiopc-finance:9305']
 
-  # MySQL
+  # MySQL —— 宿主机没装 mysqld_exporter，9104 上没有东西（早于本次改动就是死的）。
+  # 要接先把 mysqld_exporter 加进 compose，再把 target 指向它。
   - job_name: 'mysql'
     static_configs:
       - targets: ['host.docker.internal:9104']
 
-  # Redis
+  # Redis —— 同上，缺 redis_exporter，9121 上没有东西。
   - job_name: 'redis'
     static_configs:
       - targets: ['host.docker.internal:9121']
 
-  # RabbitMQ
+  # RabbitMQ —— management 插件自带 /metrics（容器内 15692），
+  # 宿主机没发布这个端口，用服务名直连容器端口。
   - job_name: 'rabbitmq'
     static_configs:
-      - targets: ['host.docker.internal:15692']
+      - targets: ['rabbitmq:15692']
 
   # Qdrant
   - job_name: 'qdrant'
     static_configs:
-      - targets: ['host.docker.internal:6333']
+      - targets: ['qdrant:6333']

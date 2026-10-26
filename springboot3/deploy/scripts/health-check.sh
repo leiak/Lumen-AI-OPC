@@ -19,6 +19,7 @@
 #  12) 网关白名单 method 限定 (3c 回归护栏)
 #  13) 租户守卫 + LLM 计量 (3b / 3a 回归护栏)
 #  14) CRM 归属守卫 (per-user IDOR 回归护栏)
+#  15) 端口收敛护栏 (业务端口不得外露)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -1724,6 +1725,97 @@ print(json.dumps({'name': sys.argv[1]}, ensure_ascii=False))
   fi
 }
 
+# ---------- 15. 端口收敛护栏 (业务端口不得外露) ----------
+#
+# 对外只该有前端 8079。业务/中间件端口一旦绑到 0.0.0.0, 等于把网关白送:
+# 网关那层的鉴权、租户守卫、限流全绕开; 更糟的是能直连服务端口伪造
+# from-source: inner 头去调所有 @InnerAuth 内部接口(这头网关本来会剥掉)。
+#
+# 这条专门防「有人把 compose 端口改回去」—— 端口策略写在文件里不算数,
+# 每次健康检查现场验一遍才算数。
+check_port_exposure() {
+  hr
+  echo "[15] 端口收敛护栏 (业务端口不得外露)"
+  hr
+
+  # --- 15.1 收集宿主机监听表 ---
+  local listen
+  listen=""
+  if command -v ss >/dev/null 2>&1; then
+    listen="$(ss -ltnH 2>/dev/null | awk '{print $4}')"
+  elif command -v netstat >/dev/null 2>&1; then
+    listen="$(netstat -ltn 2>/dev/null | awk 'NR>2 {print $4}')"
+  fi
+  if [[ -z "${listen}" ]]; then
+    nok "拿不到宿主机监听表 (ss/netstat 都不可用) — 端口收敛无法验证"
+    return
+  fi
+
+  # --- 15.2 业务 + 中间件端口必须只绑回环口 ---
+  # 网关也算业务端口: 它做鉴权, 直连它等于绕过前端那条链路。
+  local p exposed bad=""
+  local -a guard_ports=(8080 9201 19200 9301 9302 9303 9304 9305 9306 9310 9311 9312 9316 9317 9322 9325
+                        3308 6379 5672 15672 8848 9848 9000 9001 9200 6333 6334 9090 3000 8081 11800 12800)
+  for p in "${guard_ports[@]}"; do
+    exposed="$(printf '%s\n' "${listen}" | grep -E ":${p}\$" | grep -vE '^(127\.0\.0\.1|\[::1\]):' | tr '\n' ' ')"
+    if [[ -n "${exposed}" ]]; then
+      bad="${bad} ${p}→${exposed}"
+    fi
+  done
+  if [[ -z "${bad}" ]]; then
+    ok "15.2 ${#guard_ports[@]} 个业务/中间件端口全部只绑 127.0.0.1"
+  else
+    nok "15.2 端口外露:${bad}"
+  fi
+
+  # --- 15.3 前端必须是唯一对外口 ---
+  local fe
+  fe="$(printf '%s\n' "${listen}" | grep -E ":${FRONTEND_PORT}\$" | tr '\n' ' ')"
+  if printf '%s' "${fe}" | grep -qE '^(0\.0\.0\.0|\*|\[::\]):'; then
+    ok "15.3 前端 ${FRONTEND_PORT} 对外监听 (唯一公网入口)"
+  else
+    nok "15.3 前端 ${FRONTEND_PORT} 没对外监听 (实际: ${fe:-没找到}) — 公网入口断了"
+  fi
+
+  # --- 15.4 从非回环地址直连业务端口必须连不上 ---
+  # 光看 ss 是静态证据; 真去连一下才算数。绑回环口时, 连本机的
+  # 非回环 IP 会被拒 —— 因为那个地址不属于那个 socket。
+  local lan_ip
+  lan_ip="$(ip route get 1.1.1.1 2>/dev/null | sed -n 's/.*src \([0-9.]*\).*/\1/p')"
+  [[ -z "${lan_ip}" ]] && lan_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  if [[ -n "${lan_ip}" ]]; then
+    if timeout 3 bash -c "exec 3<>/dev/tcp/${lan_ip}/9312" 2>/dev/null; then
+      nok "15.4 ${lan_ip}:9312 直连成功 — 业务端口仍然外露"
+    else
+      ok "15.4 ${lan_ip}:9312 直连被拒 (业务端口只绑回环口)"
+    fi
+  else
+    warn "15.4 拿不到本机非回环 IP — 直连探测跳过 (没验过, 不是验过了)"
+  fi
+
+  # --- 15.5 公网链路: 前端 nginx → 网关 ---
+  # 端口收敛把网关的宿主机口收回回环, 浏览器那条路靠的是 nginx 反代到
+  # aiopc-gateway:8080(容器内网)。这里从 8079 打一遍, 证明这条路还通。
+  local fe_body fe_token
+  fe_body=$(curl -s -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "http://127.0.0.1:${FRONTEND_PORT}/prod-api/login" 2>/dev/null) || fe_body=""
+  fe_token=$(printf '%s' "${fe_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data', {})
+    print(d.get('token','') or d.get('access_token',''))
+except Exception:
+    print('')
+" 2>/dev/null)
+  if [[ -n "${fe_token}" ]]; then
+    ok "15.5 前端 ${FRONTEND_PORT} → /prod-api → 网关 链路通 (公网入口没被端口收敛打断)"
+  else
+    nok "15.5 前端 ${FRONTEND_PORT}/prod-api/login 拿不到 token — 公网链路断了"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -1743,6 +1835,7 @@ main() {
   check_gateway_whitelist
   check_tenant_guard
   check_crm_ownership
+  check_port_exposure
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"
