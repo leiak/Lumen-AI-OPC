@@ -332,7 +332,7 @@ class OpcHrJobServiceImplTest {
     @Test
     @DisplayName("generateLlm - 调用 HrLlmClient.generateJd 返回 JD 全文")
     void generateLlm_callsHrLlmClient() {
-        when(hrLlmClient.generateJd("高级 Java 开发", "TECH", "5 年 Java 经验"))
+        when(hrLlmClient.generateJd(1L, "高级 Java 开发", "TECH", "5 年 Java 经验"))
                 .thenReturn("【岗位概述】高级 Java 开发");
 
         String jd = jobService.generateLlm(COMPANY_ID, "高级 Java 开发", "TECH", "5 年 Java 经验");

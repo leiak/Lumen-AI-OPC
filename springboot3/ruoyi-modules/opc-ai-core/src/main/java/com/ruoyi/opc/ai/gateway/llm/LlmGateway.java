@@ -27,11 +27,23 @@ public class LlmGateway {
      */
     public ChatResponse chat(List<ChatMessage> messages, ChatModelProvider.ChatOptions options, ChatContext ctx) {
         // 1. 缓存命中
-        String cacheKey = cache.buildKey(messages, options);
+        //
+        // 缓存 key 按租户隔离（见 LlmCache.buildKey）：同一家公司的同一段 prompt
+        // 才复用 —— 否则 A 公司付的钱会让 B 公司白嫖，账单就没法对账。
+        Long companyId = ctx != null ? ctx.getCompanyId() : null;
+        String cacheKey = cache.buildKey(messages, options, companyId);
         ChatResponse cached = cache.get(cacheKey);
         if (cached != null) {
             log.debug("[LLM] 缓存命中 key={}", cacheKey);
             cached.setRequestId("cache-" + java.util.UUID.randomUUID().toString().substring(0, 8));
+            // 缓存命中**同样要计量** ——
+            // 以前这里直接 return, 于是缓存命中的那次调用在 opc_agent_token_usage 里
+            // 完全没有记录: token 数、成本、调用次数统统不计入账单。
+            // 而缓存存在的意义是「不重复付 provider 的钱」, 不是「不记账」——
+            // token 数照记, 费用记 0 (fromCache=true)。
+            if (ctx != null) {
+                tokenMeter.record(ctx, cached.getModel(), cached, true);
+            }
             return cached;
         }
 

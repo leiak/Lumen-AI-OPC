@@ -17,6 +17,7 @@ import org.mockito.quality.Strictness;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -132,5 +133,30 @@ class TokenMeterTest {
         verify(recorder, never()).save(any());
         LoginUser loginUser = SecurityContextHolder.get(SecurityConstants.LOGIN_USER, LoginUser.class);
         assertNull(loginUser.getCompanyId(), "没有公司时必须保持 null —— 用 0 兜底会造成脏数据/越权");
+    }
+
+    @Test
+    @DisplayName("缓存命中 → token 数照记, 费用记 0 (缓存的意义就是不重复计费)")
+    void record_cacheHit_zeroCostButTokensKept() {
+        meter.record(LlmGateway.ChatContext.builder().companyId(7L).userId(42L).build(),
+                "deepseek-v3", resp(), true);
+
+        TokenMeter.TokenUsageRecord record = captured();
+        assertEquals(0.0, record.getCost(), 0.0001,
+                "缓存命中没有再付 provider 的钱 —— 费用列是账单口径(SUM(cost)), 必须是 0");
+        assertEquals(150, record.getTokenTotal(), "token 数照记 —— 客户确实消耗了这些 token");
+        assertEquals(7L, record.getCompanyId());
+        assertEquals(42L, record.getUserId());
+    }
+
+    @Test
+    @DisplayName("非缓存命中 → 费用照算")
+    void record_normalCall_costComputed() {
+        meter.record(LlmGateway.ChatContext.builder().companyId(7L).userId(42L).build(),
+                "deepseek-v3", resp());
+
+        TokenMeter.TokenUsageRecord record = captured();
+        assertTrue(record.getCost() > 0, "真实调用了 provider 就必须有费用");
+        assertEquals(150, record.getTokenTotal());
     }
 }

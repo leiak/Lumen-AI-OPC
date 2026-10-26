@@ -89,7 +89,7 @@ class OpcContentAdaptServiceImplTest {
     void adapt_douyin_standardJson() {
         OpcContentScript src = articleSource();
         when(scriptService.detail(SOURCE_ID, COMPANY_ID)).thenReturn(src);
-        when(contentLlmClient.adapt(any(), eq("DOUYIN"))).thenReturn(
+        when(contentLlmClient.adapt(any(), any(), eq("DOUYIN"))).thenReturn(
                 "{\"adapted_content\":\"适配后正文\",\"hashtags\":[\"#热门\", \"#推荐\"],"
                         + "\"tone\":\"年轻化\"}");
 
@@ -120,7 +120,7 @@ class OpcContentAdaptServiceImplTest {
     void adapt_invalidJson_fallback() {
         OpcContentScript src = articleSource();
         when(scriptService.detail(SOURCE_ID, COMPANY_ID)).thenReturn(src);
-        when(contentLlmClient.adapt(any(), any())).thenReturn("not a json {{{ broken");
+        when(contentLlmClient.adapt(any(), any(), any())).thenReturn("not a json {{{ broken");
 
         Long adaptedId = adaptService.adapt(sampleReq());
 
@@ -182,14 +182,14 @@ class OpcContentAdaptServiceImplTest {
         src.setContentMd(null);
         src.setContentJson("{\"fallback\":\"content\"}");
         when(scriptService.detail(SOURCE_ID, COMPANY_ID)).thenReturn(src);
-        when(contentLlmClient.adapt(any(), any())).thenReturn("{\"adapted_content\":\"新文\"}");
+        when(contentLlmClient.adapt(any(), any(), any())).thenReturn("{\"adapted_content\":\"新文\"}");
 
         adaptService.adapt(sampleReq());
 
         ArgumentCaptor<OpcContentScript> captor = ArgumentCaptor.forClass(OpcContentScript.class);
         verify(scriptMapper).insert(captor.capture());
         // LLM 调用时传的 originalContent = contentJson
-        verify(contentLlmClient).adapt(eq("{\"fallback\":\"content\"}"), eq("DOUYIN"));
+        verify(contentLlmClient).adapt(eq(COMPANY_ID), eq("{\"fallback\":\"content\"}"), eq("DOUYIN"));
     }
 
     /** Test 7 */
@@ -198,7 +198,7 @@ class OpcContentAdaptServiceImplTest {
     void adapt_hashtagsStringArrayAdopted() {
         OpcContentScript src = articleSource();
         when(scriptService.detail(SOURCE_ID, COMPANY_ID)).thenReturn(src);
-        when(contentLlmClient.adapt(any(), any())).thenReturn(
+        when(contentLlmClient.adapt(any(), any(), any())).thenReturn(
                 "{\"adapted_content\":\"X\",\"hashtags\":[\"#A\",\"#B\"]}");
 
         adaptService.adapt(sampleReq());

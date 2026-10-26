@@ -266,8 +266,8 @@ class OpcHrApplicationServiceImplTest {
         when(jobMapper.selectById(JOB_ID, COMPANY_ID)).thenReturn(jobWithJd);
         when(candidateMapper.selectById(CANDIDATE_ID, COMPANY_ID)).thenReturn(candWithParsed);
         when(applicationMapper.updateById(any(OpcHrApplication.class))).thenReturn(1);
-        when(hrLlmClient.scoreCandidate("5年Java/Spring Cloud",
-                "{\"name\":\"张三\",\"skills\":[\"Java\"]}"))
+        when(hrLlmClient.scoreCandidate(eq(COMPANY_ID), eq("5年Java/Spring Cloud"),
+                eq("{\"name\":\"张三\",\"skills\":[\"Java\"]}")))
                 .thenReturn(HrScoreResult.builder()
                         .score(85)
                         .reason("Java经验匹配")

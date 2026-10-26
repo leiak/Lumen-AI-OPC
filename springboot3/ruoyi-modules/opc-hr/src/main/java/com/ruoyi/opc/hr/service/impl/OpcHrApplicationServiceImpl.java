@@ -154,7 +154,7 @@ public class OpcHrApplicationServiceImpl implements IOpcHrApplicationService {
 
         // W73 Task 10: 真实接入 opc-ai-core,场景 hr_candidate_score
         log.info("投递评分调 LLM id={} jobId={} candidateId={}", id, app.getJobId(), app.getCandidateId());
-        HrScoreResult result = hrLlmClient.scoreCandidate(job.getFullJd(), resumeContext);
+        HrScoreResult result = hrLlmClient.scoreCandidate(companyId, job.getFullJd(), resumeContext);
         int safeScore = result.safeScore();
         String reason = result.safeReason();
 

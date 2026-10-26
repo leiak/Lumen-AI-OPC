@@ -25,6 +25,20 @@ public class TokenMeter {
     private final TokenUsageRecorder recorder;
 
     public void record(LlmGateway.ChatContext ctx, String model, ChatResponse resp) {
+        record(ctx, model, resp, false);
+    }
+
+    /**
+     * 记录一次 LLM 调用的 token 消耗与成本。
+     *
+     * @param fromCache 这次调用是<b>缓存命中</b>（没有真正调 provider）。
+     *                   token 数照记 —— 客户确实消耗了同样的 token 量；
+     *                   费用记 <b>0</b> —— 缓存的存在意义就是「同样的 prompt 不重复计费」，
+     *                   缓存命中时平台并没有再付一次 provider 的钱。
+     *                   费用列是账单口径（opc-finance 的聚合就是 SUM(cost)），
+     *                   所以这里必须是 0, 否则等于对同一次 prompt 收两遍钱。
+     */
+    public void record(LlmGateway.ChatContext ctx, String model, ChatResponse resp, boolean fromCache) {
         if (resp == null) return;
         double inputPrice = resolveInputPrice(model);
         double outputPrice = resolveOutputPrice(model);
@@ -33,7 +47,9 @@ public class TokenMeter {
         int outputTokens = resp.getTokenOutput() == null ? 0 : resp.getTokenOutput();
         int totalTokens = inputTokens + outputTokens;
 
-        double cost = (inputTokens / 1000.0) * inputPrice + (outputTokens / 1000.0) * outputPrice;
+        double cost = fromCache
+                ? 0d
+                : (inputTokens / 1000.0) * inputPrice + (outputTokens / 1000.0) * outputPrice;
         BigDecimal costBd = new BigDecimal(cost).setScale(4, RoundingMode.HALF_UP);
 
         String bizDate = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
@@ -72,6 +88,8 @@ public class TokenMeter {
         record.instanceId = ctx != null ? ctx.getInstanceId() : null;
         record.taskId = ctx != null ? ctx.getTaskId() : null;
         record.model = model;
+        // model_type 保持 CHAT —— 该列的取值是 CHAT/EMBEDDING，缓存命中也是一次
+        // CHAT 调用。区分靠 request_id 的 "cache-" 前缀 (LlmGateway 在命中时打的)。
         record.modelType = "CHAT";
         record.tokenInput = inputTokens;
         record.tokenOutput = outputTokens;

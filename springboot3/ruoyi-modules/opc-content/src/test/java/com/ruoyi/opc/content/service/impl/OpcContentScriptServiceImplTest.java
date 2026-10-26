@@ -62,7 +62,7 @@ class OpcContentScriptServiceImplTest {
     @Test
     @DisplayName("create - DRAMA 类型成功创建 DRAFT,LLM 注入 contentJson")
     void create_drama_success() {
-        when(contentLlmClient.generateDrama("现代都市爱情,女主律师男主医生")).thenReturn("{\"synopsis\":\"...\"}");
+        when(contentLlmClient.generateDrama(eq(1L), eq("现代都市爱情,女主律师男主医生"))).thenReturn("{\"synopsis\":\"...\"}");
 
         OpcContentGenerateRequest req = OpcContentGenerateRequest.builder()
                 .companyId(COMPANY_ID)
@@ -109,7 +109,7 @@ class OpcContentScriptServiceImplTest {
         assertThatThrownBy(() -> scriptService.create(req))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("promptInput");
-        verify(contentLlmClient, never()).generateDrama(any());
+        verify(contentLlmClient, never()).generateDrama(any(), any());
     }
 
     /** Test 4 */
@@ -130,7 +130,7 @@ class OpcContentScriptServiceImplTest {
     @DisplayName("create - ARTICLE 类型调 generateArticle,wordCount 由 contentMd 长度决定")
     void create_article_setsWordCount() {
         String md = "## 一级标题\n\n这是 Markdown 文案,大约 500-1500 字。";
-        when(contentLlmClient.generateArticle(any())).thenReturn(md);
+        when(contentLlmClient.generateArticle(any(), any())).thenReturn(md);
 
         OpcContentGenerateRequest req = OpcContentGenerateRequest.builder()
                 .companyId(COMPANY_ID).type("ARTICLE").promptInput("主题").build();

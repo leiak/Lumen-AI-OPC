@@ -82,7 +82,7 @@ public class OpcContentAdaptServiceImpl implements IOpcContentAdaptService {
         if (originalContent == null) {
             originalContent = "";
         }
-        String adaptedJson = contentLlmClient.adapt(originalContent, platform.getCode());
+        String adaptedJson = contentLlmClient.adapt(req.getCompanyId(), originalContent, platform.getCode());
 
         // 4) 简化解析 adaptedJson → adaptedContent / hashtags / tone
         AdaptPayload payload = parsePayload(adaptedJson, originalContent, req.getTone());

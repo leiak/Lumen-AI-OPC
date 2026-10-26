@@ -1,5 +1,7 @@
 package com.ruoyi.opc.ai.controller;
 
+import com.ruoyi.common.core.constant.SecurityConstants;
+import com.ruoyi.common.core.utils.ServletUtils;
 import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.ai.gateway.llm.ChatMessage;
 import com.ruoyi.opc.ai.gateway.llm.ChatModelProvider;
@@ -9,6 +11,7 @@ import com.ruoyi.opc.ai.gateway.llm.TokenMeter;
 import com.ruoyi.opc.ai.security.PromptGuard;
 import com.ruoyi.system.api.model.LoginUser;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.servlet.http.HttpServletRequest;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -115,14 +118,22 @@ public class OpcLlmController {
      * 由 {@code UserCompanyResolver} 解析出来、随 token 下发的），body 里带的
      * companyId 只用于对照告警 —— 客户端可以随便填，不能拿它决定写到谁名下。</p>
      *
-     * <p>无登录上下文时（内部服务调用 / 定时任务）退回 body 的值，让调用方自己负责；
-     * 此时若仍是 null，{@link TokenMeter} 会记一条可定位的告警并跳过落库，
+     * <p>无登录上下文时，<b>只有内部调用</b>才认 body 里的值：服务间调用（Feign）
+     * 没有浏览器登录态，归属由调用方显式传（工作流按其 companyId、定时任务按 0=系统），
+     * 这条链路是服务自己发起的、可信。外部流量一律不认 body —— 否则任何人都能把
+     * 用量记到别家公司名下（账单可被别人刷）。</p>
+     *
+     * <p>两处都取不到时返回 null，{@link TokenMeter} 会记一条可定位的告警并跳过落库，
      * 而不是让 SQL 抛一个看不懂的 NOT NULL 违例。</p>
      */
     private Long resolveCompanyId(Long requested) {
         LoginUser loginUser = SecurityUtils.getLoginUser();
         if (loginUser == null) {
-            log.warn("[LLM] 无登录上下文, 计量租户退回请求体的 companyId={}", requested);
+            if (!isInternalCall()) {
+                log.warn("[LLM] 无登录上下文且非内部调用, 计量租户留空 (body companyId={} 不作数)", requested);
+                return null;
+            }
+            log.info("[LLM] 内部调用无登录上下文, 计量租户取调用方显式传的 companyId={}", requested);
             return requested;
         }
         Long own = loginUser.getCompanyId();
@@ -134,17 +145,42 @@ public class OpcLlmController {
 
     /**
      * 解析计量的用户归属。有登录上下文时以登录态为准。
+     *
+     * <p>内部调用且没有登录用户时（定时任务触发的工作流）记 <b>0（系统）</b> ——
+     * {@code opc_agent_token_usage.user_id} 是 NOT NULL，与其把整条记录丢掉
+     * （这次调用的 token/成本凭空消失），不如老老实实记成系统发起。</p>
      */
     private Long resolveUserId(Long requested) {
         Long own = SecurityUtils.getUserId();
         if (own == null) {
-            log.warn("[LLM] 无登录上下文, 计量用户退回请求体的 userId={}", requested);
-            return requested;
+            if (!isInternalCall()) {
+                log.warn("[LLM] 无登录上下文且非内部调用, 计量用户留空 (body userId={} 不作数)", requested);
+                return null;
+            }
+            log.info("[LLM] 内部调用无登录用户, 计量用户记 0(系统) (body userId={})", requested);
+            return requested != null ? requested : 0L;
         }
         if (requested != null && !requested.equals(own)) {
             log.warn("[LLM] 请求体的 userId={} 与登录用户 {} 不一致, 以登录态为准", requested, own);
         }
         return own;
+    }
+
+    /**
+     * 本次请求是不是「服务间内部调用」。
+     *
+     * <p>判据是 {@code from-source: inner} 请求头：{@code FeignRequestInterceptor}
+     * 给**所有**服务间调用注入这个头，而网关的 {@code AuthFilter} 会把**外部流量**
+     * 带来的这个头剥掉（{@code AuthFilter.java:75} removeHeader）。再加上服务端口
+     * 现在一律只绑 127.0.0.1，外部既连不到服务端口，也过不了网关那一关 ——
+     * 所以「带着 from-source: inner」= 「来自 compose 内网的另一个服务」。</p>
+     */
+    private boolean isInternalCall() {
+        HttpServletRequest request = ServletUtils.getRequest();
+        if (request == null) {
+            return false;
+        }
+        return SecurityConstants.INNER.equals(request.getHeader(SecurityConstants.FROM_SOURCE));
     }
 
     @Operation(summary = "列出可用模型（数据驱动：所有 enabled=true 的 provider）")

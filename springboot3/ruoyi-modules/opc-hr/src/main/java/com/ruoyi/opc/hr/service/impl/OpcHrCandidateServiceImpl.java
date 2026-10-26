@@ -109,7 +109,7 @@ public class OpcHrCandidateServiceImpl implements IOpcHrCandidateService {
         }
         // W73 Task 10: 真实接入 opc-ai-core,场景 hr_resume_parse
         log.info("候选人简历调 LLM 解析 id={} resumeLen={}", id, existing.getResumeMd().length());
-        String parsedJson = hrLlmClient.parseResume(existing.getResumeMd());
+        String parsedJson = hrLlmClient.parseResume(companyId, existing.getResumeMd());
         existing.setParsedJson(parsedJson);
         candidateMapper.updateById(existing);
         log.info("候选人简历解析完成 id={} parsedLen={}", id, parsedJson.length());

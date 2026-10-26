@@ -9,6 +9,9 @@ import com.ruoyi.opc.ai.gateway.llm.LlmGateway;
 import com.ruoyi.opc.ai.security.PromptGuard;
 import com.ruoyi.system.api.model.LoginUser;
 import org.junit.jupiter.api.AfterEach;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,6 +27,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.verify;
@@ -69,6 +73,19 @@ class OpcLlmControllerMeteringTest {
     @AfterEach
     void tearDown() {
         SecurityContextHolder.remove();
+        RequestContextHolder.resetRequestAttributes();
+    }
+
+    /**
+     * 模拟一次「服务间内部调用」：请求头带 from-source: inner。
+     *
+     * <p>这个头由 FeignRequestInterceptor 注入，网关会把外部流量带来的它剥掉，
+     * 所以它存在 = 请求来自 compose 内网的另一个服务。</p>
+     */
+    private void internalCall() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader(SecurityConstants.FROM_SOURCE, SecurityConstants.INNER);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
     }
 
     /** 模拟已登录用户：user_id 头 + LoginUser（含租户）。 */
@@ -120,13 +137,37 @@ class OpcLlmControllerMeteringTest {
     }
 
     @Test
-    @DisplayName("无登录上下文时退回 body 的值 (内部调用/定时任务), 不抛异常")
-    void meteringOwnership_fallsBackToBodyWhenNoLoginContext() {
+    @DisplayName("内部调用(from-source: inner)且无登录上下文 → 认调用方显式传的归属")
+    void meteringOwnership_fallsBackToBodyForInternalCall() {
+        internalCall();
+
         controller.chat(request(5L, 6L));
 
         LlmGateway.ChatContext ctx = capturedContext();
         assertEquals(5L, ctx.getCompanyId());
         assertEquals(6L, ctx.getUserId());
+    }
+
+    @Test
+    @DisplayName("内部调用且调用方没传 userId → 记 0(系统), 不把整条记录丢掉")
+    void meteringOwnership_internalCallWithoutUserId_recordsSystem() {
+        internalCall();
+
+        controller.chat(request(5L, null));
+
+        LlmGateway.ChatContext ctx = capturedContext();
+        assertEquals(5L, ctx.getCompanyId());
+        assertEquals(0L, ctx.getUserId(), "定时任务没有登录用户 —— 记 0(系统) 而不是丢记录");
+    }
+
+    @Test
+    @DisplayName("不是内部调用又没有登录上下文 → 不认 body 的 companyId(否则等于让别人替你记账)")
+    void meteringOwnership_externalCallWithoutLoginContext_doesNotTrustBody() {
+        controller.chat(request(5L, 6L));
+
+        LlmGateway.ChatContext ctx = capturedContext();
+        assertNull(ctx.getCompanyId(), "外部流量没有可信归属 —— body 里的 companyId 不作数");
+        assertNull(ctx.getUserId());
     }
 
     @Test

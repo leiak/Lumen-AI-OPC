@@ -42,6 +42,13 @@ public class WorkflowEngine {
         ctx.inputParams = inputParams == null ? new HashMap<>() : inputParams;
         ctx.outputs = new HashMap<>();
         ctx.steps = new ArrayList<>();
+        // 归属（租户 + 触发者）随定义带进来 ——
+        // 工作流是定时触发的（@InnerAuth，只有 Quartz 能调），**没有登录态**，
+        // 以前 LLM 节点构造 AgentTaskRequest 时不带任何归属，
+        // 于是 TokenMeter 拿不到 company_id/user_id，这条用量记录直接被丢掉：
+        // 工作流跑掉的 token/成本在账单里完全看不见。
+        ctx.companyId = def.getCompanyId();
+        ctx.userId = def.getUserId();
 
         try {
             JsonNode dag = objectMapper.readTree(def.getDagJson());
@@ -105,6 +112,10 @@ public class WorkflowEngine {
                 .userInput(renderedPrompt)
                 .sessionId("wf-" + System.currentTimeMillis())
                 .maxSteps(3)
+                // 归属必须一路带到 LLM 调用, 否则这次调用的 token/成本记不进账单
+                .companyId(ctx.companyId)
+                .userId(ctx.userId)
+                .scene("workflow_llm")
                 .build();
         AgentRuntime.AgentTaskResult res = agentRuntime.run(req);
         ctx.outputs.put(nodeDef.path("id").asText(), res.getContent());
@@ -171,6 +182,17 @@ public class WorkflowEngine {
     @lombok.Data
     public static class WorkflowDefinition {
         private String dagJson;
+
+        /**
+         * 归属公司（租户）。工作流是定时触发的，没有登录态，
+         * LLM 节点的用量要记到谁名下，只能由调用方显式带进来。
+         */
+        private Long companyId;
+
+        /**
+         * 触发者用户 ID。定时触发没有登录用户 → 0（系统）。
+         */
+        private Long userId;
     }
 
     @lombok.Data
@@ -178,6 +200,10 @@ public class WorkflowEngine {
         private Map<String, Object> inputParams;
         private Map<String, Object> outputs;
         private List<StepLog> steps;
+        /** 归属公司（来自 {@link WorkflowDefinition#getCompanyId()}）。 */
+        private Long companyId;
+        /** 触发者（来自 {@link WorkflowDefinition#getUserId()}）。 */
+        private Long userId;
     }
 
     @lombok.Data

@@ -54,7 +54,7 @@ class HrLlmClientTest {
                 "content", "  【岗位概述】高级 Java 开发  ", "model", "deepseek",
                 "tokenTotal", 500, "success", true)));
 
-        String jd = client.generateJd("高级 Java 开发", "TECH", "5 年 Java 经验");
+        String jd = client.generateJd(1L, "高级 Java 开发", "TECH", "5 年 Java 经验");
 
         assertThat(jd).isEqualTo("【岗位概述】高级 Java 开发");
         verifySceneAndTemp("hr_jd_generate", HrLlmPrompts.TEMP_JD_GENERATE);
@@ -66,7 +66,7 @@ class HrLlmClientTest {
     void generateJd_gatewayFails_throws() {
         when(aiCoreGateway.chat(any())).thenReturn(R.fail("LLM 服务暂时不可用，请稍后重试"));
 
-        assertThatThrownBy(() -> client.generateJd("t", "c", "d"))
+        assertThatThrownBy(() -> client.generateJd(1L, "t", "c", "d"))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("LLM 生成的 JD 为空");
     }
@@ -75,7 +75,7 @@ class HrLlmClientTest {
     @Test
     @DisplayName("generateJd - title 空抛 ServiceException,不调 LLM")
     void generateJd_blankTitle_throws() {
-        assertThatThrownBy(() -> client.generateJd("  ", "c", "d"))
+        assertThatThrownBy(() -> client.generateJd(1L, "  ", "c", "d"))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("title");
     }
@@ -89,7 +89,7 @@ class HrLlmClientTest {
         String json = "{\"name\":\"张三\",\"email\":\"a@b.com\",\"skills\":[\"Java\"]}";
         when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of("content", json)));
 
-        String parsed = client.parseResume("# 张三\n5 年 Java");
+        String parsed = client.parseResume(1L, "# 张三\n5 年 Java");
 
         assertThat(parsed).isEqualTo(json);
         verifySceneAndTemp("hr_resume_parse", HrLlmPrompts.TEMP_RESUME_PARSE);
@@ -102,7 +102,7 @@ class HrLlmClientTest {
         String fenced = "```json\n{\"name\":\"李四\"}\n```";
         when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of("content", fenced)));
 
-        String parsed = client.parseResume("简历内容");
+        String parsed = client.parseResume(1L, "简历内容");
 
         assertThat(parsed).isEqualTo("{\"name\":\"李四\"}");
     }
@@ -113,7 +113,7 @@ class HrLlmClientTest {
     void parseResume_gatewayFails_throws() {
         when(aiCoreGateway.chat(any())).thenReturn(R.fail("LLM 不可用"));
 
-        assertThatThrownBy(() -> client.parseResume("resume"))
+        assertThatThrownBy(() -> client.parseResume(1L, "resume"))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("LLM 解析简历失败");
     }
@@ -127,7 +127,7 @@ class HrLlmClientTest {
         String json = "{\"score\":85,\"reason\":\"5年Java经验匹配JD\",\"highlights\":[\"Spring Cloud\"],\"gaps\":[\"未提及K8s\"]}";
         when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of("content", json)));
 
-        HrScoreResult result = client.scoreCandidate("JD 全文", "{\"name\":\"张三\"}");
+        HrScoreResult result = client.scoreCandidate(1L, "JD 全文", "{\"name\":\"张三\"}");
 
         assertThat(result.getScore()).isEqualTo(85);
         assertThat(result.getReason()).contains("5年Java");
@@ -143,7 +143,7 @@ class HrLlmClientTest {
         when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of(
                 "content", "这位候选人很优秀,我给 85 分")));
 
-        HrScoreResult result = client.scoreCandidate("JD", "{\"name\":\"张三\"}");
+        HrScoreResult result = client.scoreCandidate(1L, "JD", "{\"name\":\"张三\"}");
 
         assertThat(result.getScore()).isEqualTo(50);
         assertThat(result.getReason()).startsWith("[LLM 输出非 JSON,降级默认分]");
@@ -151,6 +151,29 @@ class HrLlmClientTest {
     }
 
     // ===== 辅助 =====
+
+    /**
+     * 3b 回归护栏：归属必须显式带进 payload。
+     *
+     * <p>计量发生在 opc-ai-core 那边，调用链是 opc-hr → Feign → opc-ai-core。
+     * 登录态靠 Authorization 头透传，通常能还原出公司/用户；但那条链子依赖
+     * 「token 还在 Redis 里」—— 一旦中间某跳丢了登录态，对端就不知道这次调用
+     * 算谁的，用量记录会被整条丢掉。所以业务层必须把「这条数据属于哪家公司」
+     * 一起传过去。</p>
+     */
+    @Test
+    @DisplayName("generateJd - payload 里带上归属 companyId")
+    void generateJd_payloadCarriesCompanyId() {
+        when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of(
+                "content", "JD", "model", "deepseek", "tokenTotal", 500, "success", true)));
+
+        client.generateJd(7L, "高级 Java 开发", "TECH", "5 年 Java 经验");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(aiCoreGateway).chat(captor.capture());
+        assertThat(captor.getValue().get("companyId")).isEqualTo(7L);
+    }
 
     /** 验证传给网关的 payload 包含正确 scene + temperature */
     @SuppressWarnings("unchecked")

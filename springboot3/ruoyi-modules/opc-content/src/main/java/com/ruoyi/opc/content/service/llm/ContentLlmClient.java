@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ruoyi.common.core.domain.R;
 import com.ruoyi.common.core.exception.ServiceException;
+import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.content.feign.OpcContentAiCoreGateway;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -57,16 +58,18 @@ public class ContentLlmClient {
     /**
      * 根据主题/角色/集数生成短剧剧本 JSON。
      *
+     * @param companyId 归属公司 (租户) —— 计量归属,见 {@link #chatOnce}
      * @param promptInput 主题/角色/集数 等业务描述 (必填, 非空)
      * @return 严格 JSON 字符串 (符合 {@link ContentLlmPrompts#SHORT_DRAMA_SYSTEM} schema)
      * @throws ServiceException 当 LLM 网关不可用 / 业务失败 / 响应缺失 content 时
      */
-    public String generateDrama(String promptInput) {
+    public String generateDrama(Long companyId, String promptInput) {
         if (promptInput == null || promptInput.isBlank()) {
             throw new ServiceException("promptInput 不能为空");
         }
 
         String content = chatOnce(
+                companyId,
                 ContentLlmPrompts.SCENE_SHORT_DRAMA,
                 ContentLlmPrompts.SHORT_DRAMA_SYSTEM,
                 "请生成短剧剧本:\n\n" + promptInput,
@@ -88,16 +91,18 @@ public class ContentLlmClient {
     /**
      * 根据业务描述生成 30-90 秒视频脚本 JSON。
      *
+     * @param companyId 归属公司 (租户) —— 计量归属,见 {@link #chatOnce}
      * @param promptInput 主题/卖点/目标受众 等业务描述 (必填, 非空)
      * @return 严格 JSON 字符串 (符合 {@link ContentLlmPrompts#VIDEO_SCRIPT_SYSTEM} schema)
      * @throws ServiceException 当 LLM 网关不可用 / 业务失败 / 响应缺失 content 时
      */
-    public String generateVideo(String promptInput) {
+    public String generateVideo(Long companyId, String promptInput) {
         if (promptInput == null || promptInput.isBlank()) {
             throw new ServiceException("promptInput 不能为空");
         }
 
         String content = chatOnce(
+                companyId,
                 ContentLlmPrompts.SCENE_VIDEO_SCRIPT,
                 ContentLlmPrompts.VIDEO_SCRIPT_SYSTEM,
                 "请生成视频脚本:\n\n" + promptInput,
@@ -119,16 +124,18 @@ public class ContentLlmClient {
     /**
      * 根据业务描述生成 500-1500 字 Markdown 图文文案。
      *
+     * @param companyId 归属公司 (租户) —— 计量归属,见 {@link #chatOnce}
      * @param promptInput 主题/大纲/受众 等业务描述 (必填, 非空)
      * @return Markdown 字符串 (符合 {@link ContentLlmPrompts#ARTICLE_SYSTEM} 格式)
      * @throws ServiceException 当 LLM 网关不可用 / 业务失败 / 响应缺失 content 时
      */
-    public String generateArticle(String promptInput) {
+    public String generateArticle(Long companyId, String promptInput) {
         if (promptInput == null || promptInput.isBlank()) {
             throw new ServiceException("promptInput 不能为空");
         }
 
         String content = chatOnce(
+                companyId,
                 ContentLlmPrompts.SCENE_ARTICLE,
                 ContentLlmPrompts.ARTICLE_SYSTEM,
                 "请生成图文文案:\n\n" + promptInput,
@@ -151,12 +158,13 @@ public class ContentLlmClient {
     /**
      * 平台适配 — 原文 + 目标平台 → 适配后内容 JSON。
      *
+     * @param companyId 归属公司 (租户) —— 计量归属,见 {@link #chatOnce}
      * @param originalContent 原文 Markdown 或纯文本 (必填, 非空)
      * @param targetPlatform  目标平台 DOUYIN/WECHAT 等 (必填, 非空)
      * @return JSON 字符串 (符合 {@link ContentLlmPrompts#PLATFORM_ADAPTER_SYSTEM} schema)
      * @throws ServiceException 当 LLM 网关不可用 / 业务失败 / 响应缺失 content 时
      */
-    public String adapt(String originalContent, String targetPlatform) {
+    public String adapt(Long companyId, String originalContent, String targetPlatform) {
         if (originalContent == null || originalContent.isBlank()) {
             throw new ServiceException("originalContent 不能为空");
         }
@@ -169,6 +177,7 @@ public class ContentLlmClient {
                 originalContent, targetPlatform);
 
         String content = chatOnce(
+                companyId,
                 ContentLlmPrompts.SCENE_PLATFORM_ADAPTER,
                 ContentLlmPrompts.PLATFORM_ADAPTER_SYSTEM,
                 userInput,
@@ -198,14 +207,26 @@ public class ContentLlmClient {
      * <p>W75-C: 处理 LLM HTTP 客户端不稳定 (EOF reached while reading / ConnectException /
      * SocketTimeoutException),最多重试 {@link #LLM_MAX_RETRY} 次,指数退避。
      *
+     * <p><b>归属必须显式带过去</b>：计量发生在 opc-ai-core 那边, 而调用链是
+     * opc-content → Feign → opc-ai-core。登录态靠 Authorization 头透传, 通常能还原出
+     * 公司/用户; 但那条链子依赖「token 还在 Redis 里」—— 一旦中间某跳丢了登录态
+     * (定时任务、token 刚过期), 对端就不知道这次调用算谁的, 于是用量记录被整条丢掉,
+     * 而账单读的就是那张表。所以这里把 <b>业务对象所属的公司</b>(不是「当前登录用户
+     * 属于哪家公司」) 一起传过去: 谁的数据被处理, 费用就算谁的。</p>
+     *
      * @return content 字符串 (不含 Markdown fence); 网关不可用 / 业务失败 / 响应缺失 content 时抛 {@link ServiceException}
      */
-    private String chatOnce(String scene, String systemPrompt, String userInput,
+    private String chatOnce(Long companyId, String scene, String systemPrompt, String userInput,
                             double temperature, int maxTokens, List<String> contextTags) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("scene", scene);
         payload.put("temperature", temperature);
         payload.put("maxTokens", maxTokens);
+        payload.put("companyId", companyId);
+        Long userId = currentUserId();
+        if (userId != null) {
+            payload.put("userId", userId);
+        }
         payload.put("messages", List.of(
                 Map.of("role", "system", "content", systemPrompt),
                 Map.of("role", "user", "content", userInput)));
@@ -282,6 +303,20 @@ public class ContentLlmClient {
                 || msg.contains("ConnectException")
                 || msg.contains("SocketTimeout")
                 || msg.contains("Read timed out");
+    }
+
+    /**
+     * 当前登录用户 ID; 没有登录上下文 (定时任务/后台线程) 时返回 null。
+     *
+     * <p>null 的含义是「这次调用没有具体的人」—— 对端会记成系统(0),
+     * 而不是把整条记录丢掉。</p>
+     */
+    private Long currentUserId() {
+        try {
+            return SecurityUtils.getUserId();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 去掉 LLM 偶尔返回的 Markdown ```json ... ``` 或 ```markdown ... ``` 包裹。 */

@@ -237,7 +237,7 @@ class OpcHrCandidateServiceImplTest {
         when(candidateMapper.selectById(CANDIDATE_ID, COMPANY_ID)).thenReturn(existing);
         when(candidateMapper.updateById(any(OpcHrCandidate.class))).thenReturn(1);
         String llmJson = "{\"name\":\"张三\",\"skills\":[\"Java\"]}";
-        when(hrLlmClient.parseResume("# 张三\nJava 5 年")).thenReturn(llmJson);
+        when(hrLlmClient.parseResume(1L, "# 张三\nJava 5 年")).thenReturn(llmJson);
 
         candidateService.parse(CANDIDATE_ID, COMPANY_ID);
 

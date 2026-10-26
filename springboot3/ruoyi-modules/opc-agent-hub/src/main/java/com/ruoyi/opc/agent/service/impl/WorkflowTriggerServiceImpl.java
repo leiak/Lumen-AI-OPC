@@ -1,6 +1,7 @@
 package com.ruoyi.opc.agent.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.agent.domain.OpcAgentWorkflow;
 import com.ruoyi.opc.agent.domain.OpcAgentWorkflowRun;
 import com.ruoyi.opc.agent.mapper.OpcAgentWorkflowMapper;
@@ -75,6 +76,10 @@ public class WorkflowTriggerServiceImpl implements IWorkflowTriggerService {
         try {
             WorkflowEngine.WorkflowDefinition def = new WorkflowEngine.WorkflowDefinition();
             def.setDagJson(workflow.getDagJson());
+            // 归属带进引擎 —— 工作流是定时触发的, 没有登录态,
+            // 不显式带上 companyId, LLM 节点的 token/成本就记不进任何账。
+            def.setCompanyId(workflow.getCompanyId() == null ? 0L : workflow.getCompanyId());
+            def.setUserId(resolveTriggerUserId());
             WorkflowEngine.WorkflowResult result = workflowEngine.run(def, Collections.emptyMap());
 
             run.setStatus(result.isSuccess() ? OpcConstants.TASK_SUCCESS : OpcConstants.TASK_FAILED);
@@ -96,6 +101,21 @@ public class WorkflowTriggerServiceImpl implements IWorkflowTriggerService {
         log.info("[workflow-trigger] 完成 code={} runCode={} status={} durationMs={}",
                 workflowCode, run.getRunCode(), run.getStatus(), run.getDurationMs());
         return run;
+    }
+
+    /**
+     * 触发者用户 ID。
+     *
+     * <p>触发入口是 {@code @InnerAuth} 的内部端点（只有 Quartz 能调），所以通常
+     * <b>没有登录用户</b> → 记 0（系统）。若将来加了手动触发，这里会自动取到真实用户。</p>
+     */
+    private Long resolveTriggerUserId() {
+        try {
+            Long userId = SecurityUtils.getUserId();
+            return userId != null ? userId : 0L;
+        } catch (Exception e) {
+            return 0L;
+        }
     }
 
     private OpcAgentWorkflowRun newRun(OpcAgentWorkflow workflow, String triggerSource) {

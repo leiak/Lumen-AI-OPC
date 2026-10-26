@@ -78,13 +78,13 @@ public class OpcContentScriptServiceImpl implements IOpcContentScriptService {
         String contentMd = "";
         switch (type) {
             case DRAMA:
-                contentJson = contentLlmClient.generateDrama(req.getPromptInput());
+                contentJson = contentLlmClient.generateDrama(req.getCompanyId(), req.getPromptInput());
                 break;
             case VIDEO:
-                contentJson = contentLlmClient.generateVideo(req.getPromptInput());
+                contentJson = contentLlmClient.generateVideo(req.getCompanyId(), req.getPromptInput());
                 break;
             case ARTICLE:
-                contentMd = contentLlmClient.generateArticle(req.getPromptInput());
+                contentMd = contentLlmClient.generateArticle(req.getCompanyId(), req.getPromptInput());
                 break;
             default:
                 throw new ServiceException("未实现的 type: " + type);
@@ -223,13 +223,13 @@ public class OpcContentScriptServiceImpl implements IOpcContentScriptService {
         String contentMd = "";
         switch (type) {
             case DRAMA:
-                contentJson = contentLlmClient.generateDrama(promptInput);
+                contentJson = contentLlmClient.generateDrama(existing.getCompanyId(), promptInput);
                 break;
             case VIDEO:
-                contentJson = contentLlmClient.generateVideo(promptInput);
+                contentJson = contentLlmClient.generateVideo(existing.getCompanyId(), promptInput);
                 break;
             case ARTICLE:
-                contentMd = contentLlmClient.generateArticle(promptInput);
+                contentMd = contentLlmClient.generateArticle(existing.getCompanyId(), promptInput);
                 break;
             default:
                 throw new ServiceException("不支持重新生成的类型: " + type);

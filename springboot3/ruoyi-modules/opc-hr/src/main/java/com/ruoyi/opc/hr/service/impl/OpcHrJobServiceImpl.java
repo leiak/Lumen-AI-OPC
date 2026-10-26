@@ -151,7 +151,7 @@ public class OpcHrJobServiceImpl implements IOpcHrJobService {
         }
         // W73 Task 10: 真实接入 opc-ai-core,场景 hr_jd_generate
         log.info("generateLlm 调 LLM companyId={} title={}", companyId, title);
-        String jd = hrLlmClient.generateJd(title, category, description);
+        String jd = hrLlmClient.generateJd(companyId, title, category, description);
         log.info("generateLlm 完成 companyId={} jdLen={}", companyId, jd.length());
         return jd;
     }

@@ -143,6 +143,42 @@ class WorkflowTriggerServiceImplTest {
     }
 
     @Test
+    @DisplayName("引擎收到的定义带归属: companyId=工作流的公司, userId=0(定时触发=系统)")
+    void trigger_passesAttributionIntoDefinition() {
+        workflow.setCompanyId(7L);
+        when(runMapper.findRunningByCodeSince(anyString(), any())).thenReturn(null);
+        when(workflowMapper.selectByCode(CODE)).thenReturn(workflow);
+        when(workflowEngine.run(any(), any())).thenReturn(WorkflowEngine.WorkflowResult.builder()
+                .success(true).build());
+
+        service.trigger(CODE, "quartz:test");
+
+        ArgumentCaptor<WorkflowEngine.WorkflowDefinition> captor =
+                ArgumentCaptor.forClass(WorkflowEngine.WorkflowDefinition.class);
+        verify(workflowEngine).run(captor.capture(), any());
+        assertEquals(7L, captor.getValue().getCompanyId(),
+                "工作流的 LLM 节点要记用量, 归属必须跟着定义一路带进引擎");
+        assertEquals(0L, captor.getValue().getUserId(),
+                "定时触发没有登录用户 —— 记 0(系统)");
+    }
+
+    @Test
+    @DisplayName("系统模板工作流(company_id 为 NULL) → 归属记 0,不丢记录")
+    void trigger_systemTemplateCompany_mapsToZero() {
+        when(runMapper.findRunningByCodeSince(anyString(), any())).thenReturn(null);
+        when(workflowMapper.selectByCode(CODE)).thenReturn(workflow);
+        when(workflowEngine.run(any(), any())).thenReturn(WorkflowEngine.WorkflowResult.builder()
+                .success(true).build());
+
+        service.trigger(CODE, "quartz:test");
+
+        ArgumentCaptor<WorkflowEngine.WorkflowDefinition> captor =
+                ArgumentCaptor.forClass(WorkflowEngine.WorkflowDefinition.class);
+        verify(workflowEngine).run(captor.capture(), any());
+        assertEquals(0L, captor.getValue().getCompanyId());
+    }
+
+    @Test
     @DisplayName("30 秒内重复触发：直接返回已有 RUNNING 记录，不再执行引擎")
     void trigger_duplicateWithin30s_skipped() {
         OpcAgentWorkflowRun existing = new OpcAgentWorkflowRun();

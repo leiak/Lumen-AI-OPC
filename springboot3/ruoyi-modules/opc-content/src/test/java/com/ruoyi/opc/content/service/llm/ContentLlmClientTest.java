@@ -53,7 +53,7 @@ class ContentLlmClientTest {
         when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of(
                 "content", "{\"synopsis\":\"...\"}", "model", "deepseek")));
 
-        String result = client.generateDrama("现代都市爱情,女主律师");
+        String result = client.generateDrama(1L, "现代都市爱情,女主律师");
 
         assertThat(result).isEqualTo("{\"synopsis\":\"...\"}");
         verifySceneAndTemp(ContentLlmPrompts.SCENE_SHORT_DRAMA,
@@ -70,7 +70,7 @@ class ContentLlmClientTest {
         when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of(
                 "content", "```json\n{\"synopsis\":\"x\"}\n```")));
 
-        String result = client.generateDrama("p");
+        String result = client.generateDrama(1L, "p");
 
         assertThat(result).isEqualTo("{\"synopsis\":\"x\"}");
     }
@@ -81,7 +81,7 @@ class ContentLlmClientTest {
     void generateDrama_gatewayFails_throws() {
         when(aiCoreGateway.chat(any())).thenReturn(R.fail("LLM 服务暂时不可用"));
 
-        assertThatThrownBy(() -> client.generateDrama("p"))
+        assertThatThrownBy(() -> client.generateDrama(1L, "p"))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("LLM");
     }
@@ -95,7 +95,7 @@ class ContentLlmClientTest {
         when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of(
                 "content", "{\"hook\":\"3秒钩子\",\"cta\":\"关注\"}")));
 
-        String result = client.generateVideo("产品卖点");
+        String result = client.generateVideo(1L, "产品卖点");
 
         assertThat(result).contains("\"hook\":\"3秒钩子\"");
         verifySceneAndTemp(ContentLlmPrompts.SCENE_VIDEO_SCRIPT,
@@ -109,7 +109,7 @@ class ContentLlmClientTest {
     @Test
     @DisplayName("generateVideo - promptInput 为空抛 ServiceException,不调 LLM")
     void generateVideo_blankPrompt_throws() {
-        assertThatThrownBy(() -> client.generateVideo(""))
+        assertThatThrownBy(() -> client.generateVideo(1L, ""))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("promptInput");
         org.mockito.Mockito.verifyNoInteractions(aiCoreGateway);
@@ -124,7 +124,7 @@ class ContentLlmClientTest {
         String md = "## 一级标题\n\n段落 1。";
         when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of("content", md)));
 
-        String result = client.generateArticle("主题");
+        String result = client.generateArticle(1L, "主题");
 
         assertThat(result).isEqualTo(md);
         verifySceneAndTemp(ContentLlmPrompts.SCENE_ARTICLE,
@@ -143,7 +143,7 @@ class ContentLlmClientTest {
         when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of(
                 "content", "{\"adapted_content\":\"x\",\"hashtags\":[\"#A\"]}")));
 
-        String result = client.adapt("原文 Markdown", "DOUYIN");
+        String result = client.adapt(1L, "原文 Markdown", "DOUYIN");
 
         assertThat(result).contains("adapted_content");
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
@@ -163,7 +163,7 @@ class ContentLlmClientTest {
     @Test
     @DisplayName("adapt - targetPlatform 空抛 ServiceException")
     void adapt_blankPlatform_throws() {
-        assertThatThrownBy(() -> client.adapt("原文", ""))
+        assertThatThrownBy(() -> client.adapt(1L, "原文", ""))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("targetPlatform");
     }
@@ -176,7 +176,7 @@ class ContentLlmClientTest {
     void generateDrama_nullResponse_throws() {
         when(aiCoreGateway.chat(any())).thenReturn(null);
 
-        assertThatThrownBy(() -> client.generateDrama("p"))
+        assertThatThrownBy(() -> client.generateDrama(1L, "p"))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("暂时不可用");
     }
@@ -187,9 +187,48 @@ class ContentLlmClientTest {
     void generateDrama_missingContent_throws() {
         when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of("model", "deepseek")));
 
-        assertThatThrownBy(() -> client.generateDrama("p"))
+        assertThatThrownBy(() -> client.generateDrama(1L, "p"))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("content");
+    }
+
+    // ===== 6. 归属传递 (3b 回归护栏) =====
+
+    /**
+     * 3b 回归护栏：归属必须显式带进 payload。
+     *
+     * <p>计量发生在 opc-ai-core 那边，调用链是 opc-content → Feign → opc-ai-core。
+     * 登录态靠 Authorization 头透传，通常能还原出公司/用户；但那条链子依赖
+     * 「token 还在 Redis 里」—— 一旦中间某跳丢了登录态，对端就不知道这次调用
+     * 算谁的，用量记录会被整条丢掉。所以业务层必须把「这条内容属于哪家公司」
+     * 一起传过去。</p>
+     */
+    @Test
+    @DisplayName("generateDrama - payload 里带上归属 companyId")
+    void generateDrama_payloadCarriesCompanyId() {
+        when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of(
+                "content", "{\"synopsis\":\"...\"}", "model", "deepseek")));
+
+        client.generateDrama(7L, "现代都市爱情,女主律师");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(aiCoreGateway).chat(captor.capture());
+        assertThat(captor.getValue().get("companyId")).isEqualTo(7L);
+    }
+
+    @Test
+    @DisplayName("adapt - payload 里带上归属 companyId")
+    void adapt_payloadCarriesCompanyId() {
+        when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of(
+                "content", "{\"title\":\"改写后标题\"}", "model", "deepseek")));
+
+        client.adapt(9L, "原文 Markdown", "DOUYIN");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(aiCoreGateway).chat(captor.capture());
+        assertThat(captor.getValue().get("companyId")).isEqualTo(9L);
     }
 
     // ===== 辅助 =====

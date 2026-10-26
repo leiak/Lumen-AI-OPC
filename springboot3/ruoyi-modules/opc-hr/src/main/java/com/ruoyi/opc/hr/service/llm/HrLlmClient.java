@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ruoyi.common.core.domain.R;
 import com.ruoyi.common.core.exception.ServiceException;
+import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.hr.dto.HrScoreResult;
 import com.ruoyi.opc.hr.feign.OpcHrAiCoreGateway;
 import lombok.RequiredArgsConstructor;
@@ -57,13 +58,15 @@ public class HrLlmClient {
     /**
      * 根据业务描述生成完整 JD 文本。
      *
+     * @param companyId   归属公司(租户)。<b>必填</b> —— 它决定这次 LLM 调用的
+     *                    token/成本记到谁名下(计量发生在 opc-ai-core)。
      * @param title       岗位标题(必填,非空)
      * @param category    岗位类别(可空,缺省时提示词不强调)
      * @param description 业务描述(必填,非空)
      * @return 生成的 JD 全文(纯文本,不含 Markdown 标题)
      * @throws ServiceException 当 LLM 网关不可用或响应缺失 content
      */
-    public String generateJd(String title, String category, String description) {
+    public String generateJd(Long companyId, String title, String category, String description) {
         if (title == null || title.isBlank()) {
             throw new ServiceException("title 不能为空");
         }
@@ -78,6 +81,7 @@ public class HrLlmClient {
                 description);
 
         String content = chatOnce(
+                companyId,
                 HrLlmPrompts.SCENE_JD_GENERATE,
                 HrLlmPrompts.JD_GENERATE_SYSTEM,
                 userInput,
@@ -101,16 +105,18 @@ public class HrLlmClient {
      * <p>返回的是 LLM 输出的 JSON 字符串(而非 Java 对象),便于调用方原样存入
      * {@code opc_hr_candidate.parsed_json} 列。
      *
+     * @param companyId 归属公司(租户) —— 计量归属,见 {@link #generateJd}
      * @param resumeMd 简历 Markdown / 纯文本(必填,非空)
      * @return 简历 JSON 字符串(无效响应时降级为 {@code {"raw_resume_md":"...","parse":"raw"}})
      * @throws ServiceException 仅当 LLM 网关不可用或完全无响应时
      */
-    public String parseResume(String resumeMd) {
+    public String parseResume(Long companyId, String resumeMd) {
         if (resumeMd == null || resumeMd.isBlank()) {
             throw new ServiceException("resumeMd 不能为空");
         }
 
         String content = chatOnce(
+                companyId,
                 HrLlmPrompts.SCENE_RESUME_PARSE,
                 HrLlmPrompts.RESUME_PARSE_SYSTEM,
                 "请解析以下简历:\n\n" + resumeMd,
@@ -140,12 +146,13 @@ public class HrLlmClient {
     /**
      * 基于 JD + 简历计算候选人综合匹配分。
      *
+     * @param companyId 归属公司(租户) —— 计量归属,见 {@link #generateJd}
      * @param jdText     JD 全文(任职要求 + 岗位职责)
      * @param resumeJson 简历 JSON 字符串,可来自 {@link #parseResume} 输出
      * @return {@link HrScoreResult} 解析失败时降级为 score=50 + reason=原始 content
      * @throws ServiceException 仅当 LLM 网关不可用或完全无响应时
      */
-    public HrScoreResult scoreCandidate(String jdText, String resumeJson) {
+    public HrScoreResult scoreCandidate(Long companyId, String jdText, String resumeJson) {
         if (jdText == null || jdText.isBlank()) {
             throw new ServiceException("jdText 不能为空");
         }
@@ -158,6 +165,7 @@ public class HrLlmClient {
                 jdText, resumeJson);
 
         String content = chatOnce(
+                companyId,
                 HrLlmPrompts.SCENE_CANDIDATE_SCORE,
                 HrLlmPrompts.CANDIDATE_SCORE_SYSTEM,
                 userInput,
@@ -192,13 +200,26 @@ public class HrLlmClient {
     /**
      * 构造 payload + 调用网关 + 提取 content。
      *
+     * <p><b>归属必须显式带过去</b>：计量发生在 opc-ai-core 那边，而调用链是
+     * opc-hr → Feign → opc-ai-core。登录态靠 Authorization 头透传，通常能还原出
+     * 公司/用户；但那条链子依赖「token 还在 Redis 里」，一旦中间某跳丢了登录态
+     * （定时任务、手动触发的后台任务、token 刚过期），对端就不知道这次调用算谁的，
+     * 于是用量记录被整条丢掉 —— 而账单读的就是那张表。
+     * 所以这里把 <b>业务对象所属的公司</b>（不是「当前登录用户属于哪家公司」）
+     * 一起传过去：谁的数据被处理，费用就算谁的。</p>
+     *
      * @return content 字符串;网关不可用/响应缺失 content 时返回 null(让上层区分失败 vs 空内容)
      */
-    private String chatOnce(String scene, String systemPrompt, String userInput,
+    private String chatOnce(Long companyId, String scene, String systemPrompt, String userInput,
                             double temperature, List<String> contextTags) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("scene", scene);
         payload.put("temperature", temperature);
+        payload.put("companyId", companyId);
+        Long userId = currentUserId();
+        if (userId != null) {
+            payload.put("userId", userId);
+        }
         payload.put("messages", List.of(
                 Map.of("role", "system", "content", systemPrompt),
                 Map.of("role", "user", "content", userInput)));
@@ -226,6 +247,20 @@ public class HrLlmClient {
             return null;
         }
         return content.toString();
+    }
+
+    /**
+     * 当前登录用户 ID；没有登录上下文（定时任务/后台线程）时返回 null。
+     *
+     * <p>null 的含义是「这次调用没有具体的人」—— 对端会记成系统(0)，
+     * 而不是把整条记录丢掉。</p>
+     */
+    private Long currentUserId() {
+        try {
+            return SecurityUtils.getUserId();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 去掉 LLM 偶尔返回的 Markdown ```json ... ``` 包裹。 */
