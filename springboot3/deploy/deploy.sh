@@ -24,6 +24,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${PROJECT_ROOT}/.." && pwd)"
+JAVA_HOME="${JAVA_HOME:-}"
+if [[ -z "${JAVA_HOME}" ]]; then
+  # Linux 上找系统里的 JDK 17 —— 原来写死 Windows 路径, 在 Linux 跑会直接
+  # 「找不到 java」, 而 JAVA_HOME 没设时 mvn 会退回系统默认的 1.8 编译失败。
+  for cand in /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/jdk-17*; do
+    if [[ -x "${cand}/bin/javac" ]]; then JAVA_HOME="${cand}"; break; fi
+  done
+fi
 JAVA_HOME="${JAVA_HOME:-C:/Program Files/Java/jdk-17.0.17.10-hotspot}"
 
 CMD="${1:-help}"
@@ -153,8 +161,26 @@ cmd_rebuild() {
     fail "用法: deploy.sh rebuild <svc-name|all>     (e.g. crm / notification / ai-core / all)"
   fi
 
+  # 共享模块必须**先 install 进本地仓库** ——
+  #
+  # 下面 build_one 里的 `dependency:copy-dependencies` 是**另一次** mvn 调用,
+  # 不带 -am, 解析不到 reactor, 依赖只能从 ~/.m2 拿。而 ~/.m2 里的
+  # ruoyi-common-security 是上一次 install 时的快照: 共享模块改了代码
+  # (比如新增租户守卫) 而没 install 的话, 镜像里就是**旧包** ——
+  # 部署看起来成功了, 实际上守卫根本没生效, 而且不报任何错。
+  #
+  # 一句话: package 只写 target/, install 才写 ~/.m2。两者不是一回事。
+  log "[shared] mvn install ruoyi-common-security (共享模块, 租户守卫在这里)"
+  cd "${PROJECT_ROOT}"
+  JAVA_HOME="${JAVA_HOME}" \
+    mvn -pl ruoyi-common/ruoyi-common-security -am clean install \
+      -Dmaven.test.skip=true -Dspring-boot.repackage.skip=true -q \
+    || fail "共享模块 install 失败"
+
   build_one() {
     local module="$1"
+    # compose 服务名与模块名不一定同名(ruoyi-system → aiopc-system)
+    local svc="${2:-aiopc-${module}}"
     local svc_dir="${PROJECT_ROOT}/ruoyi-modules/${module}"
     if [[ ! -d "${svc_dir}" ]]; then
       warn "  模块 ${module} 不存在,跳过"
@@ -169,24 +195,67 @@ cmd_rebuild() {
       mvn -pl "ruoyi-modules/${module}" dependency:copy-dependencies \
         -DoutputDirectory=target/dependency -q
 
-    log "[${module}] docker build aiopc-${module}"
+    log "[${module}] docker build ${svc}"
     cd "${SCRIPT_DIR}"
-    docker compose build "aiopc-${module}"
+    docker compose build "${svc}"
     log "[${module}] restart"
-    docker compose up -d "aiopc-${module}"
+    docker compose up -d "${svc}"
     log "[${module}] OK"
   }
 
   if [[ "${target}" == "all" ]]; then
+    # 全部业务服务 —— 共享模块(ruoyi-common-security)被**每一个** OPC 服务
+    # 依赖(直接或经 opc-common 传递), 所以改了共享模块就得全量重建,
+    # 漏掉哪一个, 那个服务上就没有租户守卫。
     for m in opc-crm opc-notification opc-ai-core opc-user-center \
              opc-agent-hub opc-billing opc-finance opc-insight \
-             opc-marketplace; do
+             opc-marketplace opc-community opc-content opc-erp opc-hr; do
       build_one "${m}"
     done
+    # ruoyi-system 的 compose 服务名是 aiopc-system(不是 aiopc-ruoyi-system)
+    build_one ruoyi-system aiopc-system
+    build_gateway
+    build_frontend
   else
     build_one "${target}"
   fi
   log "rebuild 完成,跑 bash scripts/health-check.sh 验证"
+}
+
+# 网关: fat jar(-jar 启动), 跟业务服务的 thin jar 流程不一样 ——
+# 不能加 -Dspring-boot.repackage.skip=true, 否则打出来的 jar 跑不起来。
+build_gateway() {
+  log "[gateway] mvn clean package (fat jar) + docker build"
+  cd "${PROJECT_ROOT}"
+  JAVA_HOME="${JAVA_HOME}" \
+    mvn -pl ruoyi-gateway -am clean package -Dmaven.test.skip=true -q \
+    || fail "网关 package 失败"
+  cd "${SCRIPT_DIR}"
+  docker compose build aiopc-gateway || fail "网关 docker build 失败"
+  docker compose up -d aiopc-gateway || fail "网关重启失败"
+  log "[gateway] OK"
+}
+
+# 前端: 宿主机上已有 node_modules 就在宿主机 build, 产物交给
+# Dockerfile.frontend.prebuilt 打包(省掉容器里那次 npm install);
+# 没有 node_modules 就退回 Dockerfile.frontend —— 在容器里 npm install + 构建。
+build_frontend() {
+  local web_dir="${REPO_ROOT}/vue3-typescript"
+  if [[ -d "${web_dir}/node_modules" ]]; then
+    log "[frontend] 宿主机 npm run build:prod"
+    (cd "${web_dir}" && npm run build:prod) || fail "前端构建失败"
+    log "[frontend] docker build (prebuilt dist)"
+    (cd "${web_dir}" && docker build \
+      -f "${SCRIPT_DIR}/Dockerfile.frontend.prebuilt" \
+      -t aiopc-frontend:latest .) || fail "前端 docker build 失败"
+  else
+    log "[frontend] 没有 node_modules,退回容器内构建"
+    cd "${SCRIPT_DIR}"
+    docker compose build aiopc-frontend || fail "前端 docker build 失败"
+  fi
+  cd "${SCRIPT_DIR}"
+  docker compose up -d aiopc-frontend || fail "前端重启失败"
+  log "[frontend] OK"
 }
 
 cmd_snapshot() {
