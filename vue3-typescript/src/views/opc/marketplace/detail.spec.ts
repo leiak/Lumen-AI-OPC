@@ -39,6 +39,9 @@ import {
   uninstallPublication,
   installStatus,
   listReviews,
+  subscribePublication,
+  unsubscribePublication,
+  subscriptionStatus,
 } from '@/api/opc/marketplace'
 
 vi.mock('@/api/opc/marketplace', () => ({
@@ -50,6 +53,9 @@ vi.mock('@/api/opc/marketplace', () => ({
   createReview: vi.fn(),
   updateReview: vi.fn(),
   deleteReview: vi.fn(),
+  subscribePublication: vi.fn(),
+  unsubscribePublication: vi.fn(),
+  subscriptionStatus: vi.fn(),
 }))
 
 import Detail from '@/views/opc/marketplace/detail.vue'
@@ -84,7 +90,7 @@ const STUBS = [
   'el-tabs', 'el-tab-pane', 'el-descriptions', 'el-descriptions-item',
   'el-dialog', 'el-empty', 'el-form', 'el-form-item', 'el-input',
   'el-pagination', 'el-rate', 'v-loading',
-  'StarFilled', 'Download', 'CircleCheck', 'EditPen',
+  'StarFilled', 'Star', 'Download', 'CircleCheck', 'EditPen',
 ].reduce<Record<string, any>>((acc, n) => ((acc[n] = stubAll(n)), acc), {})
 
 STUBS['el-button'] = stubAll('el-button', 'button')
@@ -111,16 +117,31 @@ const installButton = (wrapper: any) =>
 const installedButton = (wrapper: any) =>
   wrapper.findAll('button').find((b: any) => b.text().includes('已安装'))
 
+/** 「查看模块」按钮 —— MODULE 商品指向模块社区的那条指路牌 */
+const communityLink = (wrapper: any) =>
+  wrapper.findAll('button').find((b: any) => b.text().includes('查看模块'))
+
+/** 「订阅」/「已订阅」按钮 —— 按文案找,注意「已订阅」里也含「订阅」,所以要排除 */
+const subscribeButton = (wrapper: any) =>
+  wrapper.findAll('button').find((b: any) => b.text().includes('订阅') && !b.text().includes('已订阅'))
+
+const unsubscribeButton = (wrapper: any) =>
+  wrapper.findAll('button').find((b: any) => b.text().includes('已订阅'))
+
 async function mountDetail(opts: {
   pub?: any
   status?: any
   installResult?: any
+  subscription?: any
 } = {}) {
   vi.mocked(getPublication).mockResolvedValue({ code: 200, data: opts.pub ?? AGENT_PUB } as any)
   vi.mocked(listReviews).mockResolvedValue({ code: 200, rows: [], total: 0 } as any)
   vi.mocked(installStatus).mockResolvedValue({ code: 200, data: opts.status } as any)
   vi.mocked(installPublication).mockResolvedValue({ code: 200, data: opts.installResult } as any)
   vi.mocked(uninstallPublication).mockResolvedValue({ code: 200 } as any)
+  vi.mocked(subscriptionStatus).mockResolvedValue({ code: 200, data: opts.subscription } as any)
+  vi.mocked(subscribePublication).mockResolvedValue({ code: 200, data: {} } as any)
+  vi.mocked(unsubscribePublication).mockResolvedValue({ code: 200 } as any)
   const wrapper = mount(Detail, mountOpts)
   await flushPromises()
   return wrapper
@@ -162,15 +183,20 @@ describe('marketplace/detail — 安装后指向实例', () => {
     expect(instanceLink(wrapper)).toBeTruthy()
   })
 
-  it('3. MODULE 装完 → 不弹框、不跳转（MODULE 不建实例）', async () => {
+  it('3. MODULE 装完 → 弹框指向模块社区（MODULE 不建实例,但它在社区有一张卡片）', async () => {
+    // W80 P2 之前:MODULE 装完只弹一句「安装成功」,用户不知道去哪儿 ——
+    // 而 MODULE 根本没有「查看实例」那个按钮(不建 agent 实例),等于装完就断头路。
+    // 现在给一条指路牌:去模块社区。
+    confirmMock.mockResolvedValue('confirm')
     const wrapper = await mountDetail({ pub: MODULE_PUB, installResult: installRow({}) })
 
     await installButton(wrapper).trigger('click')
     await flushPromises()
 
-    expect(confirmMock).not.toHaveBeenCalled()
-    expect(routerPush).not.toHaveBeenCalled()
-    expect(successMock).toHaveBeenCalledWith('安装成功')
+    expect(confirmMock).toHaveBeenCalledTimes(1)
+    expect(confirmMock.mock.calls[0][0]).toContain('模块已安装')
+    expect(routerPush).toHaveBeenCalledWith('/opc/community/market')
+    // MODULE 依然不该出现「查看实例」—— 它没有 agent 实例
     expect(instanceLink(wrapper)).toBeFalsy()
   })
 
@@ -209,5 +235,87 @@ describe('marketplace/detail — 安装后指向实例', () => {
     await flushPromises()
 
     expect(instanceLink(wrapper)).toBeFalsy()
+  })
+
+  it('7. MODULE 商品有「查看模块」按钮 → 跳到模块社区', async () => {
+    const wrapper = await mountDetail({ pub: MODULE_PUB })
+
+    const link = communityLink(wrapper)
+    expect(link).toBeTruthy()
+
+    await link.trigger('click')
+    expect(routerPush).toHaveBeenCalledWith('/opc/community/market')
+  })
+
+  it('8. AGENT 商品没有「查看模块」按钮（它去的是智能体中心,不是模块社区）', async () => {
+    const wrapper = await mountDetail({ pub: AGENT_PUB })
+
+    expect(communityLink(wrapper)).toBeFalsy()
+  })
+})
+
+// ─── W80 P2:订阅 ──────────────────────────────────────────────────────────────
+
+describe('marketplace/detail — 订阅', () => {
+  beforeEach(() => {
+    routerPush.mockClear()
+    confirmMock.mockReset()
+    successMock.mockClear()
+    errorMock.mockClear()
+  })
+
+  it('1. 未订阅 → 显示「订阅」按钮,点它调 subscribePublication', async () => {
+    const wrapper = await mountDetail({ subscription: undefined })
+
+    const btn = subscribeButton(wrapper)
+    expect(btn).toBeTruthy()
+    expect(unsubscribeButton(wrapper)).toBeFalsy()
+
+    await btn.trigger('click')
+    await flushPromises()
+
+    expect(subscribePublication).toHaveBeenCalledWith(1)
+    expect(successMock).toHaveBeenCalledWith('已订阅')
+    // 订阅成功后按钮翻面
+    expect(unsubscribeButton(wrapper)).toBeTruthy()
+  })
+
+  it('2. 已订阅(ACTIVE)→ 显示「已订阅」按钮,点它调 unsubscribePublication', async () => {
+    const wrapper = await mountDetail({
+      subscription: { id: 5, publicationId: 1, userId: 101, status: 'ACTIVE' },
+    })
+
+    expect(subscribeButton(wrapper)).toBeFalsy()
+    const btn = unsubscribeButton(wrapper)
+    expect(btn).toBeTruthy()
+
+    await btn.trigger('click')
+    await flushPromises()
+
+    expect(unsubscribePublication).toHaveBeenCalledWith(1)
+    expect(successMock).toHaveBeenCalledWith('已退订')
+  })
+
+  it('3. 已退订(CANCELLED)的记录不算已订阅 → 仍然显示「订阅」', async () => {
+    // 后端 mp_subscription 的 status 取值只有 ACTIVE / CANCELLED。
+    // CANCELLED 行还占着唯一键(uk_sub 不含 deleted),但它不是「已订阅」。
+    const wrapper = await mountDetail({
+      subscription: { id: 5, publicationId: 1, userId: 101, status: 'CANCELLED' },
+    })
+
+    expect(subscribeButton(wrapper)).toBeTruthy()
+    expect(unsubscribeButton(wrapper)).toBeFalsy()
+  })
+
+  it('4. 订阅失败 → 提示失败,不把按钮翻成「已订阅」', async () => {
+    const wrapper = await mountDetail({ subscription: undefined })
+    // 必须在 mount 之后设 —— mountDetail 内部会统一把 mock 重置成 resolved
+    vi.mocked(subscribePublication).mockRejectedValue(new Error('未登录'))
+
+    await subscribeButton(wrapper).trigger('click')
+    await flushPromises()
+
+    expect(errorMock).toHaveBeenCalledWith('订阅失败')
+    expect(unsubscribeButton(wrapper)).toBeFalsy()
   })
 })

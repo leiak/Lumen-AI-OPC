@@ -76,8 +76,11 @@ export interface PublicationVO {
   viewCount?: number
   installCount?: number
   /**
-   * P1 没有订阅这个产品动作，后端也没有任何调用方写这个计数 —— 所以**详情页刻意不展示它**
-   * （展示一个永远为 0 的数字比不展示更像 bug）。P2 真做订阅时连同 UI 一起补。
+   * 活跃订阅数 —— 口径 `COUNT(mp_subscription WHERE status='ACTIVE')`。
+   *
+   * W80 P2 起这个数字**有了真实来源**：订阅/退订会写 `mp_subscription` 行并同步这个计数
+   * （以前后端 `incrementSubscriptionCount` 零调用方 —— 页面上展示着一个底下什么都没有的数字）。
+   * 它只在后端有订阅记录时才非零，所以页面上显示 0 是诚实的。
    */
   subscriptionCount?: number
   avgRating?: number
@@ -209,6 +212,27 @@ export interface InstallVO {
   uninstalledAt?: string
 }
 
+/**
+ * 订阅记录 —— `mp_subscription` 一行。
+ *
+ * **目前只有 FREE 套餐**：marketplace 与 opc-billing 之间没有写单路径，
+ * 刻意不造付费套餐（一个点不动的「付费」按钮比没有更糟）。
+ */
+export interface SubscriptionVO {
+  id: number
+  publicationId: number
+  tenantCompanyId?: number
+  userId: number
+  productType?: ProductType | string
+  /** 目前只有 FREE */
+  plan?: string
+  /** ACTIVE / CANCELLED */
+  status?: string
+  startTime?: string
+  endTime?: string
+  createTime?: string
+}
+
 // ================ 商品 ================
 
 export function listPublications(params: PublicationListQuery): Promise<AjaxResult<PublicationPage>> {
@@ -276,6 +300,36 @@ export function myInstalls(): Promise<AjaxResult<InstallVO[]>> {
  */
 export function installStatus(id: number): Promise<AjaxResult<InstallVO | undefined>> {
   return request({ url: `/opc/marketplace/install/${id}/status`, method: 'get' })
+}
+
+// ================ 订阅 ================
+
+/**
+ * 订阅商品（W80 P2）。
+ *
+ * 需要登录 —— 订阅端点**不在网关白名单里**（匿名能订阅的话，
+ * 订阅数就变成一个谁都能刷的数）。
+ */
+export function subscribePublication(id: number): Promise<AjaxResult<SubscriptionVO>> {
+  return request({ url: `/opc/marketplace/subscription/${id}`, method: 'post' })
+}
+
+/** 退订。重复退订后端返回 409（不重复减计数）。 */
+export function unsubscribePublication(id: number): Promise<AjaxResult<void>> {
+  return request({ url: `/opc/marketplace/subscription/${id}`, method: 'delete' })
+}
+
+/**
+ * 单条订阅状态查询。未订阅时后端 `R.ok(null)`；本模块开了 NON_NULL 序列化，
+ * 响应里**没有 data 键** —— `res.data` 是 `undefined`（不是 `null`），这不是错误。
+ */
+export function subscriptionStatus(id: number): Promise<AjaxResult<SubscriptionVO | undefined>> {
+  return request({ url: `/opc/marketplace/subscription/${id}/status`, method: 'get' })
+}
+
+/** 当前登录用户的全部订阅记录。 */
+export function mySubscriptions(): Promise<AjaxResult<SubscriptionVO[]>> {
+  return request({ url: '/opc/marketplace/subscription/my', method: 'get' })
 }
 
 // ================ 作者 ================

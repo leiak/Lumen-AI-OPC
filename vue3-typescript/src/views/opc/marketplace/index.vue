@@ -109,6 +109,10 @@
                  只有重新 load 才刷新 —— 刚点进详情再退回来仍是旧值，这是预期延迟不是 bug。 -->
             <span><el-icon><View /></el-icon> {{ p.viewCount || 0 }}</span>
             <span><el-icon><ChatLineRound /></el-icon> {{ p.ratingCount || 0 }}</span>
+            <!-- 订阅数(W80 P2):口径 COUNT(mp_subscription WHERE status='ACTIVE')。
+                 以前这个数字在页面上展示着,底下却没有任何一条记录支撑它
+                 (后端 incrementSubscriptionCount 零调用方)—— 现在它有真实来源了。 -->
+            <span><el-icon><Star /></el-icon> {{ p.subscriptionCount || 0 }}</span>
           </div>
           <span class="author">
             <!--
@@ -140,7 +144,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { StarFilled, Download, View, ChatLineRound } from '@element-plus/icons-vue'
+import { StarFilled, Star, Download, View, ChatLineRound } from '@element-plus/icons-vue'
 import {
   listPublications,
   listCategories,

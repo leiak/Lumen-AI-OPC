@@ -48,13 +48,27 @@
                  「智能体中心 → 我的实例」,不在本页面。装完不给指引,用户就只知道
                  「装成功了」然后卡在原地 —— 这个按钮是那条缺失的指路牌。 -->
             <el-button v-if="isAgentInstalled" link type="primary" @click="goToInstance">查看实例</el-button>
+            <!-- MODULE 商品没有 agent 实例(所以上面那个按钮对它永远不出现),
+                 但它在社区那边有一张自己的卡片(评论/评分都在那边)。装完不给指引,
+                 用户同样会卡在原地 —— 这条指路牌指向模块社区。 -->
+            <el-button v-if="isModule" link type="primary" @click="goToCommunity">查看模块</el-button>
+            <!-- 订阅(W80 P2)。写操作,必须在登录态下;没登录/没关联企业时后端会拒,
+                 按钮不禁用 —— 点一下得到明确的失败原因,比画一个永远点不动的按钮强。 -->
+            <el-button v-if="!subscribed" plain :loading="subscribing" @click="onSubscribe">
+              <el-icon><Star /></el-icon>&nbsp;订阅
+            </el-button>
+            <el-button v-else type="warning" plain :loading="subscribing" @click="onUnsubscribe">
+              <el-icon><StarFilled /></el-icon>&nbsp;已订阅
+            </el-button>
           </div>
         </div>
       </el-card>
 
-      <!-- 统计条。刻意不展示「订阅数」:P1 没有订阅这个产品动作,后端
-           MpPublicationMapper#incrementSubscriptionCount 也没有任何调用方(见其 javadoc)。
-           展示一个永远为 0 的计数,比不展示更容易让人以为是 bug。P2 做订阅时再补。 -->
+      <!-- 统计条。四个数字全部来自真实表:
+           安装数 = COUNT(mp_install)、评分数/评分 = VISIBLE 评价的 COUNT/AVG、
+           订阅数 = COUNT(mp_subscription WHERE status='ACTIVE')(W80 P2 起有真实来源)。
+           之前「订阅数」刻意不展示 —— 那时后端 incrementSubscriptionCount 零调用方,
+           页面上挂着一个底下什么都没有的数字;现在它有行支撑了,可以展示。 -->
       <div class="stat-strip">
         <div class="stat-cell">
           <div class="num">{{ pub.installCount || 0 }}</div>
@@ -67,6 +81,10 @@
         <div class="stat-cell">
           <div class="num">{{ pub.ratingCount || 0 }}</div>
           <div class="lbl">评分数</div>
+        </div>
+        <div class="stat-cell">
+          <div class="num">{{ pub.subscriptionCount || 0 }}</div>
+          <div class="lbl">订阅数</div>
         </div>
       </div>
 
@@ -207,7 +225,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { StarFilled, Download, CircleCheck, EditPen } from '@element-plus/icons-vue'
+import { StarFilled, Star, Download, CircleCheck, EditPen } from '@element-plus/icons-vue'
 import useUserStore from '@/store/modules/user'
 import {
   getPublication,
@@ -218,9 +236,13 @@ import {
   createReview,
   updateReview,
   deleteReview,
+  subscribePublication,
+  unsubscribePublication,
+  subscriptionStatus,
   type PublicationVO,
   type ReviewVO,
-  type InstallVO
+  type InstallVO,
+  type SubscriptionVO
 } from '@/api/opc/marketplace'
 
 const route = useRoute()
@@ -240,6 +262,15 @@ const installed = ref<boolean | null>(null)
  * installed 这个布尔量已经把它丢掉了。
  */
 const installRecord = ref<InstallVO | null>(null)
+/**
+ * 订阅状态 —— W80 P2。
+ *
+ * 只有 true / false 两态,不像安装那样留 null:订阅是个**写操作**,没登录/没关联企业时
+ * 后端会拒;这种前提下画一个灰掉的按钮只会让人以为功能坏了。点一下得到明确的失败原因,
+ * 比永远点不动强。查询失败时按「未订阅」处理 —— 真正的订阅状态在点之前无从得知。
+ */
+const subscribed = ref(false)
+const subscribing = ref(false)
 const activeTab = ref('intro')
 
 const reviewLoading = ref(false)
@@ -326,6 +357,7 @@ async function load() {
   // 安装状态查询只依赖 pubId（路由参数，进来就有），不等详情接口 —— 两个请求并发跑，
   // 「详情到了但按钮还画着安装」的窗口因此消失。之前是 await 完详情才查状态。
   loadInstallStatus()
+  loadSubscriptionStatus()
   loading.value = true
   try {
     // 公开详情端点：SQL 层硬过滤 status='PUBLISHED'，DRAFT 打开本页必然 404 —— 这是预期行为
@@ -356,9 +388,72 @@ const isAgentInstalled = computed(
   () => installed.value === true && !!installRecord.value?.agentInstanceId
 )
 
+/** MODULE 商品 —— 装它不会建 agent 实例,但它在模块社区里有一张自己的卡片。 */
+const isModule = computed(() => pub.value?.productType === 'MODULE')
+
 function goToInstance() {
   const id = installRecord.value?.agentInstanceId
   if (id) router.push(`/opc/agent/instance/${id}`)
+}
+
+/**
+ * 去模块社区。
+ *
+ * 社区页是模块的浏览/评论/评分页,模块本身在那里有一张卡片 ——
+ * marketplace 这一侧只有「装没装」,装完不给指引的话用户就停在原地了。
+ */
+function goToCommunity() {
+  router.push('/opc/community/market')
+}
+
+/**
+ * 查我有没有订阅这个商品。
+ *
+ * 后端未订阅时 `R.ok(null)`;本模块开了 NON_NULL 序列化 → 响应里**没有 data 键**,
+ * `res.data` 是 `undefined`(不是 `null`),那不是错误,就是「没订阅」。
+ */
+async function loadSubscriptionStatus() {
+  if (!pubId.value) return
+  try {
+    const res = await subscriptionStatus(pubId.value)
+    const row = res.data as SubscriptionVO | undefined
+    subscribed.value = !!row && row.status === 'ACTIVE'
+  } catch {
+    // 查不到就按「未订阅」画 —— 真正的状态在用户点之前无从得知,
+    // 而且这一页是公开页,匿名访客必然查不到,画成灰按钮只会让人以为坏了。
+    subscribed.value = false
+  }
+}
+
+async function onSubscribe() {
+  if (!pubId.value) return
+  subscribing.value = true
+  try {
+    await subscribePublication(pubId.value)
+    subscribed.value = true
+    if (pub.value) pub.value.subscriptionCount = (pub.value.subscriptionCount || 0) + 1
+    ElMessage.success('已订阅')
+  } catch {
+    // 后端的拒绝原因(未登录/未关联企业/已订阅)由 request.ts 统一弹通知,这里不重复
+    ElMessage.error('订阅失败')
+  } finally {
+    subscribing.value = false
+  }
+}
+
+async function onUnsubscribe() {
+  if (!pubId.value) return
+  subscribing.value = true
+  try {
+    await unsubscribePublication(pubId.value)
+    subscribed.value = false
+    if (pub.value) pub.value.subscriptionCount = Math.max(0, (pub.value.subscriptionCount || 0) - 1)
+    ElMessage.success('已退订')
+  } catch {
+    ElMessage.error('退订失败')
+  } finally {
+    subscribing.value = false
+  }
 }
 
 async function loadInstallStatus() {
@@ -395,6 +490,16 @@ async function onInstall() {
         type: 'success'
       })
         .then(goToInstance)
+        .catch(() => { /* 用户选择稍后 */ })
+    } else if (isModule.value) {
+      // MODULE 装完没有实例可跳,但它在社区里有一张卡片(评论/评分都在那边)。
+      // 只弹一句「安装成功」的话,用户装完还是不知道去哪儿 —— 这条指路牌是补上的。
+      ElMessageBox.confirm('模块已安装，是否去模块社区看看？', '安装成功', {
+        confirmButtonText: '去社区',
+        cancelButtonText: '稍后',
+        type: 'success'
+      })
+        .then(goToCommunity)
         .catch(() => { /* 用户选择稍后 */ })
     } else {
       ElMessage.success('安装成功')
@@ -631,8 +736,8 @@ $bp-sm: 768px;
 
 .stat-strip {
   display: grid;
-  // 与上方 3 个 stat-cell 对齐（安装数 / 浏览量 / 评分数）
-  grid-template-columns: repeat(3, 1fr);
+  // 与上方 4 个 stat-cell 对齐（安装数 / 浏览量 / 评分数 / 订阅数）
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
 
   .stat-cell {

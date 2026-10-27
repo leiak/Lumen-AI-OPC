@@ -30,6 +30,10 @@ import {
   deleteReview,
   listCategories,
   listTags,
+  subscribePublication,
+  unsubscribePublication,
+  subscriptionStatus,
+  mySubscriptions,
 } from '@/api/opc/marketplace'
 import { expectApiContract, expectRequest } from '@/test/api-contract'
 
@@ -200,6 +204,35 @@ describe('api/opc/marketplace', () => {
       url: '/opc/marketplace/tag/list',
       method: 'get',
       params: { category: '财务' },
+    })
+  })
+
+  // ---- 订阅（W80 P2）----
+  it('subscribePublication(5) -> POST /opc/marketplace/subscription/5', () => {
+    expectRequest(() => subscribePublication(5), {
+      url: '/opc/marketplace/subscription/5',
+      method: 'post',
+    })
+  })
+
+  it('unsubscribePublication(5) -> DELETE /opc/marketplace/subscription/5', () => {
+    expectRequest(() => unsubscribePublication(5), {
+      url: '/opc/marketplace/subscription/5',
+      method: 'delete',
+    })
+  })
+
+  it('subscriptionStatus(5) -> GET /opc/marketplace/subscription/5/status', () => {
+    expectRequest(() => subscriptionStatus(5), {
+      url: '/opc/marketplace/subscription/5/status',
+      method: 'get',
+    })
+  })
+
+  it('mySubscriptions() -> GET /opc/marketplace/subscription/my', () => {
+    expectRequest(() => mySubscriptions(), {
+      url: '/opc/marketplace/subscription/my',
+      method: 'get',
     })
   })
 })
