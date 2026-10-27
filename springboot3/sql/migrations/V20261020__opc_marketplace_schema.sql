@@ -167,7 +167,11 @@ INSERT IGNORE INTO mp_category (product_type, code, name, sort_order, icon) VALU
   ('AGENT', 'sales',   '销售助手',  3, 'TrendCharts'),
   ('MODULE','data',    '数据集成',  1, 'DataLine'),
   ('MODULE','integration', '系统集成', 2, 'Connection'),
-  ('MODULE','tool',    '效率工具',  3, 'Tools');
+  ('MODULE','tool',    '效率工具',  3, 'Tools'),
+  -- 电商运营:MODULE 商品 PUB-ECOM-001 挂的是社区里的 'ecom-ops' 模块,
+  -- 以前它的 category_code='ECOM' 在这张表里查不到任何一行 → 点 MODULE 的
+  -- 任何分类页签都是空的。code 用小写,理由见 opc_demo_ecommerce_seed.sql 里的说明。
+  ('MODULE','ecom',    '电商运营',  4, 'ShoppingCart');
 
 INSERT IGNORE INTO mp_tag (name, category, sort_order) VALUES
   ('高评分', 'quality', 1),

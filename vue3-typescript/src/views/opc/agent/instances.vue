@@ -3,14 +3,14 @@
     <el-card>
       <template #header>
         <div class="header">
-          <span class="title">我的 Agent 实例</span>
-          <el-button type="primary" @click="$router.push('/opc/agent/market')">雇佣新 Agent</el-button>
+          <span class="title">我的数字员工实例</span>
+          <el-button type="primary" @click="$router.push('/opc/agent/market')">雇佣新数字员工</el-button>
         </div>
       </template>
 
-      <el-empty v-if="!loading && list.length === 0" description="还没有 Agent 实例，去商店雇佣一个吧！" />
+      <el-empty v-if="!loading && list.length === 0" description="还没有数字员工实例，去「官方数字员工」雇佣一个吧！" />
 
-      <ResponsiveTable :data="list" :loading="loading" :columns="instanceColumns" :action-width="260" empty-text="还没有 Agent 实例，去商店雇佣一个吧！">
+      <ResponsiveTable :data="list" :loading="loading" :columns="instanceColumns" :action-width="260" empty-text="还没有数字员工实例，去「官方数字员工」雇佣一个吧！">
         <template #actions="{ row }">
           <el-button size="small" @click="$router.push(`/opc/agent/instance/${row.id}`)">详情</el-button>
           <el-button size="small" type="warning" v-if="row.status === 'RUNNING'" @click="act(row, 'pause')">暂停</el-button>

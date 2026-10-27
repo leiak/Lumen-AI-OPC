@@ -4,8 +4,8 @@
     <el-card class="hero">
       <div class="hero-content">
         <div class="hero-text">
-          <h1>🤖 智能体市场</h1>
-          <p>发现、订阅、评价 OPC 生态里的上架商品。智能体与功能模块一站式浏览，审核通过即刻可见。</p>
+          <h1>🛍️ 开发者集市</h1>
+          <p>开发者自己上架的智能体与功能模块 —— 发现、订阅、评价,审核通过即刻可见。平台自营的数字员工在<router-link to="/opc/agent/market">官方数字员工</router-link>。</p>
           <div class="hero-actions">
             <el-button type="primary" plain @click="router.push('/opc/marketplace/author-center')">我要当作者</el-button>
           </div>
@@ -110,7 +110,15 @@
             <span><el-icon><View /></el-icon> {{ p.viewCount || 0 }}</span>
             <span><el-icon><ChatLineRound /></el-icon> {{ p.ratingCount || 0 }}</span>
           </div>
-          <span class="author">{{ p.authorName || 'Anonymous' }}</span>
+          <span class="author">
+            <!--
+              集市里的商品都是开发者自己上架的(mp_author.author_company_id 绑租户公司),
+              没有「平台自营」这种作者 —— 所以这里标的是「开发者自营」,
+              与官方数字员工页的「平台直营」徽标正好互为对照。
+            -->
+            <el-tag size="small" type="warning" effect="plain">开发者自营</el-tag>
+            {{ p.authorName || 'Anonymous' }}
+          </span>
         </div>
       </el-card>
     </div>
@@ -297,6 +305,12 @@ $bp-sm: 768px;
       margin: 0;
       opacity: 0.9;
       max-width: 600px;
+
+      a {
+        color: #fff;
+        font-weight: 600;
+        text-decoration: underline;
+      }
     }
   }
 
@@ -448,12 +462,19 @@ $bp-sm: 768px;
   }
 
   .author {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     font-size: 12px;
     color: #9ca3af;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 120px;
+    max-width: 160px;
+
+    :deep(.el-tag) {
+      flex-shrink: 0;
+    }
   }
 }
 

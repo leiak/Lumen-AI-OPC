@@ -7,7 +7,7 @@
           <p>让 <strong>1 个人 + N 个数字员工</strong> 运转完整公司</p>
           <el-space wrap>
             <el-button type="primary" size="large" @click="$router.push('/opc/agent/market')">
-              <el-icon><ShoppingCart /></el-icon> 浏览 Agent 商店
+              <el-icon><ShoppingCart /></el-icon> 浏览官方数字员工
             </el-button>
             <el-button size="large" @click="$router.push('/opc/user/profile')">
               <el-icon><User /></el-icon> 完善我的画像

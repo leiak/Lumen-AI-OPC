@@ -28,16 +28,16 @@
       这里的「安装」只做 opc_community_module.install_count +1,不留任何安装记录
       (ModuleController#install → moduleService.incrementInstall),
       也没有卸载/升级/「我安装了什么」。
-      真正的安装能力在 opc-marketplace:AGENT 类会调 opc-agent-hub 建实例,
+      真正的安装能力在 opc-marketplace 的「开发者集市」:AGENT 类会调 opc-agent-hub 建实例,
       MODULE 类会写 mp_install 登记,支持卸载、升级与评价。
       两边模块数据同源(mp_publication.module_id → opc_community_module.id)。
-      故本页面定位为「社区/评论/浏览」,实际安装请去智能体市场。
+      故本页面定位为「社区/评论/浏览」,实际安装请去开发者集市。
     -->
     <el-alert type="info" :closable="false" class="marketplace-hint">
       <template #title>
         本页是模块的浏览与社区评论区。
         <b>实际安装</b>请前往
-        <router-link to="/opc/marketplace/index" class="hint-link">智能体市场 · 功能模块</router-link>，
+        <router-link to="/opc/marketplace/index" class="hint-link">开发者集市 · 功能模块</router-link>，
         那里支持安装、卸载、升级与「我安装了什么」。
       </template>
     </el-alert>
@@ -342,7 +342,7 @@ onMounted(load)
   }
 }
 
-// 「本页只浏览/评论,实际安装请去智能体市场」的引导条
+// 「本页只浏览/评论,实际安装请去开发者集市」的引导条
 .marketplace-hint {
   margin-bottom: 16px;
 

@@ -93,7 +93,7 @@ INSERT IGNORE INTO sys_menu
    create_by, create_time, update_by, update_time, remark)
 VALUES
   -- agent-hub (9303)
-  (2035, '智能体商店',   2034, 1, 'market',       'opc/agent/market',       null, 'AgentMarket',      1, 0, 'C', '0', '0', 'opc:agent:list',            'shopping',     'admin', sysdate(), '', null, '可安装的智能体列表'),
+  (2035, '官方数字员工', 2034, 1, 'market',       'opc/agent/market',       null, 'AgentMarket',      1, 0, 'C', '0', '0', 'opc:agent:list',            'shopping',     'admin', sysdate(), '', null, '平台自营数字员工列表'),
   (2036, '我的实例',     2034, 2, 'instances',    'opc/agent/instances',    null, 'AgentInstances',   1, 0, 'C', '0', '0', 'opc:agent:instance:list',   'list',         'admin', sysdate(), '', null, '已部署的智能体实例'),
 
   -- finance (9305)

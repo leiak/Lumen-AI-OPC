@@ -3,10 +3,24 @@
     <el-card>
       <template #header>
         <div class="header">
-          <span class="title">Agent 商店</span>
-          <el-input v-model="keyword" placeholder="搜索 Agent" clearable style="width: 240px" />
+          <div class="heading">
+            <span class="title">官方数字员工</span>
+            <el-tag size="small" type="success">平台直营</el-tag>
+          </div>
+          <el-input v-model="keyword" placeholder="搜索数字员工" clearable style="width: 240px" />
         </div>
       </template>
+
+      <!--
+        这一页和 /opc/marketplace/index(开发者集市)是两个不同的目录:
+          本页      = opc_agent_definition(published=1),平台自营,表里没有作者列
+          开发者集市 = mp_publication,开发者自己上架的商品(智能体 + 功能模块)
+        名字和徽标都在回答同一个问题:这两页有什么不一样。
+      -->
+      <p class="subtitle">
+        平台自营的数字员工目录 —— 官方出品、统一定价,雇了就能用。
+        开发者自己上架的商品在<router-link to="/opc/marketplace/index">开发者集市</router-link>。
+      </p>
       <el-tabs v-model="category" @tab-change="loadList">
         <el-tab-pane label="全部" name="" />
         <el-tab-pane label="财务" name="FINANCE" />
@@ -65,5 +79,9 @@ onMounted(loadList)
 <style scoped>
 .page { padding: 0; }
 .header { display: flex; justify-content: space-between; align-items: center; }
+.heading { display: flex; align-items: center; gap: 8px; }
 .title { font-size: 18px; font-weight: 600; }
+.subtitle { margin: 0 0 12px; font-size: 13px; color: #6b7280; }
+.subtitle a { color: #5b8def; text-decoration: none; }
+.subtitle a:hover { text-decoration: underline; }
 </style>

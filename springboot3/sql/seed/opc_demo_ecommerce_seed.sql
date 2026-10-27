@@ -571,6 +571,19 @@ FROM opc_agent_workflow w WHERE w.workflow_code='finance_daily_report_v1' LIMIT 
 -- install_count / audit_message / avg_rating。
 -- 现有 opc_agent_definition 只覆盖 FINANCE/ERP/CRM 三类,本脚本不补全
 -- (分类目录属于全局产品数据,不是租户测试数据)。
+--
+-- ⚠️ 计数器口径(这一段以前全是编的,现在改成"从真实表派生"):
+--   view_count       = 0    浏览量没有对应表,只能从 0 起步,随详情页 GET 自增
+--   install_count    = COUNT(mp_install)          —— 下面装完再回填
+--   subscription_count = 0    订阅这个产品动作当时还不存在
+--   avg_rating/rating_count = VISIBLE 评价的 AVG/COUNT —— 下面评价完再回填
+--   以前这里写的是 812/342/96/4.6/58 这种数字,演示环境里一个都验证不了,
+--   页面却拿它们当"有多少人在用"展示。宁可显示 0,也不要显示假的。
+--
+-- category_code 用小写:mp_category 的 code 全是小写(finance/data/tool/...),
+-- 而列表页的 categoryName 走 Java Map<productType|code> 查表(大小写敏感),
+-- 大写会匹配不上 → 卡片上显示原始 code 而不是"财务助手"。详情页走 SQL
+-- (排序规则不敏感)所以显示正常 —— 同一个商品两个页面不一致的根因就在这。
 -- =============================================================================
 
 INSERT INTO `mp_author`
@@ -579,18 +592,22 @@ INSERT INTO `mp_author`
 VALUES
   (@cid, '明轩优选', 'owner@mingxuan.test', '13900001234',
    '一人公司自营品牌,主营家居用品与基础服饰,自建抖音与小红书渠道。',
-   'SILVER', 2, 1286, 38600.00, 'ACTIVE', @by, DATE_SUB(NOW(), INTERVAL 30 DAY));
+   -- level 只能是 NORMAL / PREMIUM(AuthorLevel 枚举),以前写的 'SILVER' 是编的
+   'NORMAL', 2, 0, 0.00, 'ACTIVE', @by, DATE_SUB(NOW(), INTERVAL 30 DAY));
 
 INSERT INTO `mp_publication`
   (`product_type`, `agent_definition_id`, `module_id`, `author_id`, `code`, `name`, `category_code`,
    `summary`, `long_description`, `tags`, `status`, `published_at`, `audit_message`,
    `view_count`, `install_count`, `subscription_count`, `avg_rating`, `rating_count`, `create_by`, `create_time`)
-SELECT 'MODULE', NULL, m.id, a.id, 'PUB-ECOM-001', '电商运营助手(明轩版)', 'ECOM',
+SELECT 'MODULE', NULL, m.id, a.id, 'PUB-ECOM-001', '电商运营助手(明轩版)', 'ecom',
        '专为一人公司设计的电商运营助手,覆盖选品、直播排期与数据复盘。',
        '基于一人公司真实经营数据调优,内置抖音千川投放与小红书种草两套话术模板。',
        '["电商","运营","一人公司"]', 'PUBLISHED', DATE_SUB(NOW(), INTERVAL 25 DAY), NULL,
-       812, 342, 96, 4.6, 58, @by, DATE_SUB(NOW(), INTERVAL 26 DAY)
-FROM mp_author a JOIN opc_community_module m ON m.id = (SELECT MIN(id) FROM opc_community_module)
+       0, 0, 0, 0.00, 0, @by, DATE_SUB(NOW(), INTERVAL 26 DAY)
+-- module_id 必须指向一个真实存在、且确实是电商运营的模块。
+-- 以前这里是 (SELECT MIN(id) FROM opc_community_module) —— 也就是 id=1 的
+-- 'crm-starter CRM 入门套件':一个"电商运营助手"指着 CRM 模块,谁看了都迷糊。
+FROM mp_author a JOIN opc_community_module m ON m.code = 'ecom-ops'
 WHERE a.author_company_id=@cid
 LIMIT 1;
 
@@ -598,11 +615,13 @@ INSERT INTO `mp_publication`
   (`product_type`, `agent_definition_id`, `module_id`, `author_id`, `code`, `name`, `category_code`,
    `summary`, `long_description`, `tags`, `status`, `published_at`, `audit_message`,
    `view_count`, `install_count`, `subscription_count`, `avg_rating`, `rating_count`, `create_by`, `create_time`)
-SELECT 'AGENT', d.id, NULL, a.id, 'PUB-FIN-001', '财务数字员工-小财(试用版)', 'FINANCE',
+-- 名字带"(试用版)"以前和平台自营的「财务数字员工-小财」几乎一样,两个市场页
+-- 摆在一起看着像同一个东西。这里明说是平台小财的开发者版本。
+SELECT 'AGENT', d.id, NULL, a.id, 'PUB-FIN-001', '小财·一人公司版', 'finance',
        '自动记账、生成凭证、对账与日报,一人公司的财务管家。',
        '支持银行流水自动解析、凭证自动生成、增值税测算与月度经营简报。',
        '["财务","记账","自动化"]', 'PUBLISHED', DATE_SUB(NOW(), INTERVAL 20 DAY), NULL,
-       2043, 891, 260, 4.8, 127, @by, DATE_SUB(NOW(), INTERVAL 21 DAY)
+       0, 0, 0, 0.00, 0, @by, DATE_SUB(NOW(), INTERVAL 21 DAY)
 FROM mp_author a JOIN opc_agent_definition d ON d.agent_code='finance-agent'
 WHERE a.author_company_id=@cid
 LIMIT 1;
@@ -614,8 +633,27 @@ FROM mp_publication p WHERE p.code='PUB-FIN-001' LIMIT 1;
 
 INSERT INTO `mp_review`
   (`publication_id`, `tenant_company_id`, `user_id`, `rating`, `content`, `status`, `create_by`, `create_time`)
-SELECT p.id, @cid, @uid, 5, '用了两周,每天的经营简报确实省事,凭证基本不用手工录了。', 'PUBLISHED', @by, DATE_SUB(NOW(), INTERVAL 12 DAY)
+-- status 必须是 'VISIBLE':ReviewServiceImpl 建评价时写死的就是这个值,
+-- 而评分统计的 SQL(MpReviewMapper.averageForPublication / countForPublication)
+-- 也只认 'VISIBLE'。以前这里插 'PUBLISHED',统计看不见它 → 卡片上写着
+-- "4.8 分 127 条评价",而真实是 0 条 0.00 分。
+SELECT p.id, @cid, @uid, 5, '用了两周,每天的经营简报确实省事,凭证基本不用手工录了。', 'VISIBLE', @by, DATE_SUB(NOW(), INTERVAL 12 DAY)
 FROM mp_publication p WHERE p.code='PUB-FIN-001' LIMIT 1;
+
+-- ---- 计数器回填:从刚写进去的真实行算,而不是再写一遍数字 ----
+-- install_count 的不变量:恒等于该商品的 mp_install 行数
+-- (InstallServiceImpl 只在「新插入行」时 +1,复活既有行不 +1,而行只在首次安装时插入)
+UPDATE mp_publication p
+   SET install_count = (SELECT COUNT(*) FROM mp_install i WHERE i.publication_id = p.id)
+ WHERE p.code IN ('PUB-ECOM-001', 'PUB-FIN-001');
+
+-- avg_rating / rating_count 的不变量:VISIBLE 评价的 AVG 与 COUNT
+UPDATE mp_publication p
+   SET rating_count = (SELECT COUNT(*) FROM mp_review r
+                        WHERE r.publication_id = p.id AND r.status = 'VISIBLE' AND r.deleted = 0),
+       avg_rating   = (SELECT COALESCE(AVG(r.rating), 0) FROM mp_review r
+                        WHERE r.publication_id = p.id AND r.status = 'VISIBLE' AND r.deleted = 0)
+ WHERE p.code IN ('PUB-ECOM-001', 'PUB-FIN-001');
 
 -- =============================================================================
 -- 9. 通知中心 / 个人中心

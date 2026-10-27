@@ -4,7 +4,16 @@
       <el-avatar :size="48" :src="agent.iconUrl">{{ agent.name?.[0] }}</el-avatar>
       <div class="meta">
         <div class="name">{{ agent.name }}</div>
-        <el-tag size="small" :type="categoryColor">{{ categoryLabel }}</el-tag>
+        <div class="tags">
+          <el-tag size="small" :type="categoryColor">{{ categoryLabel }}</el-tag>
+          <!--
+            平台直营徽标:这个组件只服务 /opc/agent/market —— 那一页列的是
+            opc_agent_definition(published=1),表里没有作者列,全是平台自己的目录。
+            徽标的作用是把「平台自营」和「开发者集市里的开发者商品」一眼分开。
+            (本组件也被 opc/index.vue 的首页推荐位复用,那里带同一个徽标是对的。)
+          -->
+          <el-tag size="small" type="success" effect="plain">平台直营</el-tag>
+        </div>
       </div>
     </div>
     <div class="desc">{{ agent.description }}</div>
@@ -50,6 +59,7 @@ function hire(e: Event) {
 .agent-card { cursor: pointer; }
 .card-head { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
 .meta .name { font-weight: 600; margin-bottom: 4px; }
+.tags { display: flex; align-items: center; gap: 6px; }
 .desc { color: #666; font-size: 13px; min-height: 40px; }
 .footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
 .price { color: #f56c6c; font-weight: 600; }

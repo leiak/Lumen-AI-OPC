@@ -65,8 +65,8 @@ INSERT IGNORE INTO sys_menu
    create_by, create_time, update_by, update_time, remark)
 VALUES
   (2000, 'OPC业务',    0,    5, 'opc',         null, null, 'OpcBiz',                1, 0, 'M', '0', '0', '',            'star',     'admin', sysdate(), '', null, 'OPC 业务模块目录'),
-  (2001, '智能体市场', 2000, 1, 'marketplace', null, null, 'OpcMarketplace',        1, 0, 'M', '0', '0', '',            'shopping', 'admin', sysdate(), '', null, '智能体市场目录'),
-  (2005, '模块社区',   2000, 2, 'community',   null, null, 'OpcCommunity',          1, 0, 'M', '0', '0', '',            'client',   'admin', sysdate(), '', null, 'OPC 模块社区目录(浏览+评论;实际安装在 opc-marketplace 智能体市场)'),
+  (2001, '开发者市场', 2000, 1, 'marketplace', null, null, 'OpcMarketplace',        1, 0, 'M', '0', '0', '',            'shopping', 'admin', sysdate(), '', null, '开发者市场目录'),
+  (2005, '模块社区',   2000, 2, 'community',   null, null, 'OpcCommunity',          1, 0, 'M', '0', '0', '',            'client',   'admin', sysdate(), '', null, 'OPC 模块社区目录(浏览+评论;实际安装在 opc-marketplace 开发者集市)'),
   (2007, '通知中心',   2000, 3, 'notification',null, null, 'OpcNotification',       1, 0, 'M', '0', '0', '',            'message',  'admin', sysdate(), '', null, '通知中心目录'),
   (2009, '客户关系',   2000, 4, 'crm',         null, null, 'OpcCrm',                1, 0, 'M', '0', '0', '',            'user',     'admin', sysdate(), '', null, 'CRM 客户关系目录'),
   (2013, '人力资源',   2000, 5, 'hr',          null, null, 'OpcHr',                 1, 0, 'M', '0', '0', '',            'peoples',  'admin', sysdate(), '', null, '人力资源目录'),
@@ -87,12 +87,12 @@ INSERT IGNORE INTO sys_menu
    create_by, create_time, update_by, update_time, remark)
 VALUES
   -- marketplace (opc-marketplace: publication / author controllers)
-  (2002, '智能体市场列表', 2001, 1, 'index',         'opc/marketplace/index',            null, 'OpcMarketplaceIndex',        1, 0, 'C', '0', '0', 'opc:marketplace:list',             'list',     'admin', sysdate(), '', null, '智能体市场首页'),
+  (2002, '开发者集市',     2001, 1, 'index',         'opc/marketplace/index',            null, 'OpcMarketplaceIndex',        1, 0, 'C', '0', '0', 'opc:marketplace:list',             'list',     'admin', sysdate(), '', null, '开发者集市首页'),
   (2003, '作者后台',       2001, 2, 'author-center', 'opc/marketplace/author-center',    null, 'OpcMarketplaceAuthorCenter',  1, 0, 'C', '0', '0', 'opc:marketplace:author:center',    'skill',    'admin', sysdate(), '', null, '作者作品与统计后台'),
   (2004, '申请成为作者',   2001, 3, 'author-apply',  'opc/marketplace/author-apply',     null, 'OpcMarketplaceAuthorApply',   1, 0, 'C', '0', '0', 'opc:marketplace:author:apply',     'form',     'admin', sysdate(), '', null, '企业入驻作者申请'),
 
   -- community (opc-community: module / comment / rating controllers)
-  (2006, '模块社区',       2005, 1, 'market',        'opc/community/Market',             null, 'OpcCommunityMarket',          1, 0, 'C', '0', '0', 'opc:community:list',               'table',    'admin', sysdate(), '', null, '模块社区(浏览+评论;实际安装在 opc-marketplace 智能体市场)'),
+  (2006, '模块社区',       2005, 1, 'market',        'opc/community/Market',             null, 'OpcCommunityMarket',          1, 0, 'C', '0', '0', 'opc:community:list',               'table',    'admin', sysdate(), '', null, '模块社区(浏览+评论;实际安装在 opc-marketplace 开发者集市)'),
 
   -- notification (opc-notification: inbox / sms / email controllers)
   (2008, '消息收件箱',     2007, 1, 'inbox',         'opc/inbox',                       null, 'OpcNotificationInbox',        1, 0, 'C', '0', '0', 'opc:notification:list',            'bell',     'admin', sysdate(), '', null, '站内通知收件箱'),
