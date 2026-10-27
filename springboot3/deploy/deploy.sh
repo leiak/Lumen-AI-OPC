@@ -9,6 +9,7 @@
 #   bash deploy.sh stop                     # 停所有容器,保留 host 数据
 #   bash deploy.sh nuke                     # ⚠️ 删 mysql/redis 数据卷重新初始化
 #   bash deploy.sh rebuild crm              # 重建镜像(改完 OPC 源码后)
+#   bash deploy.sh rebuild gateway          # 只重建网关 (改完 ruoyi-gateway 后)
 #   bash deploy.sh rebuild frontend         # 只重建前端 (改完 vue3-typescript 后)
 #   bash deploy.sh rebuild all              # 重建所有 aiopc-* 镜像
 #   bash deploy.sh snapshot                 # 跑状态快照
@@ -159,7 +160,7 @@ cmd_rebuild() {
   require_docker
   local target="${1:-}"
   if [[ -z "${target}" ]]; then
-    fail "用法: deploy.sh rebuild <svc-name|all|frontend>     (e.g. crm / notification / ai-core / frontend / all)"
+    fail "用法: deploy.sh rebuild <svc-name|all|gateway|frontend>     (e.g. crm / notification / ai-core / gateway / frontend / all)"
   fi
 
   # 共享模块必须**先 install 进本地仓库** ——
@@ -283,6 +284,14 @@ cmd_rebuild() {
     build_one ruoyi-system
     build_gateway
     build_frontend
+  elif [[ "${target}" == "gateway" ]]; then
+    # 网关不在 ruoyi-modules/ 下(build_one 那条路走不通:它在 ruoyi-gateway/),
+    # 而且它是 fat jar(java -jar 启动),不能走 thin jar 那套。
+    #
+    # 以前没有这个入口: `rebuild gateway` 掉进 build_one → 「模块 gateway 不存在,
+    # 跳过」→ 然后照样打印「rebuild 完成」。什么都没做,却看着像成功了。
+    # 这跟 build_one 里「服务名拼错了就 fail」的严格程度完全两样。
+    build_gateway
   elif [[ "${target}" == "frontend" ]]; then
     # 前端不是 ruoyi-modules/ 下的 Maven 模块, build_one 那条路走不通
     # (没有 pom、没有镜像构建脚本, 它是 nginx + 预构建产物)。
@@ -354,7 +363,7 @@ Commands:
   status                   docker compose ps
   stop                     停所有容器,保留 host 数据
   nuke                     ⚠️  清 mysql/redis/nacos 数据卷
-  rebuild <svc|all|frontend>  重建指定服务镜像 (e.g. crm / notification / frontend / all)
+  rebuild <svc|all|gateway|frontend>  重建指定服务镜像 (e.g. crm / notification / gateway / frontend / all)
   snapshot                 跑全栈状态快照
   health                   跑健康检查 (36+ 项)
   help                     显示本帮助
@@ -363,6 +372,7 @@ Commands:
   bash deploy.sh                       # -> 等价 deploy.sh help
   bash deploy.sh up
   bash deploy.sh rebuild crm
+  bash deploy.sh rebuild gateway
   bash deploy.sh rebuild frontend
   bash deploy.sh rebuild all
   bash deploy.sh snapshot

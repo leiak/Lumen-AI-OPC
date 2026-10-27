@@ -2264,7 +2264,52 @@ check_marketplace_truth() {
     ok "19.5 每件商品的类目 code 都能在 mp_category 里查到 (大小写逐字节一致)"
   fi
 
-  # --- 19.6 7 个被抓的服务得真的有 /actuator/prometheus ---
+  # --- 19.6 列表页得真的显示出中文类目名, 而不是原始 code ---
+  #
+  # 19.5 守的是「库里存对了」。这条守的是「页面上看得对」——
+  # 列表页的 categoryName 走 PublicationServiceImpl.loadJoins 建的
+  # Java Map<productType|code> 查表, 那是**大小写敏感**的:
+  # 库里存 'finance', Map 的键也是 'finance' 才查得到;
+  # 一旦有一边大写, categoryName 就是 null, 卡片上显示原始 code "FINANCE"。
+  #
+  # 这两件事(库里对 / 页面对)曾经是分叉的, 所以这条护栏比 19.5 更贴近用户:
+  # 它查的就是浏览器里那个接口。
+  local mp_body mp_bad mp_total
+  mp_body=$(curl -sf -m 15 \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/marketplace/publication/list?pageSize=50" \
+    2>/dev/null) || mp_body=""
+  if [[ -z "${mp_body}" ]]; then
+    nok "19.6 集市列表接口拿不到 —— 护栏空转, 证明不了什么"
+  else
+    read -r mp_total mp_bad <<<"$(printf '%s' "${mp_body}" | python -c "
+import sys, json
+try:
+    d = json.load(sys.stdin).get('data', {})
+except Exception:
+    print('0 -1')
+    raise SystemExit
+rows = d.get('rows', []) or []
+bad = 0
+for r in rows:
+    code = r.get('categoryCode') or ''
+    name = r.get('categoryName') or ''
+    # 类目名要么是中文类目名, 要么为空(没归类) —— 但不能等于原始 code
+    if code and name == code:
+        bad += 1
+print('%d %d' % (len(rows), bad))
+" 2>/dev/null)"
+    if [[ "${mp_bad}" == "-1" ]]; then
+      nok "19.6 集市列表接口的返回读不懂 —— 护栏空转"
+    elif [[ "${mp_total}" == "0" ]]; then
+      nok "19.6 集市列表接口一条商品都没有 —— 护栏空转, 证明不了什么"
+    elif [[ "${mp_bad}" != "0" ]]; then
+      nok "19.6 有 ${mp_bad} 件商品的类目名显示成了原始 code —— 列表页与详情页不一致"
+    else
+      ok "19.6 集市列表 ${mp_total} 件商品的类目名都不是原始 code"
+    fi
+  fi
+
+  # --- 19.7 7 个被抓的服务得真的有 /actuator/prometheus ---
   #
   # 端点靠 micrometer-registry-prometheus 注册 —— 依赖不在, 端点就没注册,
   # Prometheus 每 15 秒抓到的是 404 (RuoYi 把它当静态资源找不到,
@@ -2277,17 +2322,17 @@ check_marketplace_truth() {
     sport="${sp#*:}"
     pbody=$(curl -sf -m 10 "http://127.0.0.1:${sport}/actuator/prometheus" 2>/dev/null) || pbody=""
     if echo "${pbody}" | grep -q "^jvm_"; then
-      ok "19.6 ${sname} /actuator/prometheus 有 jvm_ 指标"
+      ok "19.7 ${sname} /actuator/prometheus 有 jvm_ 指标"
     else
-      nok "19.6 ${sname} /actuator/prometheus 没吐出 jvm_ 指标 —— micrometer-registry-prometheus 没生效"
+      nok "19.7 ${sname} /actuator/prometheus 没吐出 jvm_ 指标 —— micrometer-registry-prometheus 没生效"
     fi
   done
 
-  # --- 19.7 Prometheus 那边的 target 是不是真的 up ---
+  # --- 19.8 Prometheus 那边的 target 是不是真的 up ---
   local t_body t_state down_cnt miss_cnt
   t_body=$(curl -sf -m 10 "http://127.0.0.1:9090/api/v1/targets" 2>/dev/null) || t_body=""
   if [[ -z "${t_body}" ]]; then
-    warn "19.7 Prometheus 不可达 (127.0.0.1:9090) —— 该项跳过 (没验过, 不是验过了)"
+    warn "19.8 Prometheus 不可达 (127.0.0.1:9090) —— 该项跳过 (没验过, 不是验过了)"
   else
     # 输出 "不 up 的 target 数 没被采集的 job 数"
     t_state=$(printf '%s' "${t_body}" | python -c "
@@ -2312,15 +2357,15 @@ print('%d %d' % (down, len(want - seen)))
 " 2>/dev/null)
     read -r down_cnt miss_cnt <<<"${t_state}"
     if [[ "${down_cnt}" == "0" && "${miss_cnt}" == "0" ]]; then
-      ok "19.7 Prometheus 7 个 opc target 全部 up"
+      ok "19.8 Prometheus 7 个 opc target 全部 up"
     elif [[ "${down_cnt}" == "-1" ]]; then
-      nok "19.7 Prometheus /api/v1/targets 的返回读不懂 —— 护栏空转"
+      nok "19.8 Prometheus /api/v1/targets 的返回读不懂 —— 护栏空转"
     else
-      nok "19.7 Prometheus 有 ${down_cnt} 个 opc target 不 up, ${miss_cnt} 个 job 根本没被采集"
+      nok "19.8 Prometheus 有 ${down_cnt} 个 opc target 不 up, ${miss_cnt} 个 job 根本没被采集"
     fi
   fi
 
-  # --- 19.8 共享库 jar 不得比源码旧 ---
+  # --- 19.9 共享库 jar 不得比源码旧 ---
   #
   # deploy.sh 的 dependency:copy-dependencies 是**另一次** mvn 调用, 不带 -am,
   # 解析不到 reactor —— 依赖只能从 ~/.m2 拿快照。所以共享库改了代码而没先
@@ -2337,14 +2382,14 @@ print('%d %d' % (down, len(want - seen)))
     sname="${sh#*:}"
     sjar="${HOME}/.m2/repository/com/ruoyi/${sname}/3.6.8/${sname}-3.6.8.jar"
     if [[ ! -f "${sjar}" ]]; then
-      nok "19.8 ${sname} 没 install 进 ~/.m2 —— 镜像里会打进旧包"
+      nok "19.9 ${sname} 没 install 进 ~/.m2 —— 镜像里会打进旧包"
       continue
     fi
     stale=$(find "${DEPLOY_DIR}/../${smod}/src" -type f -newer "${sjar}" 2>/dev/null | wc -l | tr -d ' ')
     if [[ "${stale}" == "0" ]]; then
-      ok "19.8 ${sname} 的 jar 不比源码旧"
+      ok "19.9 ${sname} 的 jar 不比源码旧"
     else
-      nok "19.8 ${sname} 的 jar 比源码旧 (${stale} 个源文件更新) —— 改动没进镜像"
+      nok "19.9 ${sname} 的 jar 比源码旧 (${stale} 个源文件更新) —— 改动没进镜像"
     fi
   done
 }
