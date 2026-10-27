@@ -26,10 +26,18 @@ describe('useCompanyId', () => {
     expect(useCompanyId()).toBe(7)
   })
 
-  it('falls back to 1 when the login state carries no company', () => {
+  it('falls back to 0 (无归属) when the login state carries no company', () => {
     const store = useUserStore()
     store.companyId = 0
-    expect(useCompanyId()).toBe(1)
+    expect(useCompanyId()).toBe(0)
+  })
+
+  it('never silently pretends the user belongs to the demo company 1', () => {
+    // 兜底成 1 会把「没关联企业」和「在示例一人公司」混成同一件事：
+    // 前端只有这一个数字，没有第二个来源能分辨两者。
+    const store = useUserStore()
+    store.companyId = 0
+    expect(useCompanyId()).not.toBe(1)
   })
 
   it('is a plain number snapshot — a later store change does not mutate it', () => {
