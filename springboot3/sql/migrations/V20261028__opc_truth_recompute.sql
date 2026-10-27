@@ -84,13 +84,17 @@ UPDATE mp_publication
    SET category_code = LOWER(category_code)
  WHERE product_type = 'AGENT'
    AND category_code IN ('FINANCE', 'ERP', 'CRM', 'HR', 'ECOM', 'CONTENT', 'VOICE', 'INSIGHT', 'OFFICE', 'SALES')
-   AND category_code <> LOWER(category_code);
+   -- BINARY 是必须的:mp_publication 用 utf8mb4_unicode_ci(不区分大小写),
+   -- 于是 'FINANCE' <> LOWER('FINANCE') 判定为 **false** —— 整条 UPDATE
+   -- 一行都不命中,而且不报任何错。踩过一次:线上改完 category_code
+   -- 仍然是 'FINANCE',因为 WHERE 永远不成立。逐字节比才比得出大小写。
+   AND BINARY category_code <> BINARY LOWER(category_code);
 
 UPDATE mp_publication
    SET category_code = LOWER(category_code)
  WHERE product_type = 'MODULE'
    AND category_code IN ('ECOM', 'DATA', 'INTEGRATION', 'TOOL')
-   AND category_code <> LOWER(category_code);
+   AND BINARY category_code <> BINARY LOWER(category_code);
 
 -- ------------------------------------------------------------
 -- 5) 评价状态:'PUBLISHED' → 'VISIBLE'
