@@ -172,12 +172,22 @@ cmd_rebuild() {
   #
   # 一句话: package 只写 target/, install 才写 ~/.m2。两者不是一回事。
   #
+  # 这条坑不只踩在 ruoyi-common-security 上 —— OPC 的两个共享库
+  # (opc-common / opc-ai-core) 同样是别人的依赖, 同样会从 ~/.m2 拿快照。
+  # 之前只 install 了 ruoyi-common-security, 于是 opc-ai-core 一直是
+  # 9 月 23 日那个快照: 10-23 的 PromptGuard 接入 /opc/llm/chat、
+  # 10-26 的两笔 LLM 计量修复, 仓库里都有、生产上**一条都没生效** ——
+  # 而 deploy.sh 照样报成功。
+  #
+  # 所以这里必须把**所有**共享库都 install 一遍。
+  #
   # 前端不走这条 (它压根不碰 Maven), 跳过 —— 省一次 install, 也少一个失败点。
   if [[ "${target}" != "frontend" ]]; then
-    log "[shared] mvn install ruoyi-common-security (共享模块, 租户守卫在这里)"
+    log "[shared] mvn install 共享模块 (ruoyi-common-security / opc-common / opc-ai-core)"
     cd "${PROJECT_ROOT}"
     JAVA_HOME="${JAVA_HOME}" \
-      mvn -pl ruoyi-common/ruoyi-common-security -am clean install \
+      mvn -pl ruoyi-common/ruoyi-common-security,opc-common,ruoyi-modules/opc-ai-core \
+        -am clean install \
         -Dmaven.test.skip=true -Dspring-boot.repackage.skip=true -q \
       || fail "共享模块 install 失败"
   fi

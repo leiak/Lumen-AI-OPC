@@ -22,6 +22,8 @@
 #  15) 端口收敛护栏 (业务端口不得外露)
 #  16) 请求体租户归属 + OAuth state 签名 (3b 回归护栏)
 #  17) LLM 计量链 (3c 回归护栏)
+#  18) 多公司切租户 (3d 回归护栏)
+#  19) 市场页改名 + 数字真实性 + 监控
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -2182,6 +2184,171 @@ except Exception:
   fi
 }
 
+# ---------- 19. 市场页改名 + 数字真实性 + 监控 ----------
+#
+# 这一节守的是「演示环境不说假话」:
+#   * 菜单改了名, 别改回去 (两个市场页得分清谁是谁)
+#   * 商品卡上的每个数字都得能从真实表推出来 —— 编的数字是这条的靶子
+#   * Prometheus 得真的在收指标 —— micrometer-registry-prometheus
+#     缺了的话 /actuator/prometheus 从来没注册过, 监控一个指标都没收到
+check_marketplace_truth() {
+  hr
+  echo "[19] 市场页改名 + 数字真实性 + 监控"
+  hr
+
+  # --- 19.1 菜单改名 ---
+  local pair mid want got
+  for pair in "2001:开发者市场" "2002:开发者集市" "2035:官方数字员工"; do
+    mid="${pair%%:*}"
+    want="${pair#*:}"
+    got=$(db_q "SELECT menu_name FROM sys_menu WHERE menu_id=${mid};" | head -1)
+    if [[ "${got}" == "${want}" ]]; then
+      ok "19.1 菜单 ${mid} = ${want}"
+    else
+      nok "19.1 菜单 ${mid} 应为「${want}」, 实际是「${got:-<查不到>}」"
+    fi
+  done
+
+  # --- 19.2 install_count 必须等于 mp_install 行数 ---
+  #
+  # 不变量:InstallServiceImpl 只在「新插入行」时 +1,复活既有 UNINSTALLED
+  # 行不 +1,卸载是软删(行还在)也不减 —— 所以 install_count 恒等于
+  # COUNT(mp_install)。对不上就说明有人在手改数字。
+  local bad_install
+  bad_install=$(db_q "SELECT COUNT(*) FROM mp_publication p WHERE p.deleted = 0 AND p.install_count <> (SELECT COUNT(*) FROM mp_install i WHERE i.publication_id = p.id);" | tr -d '\r')
+  if [[ -z "${bad_install}" ]]; then
+    nok "19.2 查不到 mp_publication 行 —— 护栏空转, 证明不了什么"
+  elif [[ "${bad_install}" != "0" ]]; then
+    nok "19.2 有 ${bad_install} 件商品的 install_count 与 mp_install 行数对不上 —— 数字是编的"
+  else
+    ok "19.2 每件商品的 install_count 都等于它的 mp_install 行数"
+  fi
+
+  # --- 19.3 avg_rating / rating_count 必须等于 VISIBLE 评价的 AVG / COUNT ---
+  #
+  # 口径与 MpReviewMapper 的统计 SQL 完全一致 (status='VISIBLE' AND deleted=0)。
+  local bad_rating
+  bad_rating=$(db_q "SELECT COUNT(*) FROM mp_publication p WHERE p.deleted = 0 AND ( p.rating_count <> (SELECT COUNT(*) FROM mp_review r WHERE r.publication_id = p.id AND r.status = 'VISIBLE' AND r.deleted = 0) OR p.avg_rating <> (SELECT COALESCE(AVG(r.rating), 0) FROM mp_review r WHERE r.publication_id = p.id AND r.status = 'VISIBLE' AND r.deleted = 0) );" | tr -d '\r')
+  if [[ -z "${bad_rating}" ]]; then
+    nok "19.3 查不到 mp_publication 行 —— 护栏空转, 证明不了什么"
+  elif [[ "${bad_rating}" != "0" ]]; then
+    nok "19.3 有 ${bad_rating} 件商品的评分/评价数与真实评价行对不上 —— 数字是编的"
+  else
+    ok "19.3 每件商品的评分与评价数都等于它的 VISIBLE 评价行"
+  fi
+
+  # --- 19.4 MODULE 商品必须指向真实存在的社区模块 ---
+  local dangling
+  dangling=$(db_q "SELECT COUNT(*) FROM mp_publication p WHERE p.deleted = 0 AND p.product_type = 'MODULE' AND ( p.module_id IS NULL OR NOT EXISTS (SELECT 1 FROM opc_community_module m WHERE m.id = p.module_id) );" | tr -d '\r')
+  if [[ -z "${dangling}" ]]; then
+    nok "19.4 查不到 mp_publication 行 —— 护栏空转, 证明不了什么"
+  elif [[ "${dangling}" != "0" ]]; then
+    nok "19.4 有 ${dangling} 件功能模块商品指向不存在的社区模块 —— 装它是假的"
+  else
+    ok "19.4 每件功能模块商品都指向真实存在的社区模块"
+  fi
+
+  # --- 19.5 商品的类目 code 必须在 mp_category 里有对应行 ---
+  #
+  # 用 BINARY 比:列表页的 categoryName 走 Java Map<productType|code> 查表,
+  # 那是**大小写敏感**的 —— SQL 比对 (utf8mb4_unicode_ci) 不敏感,
+  # 'FINANCE' 能匹配上 'finance', 但 Java Map 匹配不上, 卡片上就显示
+  # 原始 code 而不是中文类目名。所以这里必须按大小写逐字节比。
+  local bad_category
+  bad_category=$(db_q "SELECT COUNT(*) FROM mp_publication p WHERE p.deleted = 0 AND NOT EXISTS (SELECT 1 FROM mp_category c WHERE c.product_type = p.product_type AND BINARY c.code = BINARY p.category_code);" | tr -d '\r')
+  if [[ -z "${bad_category}" ]]; then
+    nok "19.5 查不到 mp_publication 行 —— 护栏空转, 证明不了什么"
+  elif [[ "${bad_category}" != "0" ]]; then
+    nok "19.5 有 ${bad_category} 件商品的类目 code 在 mp_category 里查不到 (大小写逐字节比对) —— 卡片显示的是原始 code"
+  else
+    ok "19.5 每件商品的类目 code 都能在 mp_category 里查到 (大小写逐字节一致)"
+  fi
+
+  # --- 19.6 7 个被抓的服务得真的有 /actuator/prometheus ---
+  #
+  # 端点靠 micrometer-registry-prometheus 注册 —— 依赖不在, 端点就没注册,
+  # Prometheus 每 15 秒抓到的是 404 (RuoYi 把它当静态资源找不到,
+  # 页面返回 code=500)。这里要求响应里出现 jvm_ 开头的指标行。
+  local sp sname sport pbody
+  for sp in "aiopc-gateway:8080" "aiopc-system:9201" "aiopc-ai-core:9301" \
+            "aiopc-user-center:9302" "aiopc-agent-hub:9303" "aiopc-billing:9304" \
+            "aiopc-finance:9305"; do
+    sname="${sp%%:*}"
+    sport="${sp#*:}"
+    pbody=$(curl -sf -m 10 "http://127.0.0.1:${sport}/actuator/prometheus" 2>/dev/null) || pbody=""
+    if echo "${pbody}" | grep -q "^jvm_"; then
+      ok "19.6 ${sname} /actuator/prometheus 有 jvm_ 指标"
+    else
+      nok "19.6 ${sname} /actuator/prometheus 没吐出 jvm_ 指标 —— micrometer-registry-prometheus 没生效"
+    fi
+  done
+
+  # --- 19.7 Prometheus 那边的 target 是不是真的 up ---
+  local t_body t_state down_cnt miss_cnt
+  t_body=$(curl -sf -m 10 "http://127.0.0.1:9090/api/v1/targets" 2>/dev/null) || t_body=""
+  if [[ -z "${t_body}" ]]; then
+    warn "19.7 Prometheus 不可达 (127.0.0.1:9090) —— 该项跳过 (没验过, 不是验过了)"
+  else
+    # 输出 "不 up 的 target 数 没被采集的 job 数"
+    t_state=$(printf '%s' "${t_body}" | python -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('-1 -1')
+    raise SystemExit
+want = {'opc-gateway','opc-system','opc-ai-core','opc-user-center',
+        'opc-agent-hub','opc-billing','opc-finance'}
+targets = d.get('data', {}).get('activeTargets', [])
+seen = set()
+down = 0
+for t in targets:
+    job = t.get('labels', {}).get('job', '')
+    if job in want:
+        seen.add(job)
+        if t.get('health') != 'up':
+            down += 1
+print('%d %d' % (down, len(want - seen)))
+" 2>/dev/null)
+    read -r down_cnt miss_cnt <<<"${t_state}"
+    if [[ "${down_cnt}" == "0" && "${miss_cnt}" == "0" ]]; then
+      ok "19.7 Prometheus 7 个 opc target 全部 up"
+    elif [[ "${down_cnt}" == "-1" ]]; then
+      nok "19.7 Prometheus /api/v1/targets 的返回读不懂 —— 护栏空转"
+    else
+      nok "19.7 Prometheus 有 ${down_cnt} 个 opc target 不 up, ${miss_cnt} 个 job 根本没被采集"
+    fi
+  fi
+
+  # --- 19.8 共享库 jar 不得比源码旧 ---
+  #
+  # deploy.sh 的 dependency:copy-dependencies 是**另一次** mvn 调用, 不带 -am,
+  # 解析不到 reactor —— 依赖只能从 ~/.m2 拿快照。所以共享库改了代码而没先
+  # install, 镜像里就是旧包: 改动根本没上线, 而部署照样报成功。
+  #
+  # 这不是假设: opc-ai-core 一直是 9 月 23 日的快照, 10-23 的
+  # PromptGuard 接入 /opc/llm/chat、10-26 的两笔 LLM 计量修复,
+  # 仓库里都有、生产上一条没生效 —— 安全与监控修复"看起来做了"。
+  local sh smod sname sjar stale
+  for sh in "ruoyi-common/ruoyi-common-security:ruoyi-common-security" \
+            "opc-common:opc-common" \
+            "ruoyi-modules/opc-ai-core:opc-ai-core"; do
+    smod="${sh%%:*}"
+    sname="${sh#*:}"
+    sjar="${HOME}/.m2/repository/com/ruoyi/${sname}/3.6.8/${sname}-3.6.8.jar"
+    if [[ ! -f "${sjar}" ]]; then
+      nok "19.8 ${sname} 没 install 进 ~/.m2 —— 镜像里会打进旧包"
+      continue
+    fi
+    stale=$(find "${DEPLOY_DIR}/../${smod}/src" -type f -newer "${sjar}" 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "${stale}" == "0" ]]; then
+      ok "19.8 ${sname} 的 jar 不比源码旧"
+    else
+      nok "19.8 ${sname} 的 jar 比源码旧 (${stale} 个源文件更新) —— 改动没进镜像"
+    fi
+  done
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -2205,6 +2372,7 @@ main() {
   check_body_tenant_and_oauth_state
   check_metering_chain
   check_company_switch
+  check_marketplace_truth
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"
