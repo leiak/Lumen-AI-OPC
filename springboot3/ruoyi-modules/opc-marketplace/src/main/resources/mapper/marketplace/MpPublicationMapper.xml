@@ -167,6 +167,12 @@
         WHERE id = #{id} AND deleted = 0
     </update>
 
+    <!-- 退订:计数不下到负数 —— 负数比偏大更像「数据坏了」 -->
+    <update id="decrementSubscriptionCount">
+        UPDATE mp_publication SET subscription_count = GREATEST(subscription_count - 1, 0), update_time = NOW(3)
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
     <update id="updateRating">
         UPDATE mp_publication SET avg_rating = #{avg}, rating_count = #{count}, update_time = NOW(3)
         WHERE id = #{id} AND deleted = 0

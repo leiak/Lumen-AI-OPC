@@ -2392,6 +2392,39 @@ print('%d %d' % (down, len(want - seen)))
       nok "19.9 ${sname} 的 jar 比源码旧 (${stale} 个源文件更新) —— 改动没进镜像"
     fi
   done
+
+  # --- 19.10 subscription_count 必须等于 mp_subscription 里的活跃订阅行数 ---
+  #
+  # 这条守的是「商品卡上的订阅数是不是真的」。W80 P2 之前, subscription_count
+  # 是页面上唯一一个**完全没有写入路径**的数字(后端 incrementSubscriptionCount
+  # 零调用方)—— 页面上挂着一个底下什么都没有的数。
+  #
+  # 口径: subscription_count = COUNT(mp_subscription WHERE status='ACTIVE')。
+  # 比 COUNT(*) 更严 —— 退订的行(CANCELLED)不算数。
+  local bad_sub sub_total
+  bad_sub=$(db_q "SELECT COUNT(*) FROM mp_publication p WHERE p.deleted = 0 AND p.subscription_count <> (SELECT COUNT(*) FROM mp_subscription s WHERE s.publication_id = p.id AND s.status = 'ACTIVE' AND s.deleted = 0);" | tr -d '\r')
+  sub_total=$(db_q "SELECT COUNT(*) FROM mp_subscription;" | tr -d '\r')
+  if [[ -z "${bad_sub}" ]]; then
+    nok "19.10 查不到 mp_publication 行 —— 护栏空转, 证明不了什么"
+  elif [[ "${bad_sub}" != "0" ]]; then
+    nok "19.10 有 ${bad_sub} 件商品的订阅数与 mp_subscription 里的活跃订阅行数对不上 —— 数字是编的"
+  else
+    ok "19.10 每件商品的订阅数都等于它的活跃订阅行数 (mp_subscription 共 ${sub_total:-?} 行)"
+  fi
+
+  # --- 19.11 mp_author.total_subscribers 必须等于去重后的活跃订阅公司数 ---
+  #
+  # 口径: COUNT(DISTINCT tenant_company_id) —— 同一家公司的 5 个人订阅算 1 个订阅者。
+  # 所以这个数用「回写」而不是 +1/-1(退订时不知道该减几个)。
+  local bad_author_sub
+  bad_author_sub=$(db_q "SELECT COUNT(*) FROM mp_author a WHERE a.deleted = 0 AND a.total_subscribers <> (SELECT COUNT(DISTINCT s.tenant_company_id) FROM mp_subscription s JOIN mp_publication p ON p.id = s.publication_id WHERE p.author_id = a.id AND s.status = 'ACTIVE' AND s.deleted = 0 AND p.deleted = 0);" | tr -d '\r')
+  if [[ -z "${bad_author_sub}" ]]; then
+    nok "19.11 查不到 mp_author 行 —— 护栏空转, 证明不了什么"
+  elif [[ "${bad_author_sub}" != "0" ]]; then
+    nok "19.11 有 ${bad_author_sub} 个作者的订阅者数与真实订阅公司数对不上 —— 数字是编的"
+  else
+    ok "19.11 每个作者的订阅者数都等于真实订阅它的公司数"
+  fi
 }
 
 # ---------- Main ----------

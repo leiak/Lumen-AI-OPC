@@ -5,11 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.marketplace.domain.MpAuthor;
 import com.ruoyi.opc.marketplace.domain.MpCategory;
+import com.ruoyi.opc.marketplace.domain.MpCommunityModule;
 import com.ruoyi.opc.marketplace.domain.MpPublication;
 import com.ruoyi.opc.marketplace.dto.PublicationCreateRequest;
 import com.ruoyi.opc.marketplace.dto.PublicationEditRequest;
 import com.ruoyi.opc.marketplace.dto.PublicationListQuery;
 import com.ruoyi.opc.marketplace.dto.PublicationVO;
+import com.ruoyi.opc.marketplace.mapper.CommunityModuleMapper;
 import com.ruoyi.opc.marketplace.mapper.MpAuthorMapper;
 import com.ruoyi.opc.marketplace.mapper.MpCategoryMapper;
 import com.ruoyi.opc.marketplace.mapper.MpPublicationMapper;
@@ -52,6 +54,15 @@ import java.util.stream.Collectors;
  * 或 snake_case 约定的对象，必须改成注入容器里的 {@code ObjectMapper}
  * （否则时间格式 / 别名会静默走默认值）。
  *
+ * <p><b>类目 code 一律归一化成 {@code mp_category.code} 的原样</b>：类目校验走的是
+ * SQL，而 {@code mp_category.code} 的排序规则是 {@code utf8mb4_unicode_ci}
+ * ——<b>不区分大小写</b>。所以 {@code selectByCode("AGENT","FINANCE")} 能查到
+ * {@code finance} 那一行，然后旧实现把用户传的 {@code "FINANCE"} 原样存进去。
+ * 而列表页的类目名走的是 Java {@code Map}（键大小写敏感，见 {@link #loadJoins}）
+ * → {@code categoryName} 恒为 null，卡片上直接显示原始 code {@code "FINANCE"}。
+ * 这正是第一轮在种子里修掉的那个毛病，现在从<b>写入路径</b>上堵死：
+ * 落库的一律是 {@code mp_category} 里的规范写法。
+ *
  * @author OAC
  */
 @Slf4j
@@ -70,6 +81,15 @@ public class PublicationServiceImpl implements PublicationService {
     private final MpCategoryMapper categoryMapper;
     /** 注入以支持列表页一次性批量填充 authorName/authorAvatar (避免 N+1) */
     private final MpAuthorMapper authorMapper;
+    /**
+     * 社区模块的<b>只读</b> mapper —— 用来校验 MODULE 商品挂的模块真实存在。
+     *
+     * <p>此前 {@code create()} 只校验 {@code moduleId 非空},不校验它指向什么 ——
+     * 种子里就有一条「电商运营助手」指着 id=1 的 {@code crm-starter},应用自己
+     * {@code create()} 出来的也一样不拦。挂着一个不存在的模块的商品,装的时候
+     * 社区那边根本找不到东西可加。
+     */
+    private final CommunityModuleMapper communityModuleMapper;
 
     /**
      * 手写实例，不用容器 bean —— 仅用于 {@code List<String>} → JSON 数组。
@@ -94,7 +114,15 @@ public class PublicationServiceImpl implements PublicationService {
         if (cat == null) {
             throw new OpcException(400, "类目不存在: " + req.getCategoryCode(), "MARKETPLACE");
         }
-        // 3. code 全局唯一(uk_pub_code 不含 deleted) —— 先查一次给出友好 409,
+        // 3. MODULE 商品:挂的模块必须真实存在,且商品类目要跟模块对得上
+        if ("MODULE".equals(req.getProductType())) {
+            MpCommunityModule module = communityModuleMapper.selectById(req.getModuleId());
+            if (module == null) {
+                throw new OpcException(400, "社区模块不存在: " + req.getModuleId(), "MARKETPLACE");
+            }
+            requireCategoryMatchesModule(module, cat);
+        }
+        // 4. code 全局唯一(uk_pub_code 不含 deleted) —— 先查一次给出友好 409,
         //    真正 INSERT 时仍可能撞 1062(并发),由 SQL 兜底
         MpPublication existing = publicationMapper.selectByCode(req.getCode());
         if (existing != null) {
@@ -108,7 +136,7 @@ public class PublicationServiceImpl implements PublicationService {
         p.setAuthorId(authorId);
         p.setCode(req.getCode());
         p.setName(req.getName());
-        p.setCategoryCode(req.getCategoryCode());
+        p.setCategoryCode(cat.getCode());
         p.setSubCategoryCode(req.getSubCategoryCode());
         p.setSummary(req.getSummary());
         p.setLongDescription(req.getLongDescription());
@@ -147,7 +175,21 @@ public class PublicationServiceImpl implements PublicationService {
             if (cat == null) {
                 throw new OpcException(400, "类目不存在: " + req.getCategoryCode(), "MARKETPLACE");
             }
-            p.setCategoryCode(req.getCategoryCode());
+            // MODULE 商品改类目 → 同样要跟挂着的模块对得上(与 create() 同一条规则)
+            if ("MODULE".equals(p.getProductType())) {
+                MpCommunityModule module = communityModuleMapper.selectById(p.getModuleId());
+                if (module == null) {
+                    // 模块已被社区删掉 —— 这条商品的 module_id 本来就悬空了,而 edit
+                    // 又没有换 module_id 的入口,拦住等于把这条商品彻底锁死。
+                    // 记 WARN 放行:让作者至少还能改名字、改简介。
+                    log.warn("[Publication] MODULE 商品 id={} 挂的社区模块 {} 已不存在,跳过类目一致性校验",
+                            id, p.getModuleId());
+                } else {
+                    requireCategoryMatchesModule(module, cat);
+                }
+            }
+            // 归一化:存 mp_category 里的规范 code,别把用户传的 "FINANCE" 原样落库(见类注释)
+            p.setCategoryCode(cat.getCode());
         }
         if (req.getSubCategoryCode() != null) p.setSubCategoryCode(req.getSubCategoryCode());
         if (req.getSummary() != null) p.setSummary(req.getSummary());
@@ -413,6 +455,42 @@ public class PublicationServiceImpl implements PublicationService {
     private void requireOwnership(MpPublication p, Long authorId, String message) {
         if (!Objects.equals(p.getAuthorId(), authorId)) {
             throw new OpcException(403, message, "MARKETPLACE");
+        }
+    }
+
+    /**
+     * MODULE 商品的类目必须跟它挂着的社区模块对得上。
+     *
+     * <p><b>两套类目词表不是一回事</b>，这一点决定了校验只能做成「能对上才管」：
+     * <ul>
+     *   <li>社区 {@code opc_community_module.category}：CRM / FINANCE / HR / AGENT /
+     *       CONTENT / INSIGHT / ECOM —— 按<b>业务域</b>分。</li>
+     *   <li>marketplace {@code mp_category}（product_type=MODULE）：data / integration /
+     *       tool / ecom —— 按<b>能力形态</b>分。</li>
+     * </ul>
+     * 两边只有 {@code ecom} 恰好重合。所以规则是：<b>模块的类目在 marketplace 词表里
+     * 找得到对应行 → 商品就必须用那一行</b>；找不到（CRM / HR / CONTENT …）→
+     * marketplace 这边自由选，不拦。硬要求「两边字面相等」会把 6 个类目的模块
+     * 全部堵死，那不是校验，是把功能关掉。
+     *
+     * <p>SQL 比较在 {@code utf8mb4_unicode_ci} 下不区分大小写，所以社区的
+     * {@code "ECOM"} 能命中 marketplace 的 {@code "ecom"} 那一行。
+     */
+    private void requireCategoryMatchesModule(MpCommunityModule module, MpCategory cat) {
+        String moduleCategory = module.getCategory();
+        if (moduleCategory == null || moduleCategory.isBlank()) {
+            return;
+        }
+        MpCategory mapped = categoryMapper.selectByCode("MODULE", moduleCategory);
+        if (mapped == null) {
+            // 社区这个业务域在 marketplace 词表里没有对应行 → 不约束
+            return;
+        }
+        if (!mapped.getCode().equalsIgnoreCase(cat.getCode())) {
+            throw new OpcException(400,
+                    "商品类目与模块类目不一致: 模块「" + module.getName() + "」的类目是 "
+                            + mapped.getName() + "(" + mapped.getCode() + ")",
+                    "MARKETPLACE");
         }
     }
 

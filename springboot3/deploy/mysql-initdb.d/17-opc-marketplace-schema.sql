@@ -164,6 +164,34 @@ CREATE TABLE mp_tag (
     UNIQUE KEY uk_tag_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=''标签''');
 
+-- ---------- mp_subscription ----------
+-- 让 mp_publication.subscription_count 有真实来源: 此前这个数字在页面上
+-- 展示着, 底下却没有任何一条记录支撑它(incrementSubscriptionCount 零调用方)。
+-- 口径: subscription_count = COUNT(mp_subscription WHERE status='ACTIVE')。
+-- UNIQUE 不含 deleted —— 与 mp_install / mp_review 同一口径, 软删也占位。
+-- plan 目前只有 'FREE': marketplace 与 opc-billing 之间没有写单路径,
+-- 刻意不造付费套餐(一个点不动的「付费」按钮比没有更糟)。
+CALL create_table_if_not_exists('mp_subscription', '
+CREATE TABLE mp_subscription (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    publication_id BIGINT NOT NULL,
+    tenant_company_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    product_type VARCHAR(16) NOT NULL,
+    plan VARCHAR(16) NOT NULL DEFAULT ''FREE'',
+    status VARCHAR(16) NOT NULL DEFAULT ''ACTIVE'',
+    start_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    end_time DATETIME(3),
+    create_by VARCHAR(64),
+    create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    update_by VARCHAR(64),
+    update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    deleted TINYINT(1) NOT NULL DEFAULT 0,
+    UNIQUE KEY uk_sub (publication_id, tenant_company_id, user_id),
+    KEY idx_pub_status (publication_id, status),
+    KEY idx_tenant (tenant_company_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT=''订阅记录''');
+
 -- ---------- 种子数据（幂等 INSERT IGNORE）----------
 INSERT IGNORE INTO mp_category (product_type, code, name, sort_order, icon) VALUES
   ('AGENT', 'office',  '办公助手',  1, 'Briefcase'),

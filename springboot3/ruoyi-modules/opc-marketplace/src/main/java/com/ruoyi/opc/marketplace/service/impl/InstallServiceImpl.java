@@ -5,6 +5,7 @@ import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.marketplace.domain.MpInstall;
 import com.ruoyi.opc.marketplace.domain.MpPublication;
 import com.ruoyi.opc.marketplace.feign.AgentHubClient;
+import com.ruoyi.opc.marketplace.feign.CommunityClient;
 import com.ruoyi.opc.marketplace.mapper.MpInstallMapper;
 import com.ruoyi.opc.marketplace.mapper.MpPublicationMapper;
 import com.ruoyi.opc.marketplace.service.InstallService;
@@ -36,6 +37,11 @@ import java.util.Map;
  *       「复活既有 UNINSTALLED 行」<b>不</b>调用 —— 这是市场级计数器,「卸载-重装」刷榜是
  *       真实缺陷。具体计数语义:每次 {@code mp_install} 从无到有 (status=ACTIVE) 算 +1;
  *       复活行 (deleted=0, status=ACTIVE) 是同一行的 status 翻转,不算新装。</li>
+ *   <li><b>MODULE 商品另有一道远端调用</b>({@link CommunityClient#installModule}),
+ *       但语义与 agent-hub 那道<b>刻意相反</b>:它在本地登记<b>成功之后</b>才调,
+ *       调失败只降级记 WARN、<b>不阻断安装</b>。理由见
+ *       {@link #notifyCommunityInstall}:社区的 {@code install_count} 是展示计数,
+ *       它没涨只说明这次计数没记上, 不说明模块没装。</li>
  * </ol>
  *
  * @author OAC
@@ -48,6 +54,7 @@ public class InstallServiceImpl implements InstallService {
     private final MpInstallMapper installMapper;
     private final MpPublicationMapper publicationMapper;
     private final AgentHubClient agentHubClient;
+    private final CommunityClient communityClient;
 
     /** 远端回包里 {@code id} 字段的 key（opc-agent-hub {@code OpcAgentInstance.id}）。 */
     private static final String RESP_KEY_ID = "id";
@@ -86,6 +93,9 @@ public class InstallServiceImpl implements InstallService {
                 existing.setStatus("ACTIVE");
                 existing.setInstalledAt(now);
                 // 不自增 install_count:见类注释 §4
+                // MODULE:本地登记成功了,才通知社区 +1 —— 顺序反过来的话,
+                // 本地写失败就会留下「社区说装过了、市场说没装」的孤儿计数。
+                notifyCommunityInstall(p, tenantCompanyId, userId, publicationId);
                 log.info("[Install] reinstalled (revived row) publicationId={} userId={} instanceId={}",
                         publicationId, userId, instanceId);
                 return existing;
@@ -105,6 +115,8 @@ public class InstallServiceImpl implements InstallService {
 
             // 首次安装 → 累加市场级计数器
             publicationMapper.incrementInstallCount(publicationId);
+            // MODULE:通知社区「这个模块被装了一次」(失败只降级,见 notifyCommunityInstall)
+            notifyCommunityInstall(p, tenantCompanyId, userId, publicationId);
             log.info("[Install] installed publicationId={} userId={} instanceId={}",
                     publicationId, userId, instanceId);
             return install;
@@ -163,6 +175,43 @@ public class InstallServiceImpl implements InstallService {
             throw new OpcException(503, "opc-agent-hub 返回的实例 id 缺失或类型异常", "MARKETPLACE");
         }
         return ((Number) idObj).longValue();
+    }
+
+    /**
+     * MODULE 商品:通知社区「这个模块被装了一次」（{@code opc_community_module.install_count +1}）。
+     *
+     * <p><b>为什么必须调</b>：社区的 {@code incrementInstall} 唯一写入方是社区自己那个
+     * 公开端点，marketplace 够不着。此前模块商品装完只写一行 {@code mp_install}，
+     * 社区那边一行没动 —— 同一件事在两个页面上显示成两个对不上的数字。
+     *
+     * <p><b>失败只降级，不阻断</b>（与 {@link #createRemoteAgentInstance} 相反）：
+     * 社区那个数字只是展示计数，它没涨只说明这次计数没记上，不说明模块没装。
+     * 拿一个展示计数把整个安装操作回滚，比数字不准更糟。
+     *
+     * <p>本方法<b>不抛异常</b> —— 调用点在 try 块里，抛出去会被外层的
+     * catch 当成「本地写失败」而触发远端 revoke，那是彻底的误判。
+     */
+    private void notifyCommunityInstall(MpPublication p, Long tenantCompanyId, Long userId, Long publicationId) {
+        if (!"MODULE".equals(p.getProductType()) || p.getModuleId() == null) {
+            return;
+        }
+        try {
+            Map<String, Object> body = new HashMap<>();
+            body.put("tenantCompanyId", tenantCompanyId);
+            body.put("userId", userId);
+            body.put("publicationId", publicationId);
+            R<Map<String, Object>> resp = communityClient.installModule(p.getModuleId(), body);
+            if (resp == null || !R.isSuccess(resp)) {
+                log.warn("[Install] 社区安装计数未更新(降级,安装本身成功) moduleId={} publicationId={} userId={}",
+                        p.getModuleId(), publicationId, userId);
+                return;
+            }
+            log.info("[Install] community module counted moduleId={} publicationId={} userId={}",
+                    p.getModuleId(), publicationId, userId);
+        } catch (Exception ex) {
+            log.warn("[Install] 调社区失败(降级,安装本身成功) moduleId={} publicationId={} userId={}: {}",
+                    p.getModuleId(), publicationId, userId, ex.getMessage());
+        }
     }
 
     @Override

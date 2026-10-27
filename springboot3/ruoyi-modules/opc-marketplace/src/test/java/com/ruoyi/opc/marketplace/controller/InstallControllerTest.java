@@ -5,11 +5,14 @@ import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.marketplace.domain.MpInstall;
 import com.ruoyi.opc.marketplace.feign.AgentHubClient;
+import com.ruoyi.opc.marketplace.feign.CommunityClient;
+import com.ruoyi.opc.marketplace.mapper.CommunityModuleMapper;
 import com.ruoyi.opc.marketplace.mapper.MpAuthorMapper;
 import com.ruoyi.opc.marketplace.mapper.MpCategoryMapper;
 import com.ruoyi.opc.marketplace.mapper.MpInstallMapper;
 import com.ruoyi.opc.marketplace.mapper.MpPublicationMapper;
 import com.ruoyi.opc.marketplace.mapper.MpReviewMapper;
+import com.ruoyi.opc.marketplace.mapper.MpSubscriptionMapper;
 import com.ruoyi.opc.marketplace.mapper.MpTagMapper;
 import com.ruoyi.opc.marketplace.service.InstallService;
 import org.junit.jupiter.api.AfterEach;
@@ -88,6 +91,15 @@ class InstallControllerTest {
 
     @MockBean
     private AgentHubClient agentHubClient;
+    // W80 P2:社区模块只读 mapper / 订阅 mapper / 社区 Feign 客户端 ——
+    // @EnableCustomConfig → @MapperScan 把 mapper 注册成 bean,@WebMvcTest 不启 MyBatis
+    // (缺 sqlSessionFactory);Feign 同理没有 FeignClientFactory。缺任何一个都起不来。
+    @MockBean
+    private CommunityModuleMapper communityModuleMapper;
+    @MockBean
+    private MpSubscriptionMapper subscriptionMapper;
+    @MockBean
+    private CommunityClient communityClient;
 
     @MockBean private MpAuthorMapper authorMapper;
     @MockBean private MpPublicationMapper publicationMapper;

@@ -30,6 +30,10 @@ import java.util.Objects;
  * {@code not-null}：只要至少 1 行 VISIBLE，{@code AVG} 必返非 null，因此
  * {@code avg.setScale(2, RoundingMode.HALF_UP)} 安全。
  *
+ * <p><b>零行时把评分显式写成 0，不保留旧值</b>（W80 P2）：评分是<b>派生量</b>，
+ * 唯一真相源是那批 VISIBLE 评价行。行没了就是 0 —— 保留旧值等于让商品详情页
+ * 继续挂着一个底下什么都没有的「4.8 分 / 127 条评价」。
+ *
  * @author OAC
  */
 @Slf4j
@@ -140,13 +144,26 @@ public class ReviewServiceImpl implements ReviewService {
 
     /**
      * 重算并回写 {@code mp_publication.avg_rating / rating_count}。
-     * <p>从 VISIBLE 行集做 AVG + COUNT —— 与 mapper XML 一致。零行时保留现有值(由 DB
-     * COALESCE/默认值定义),不强行 null out —— 与 {@link InstallServiceImpl#install} 同
-     * SKU 的「从不显式回滚并发量」原则一致。</p>
+     *
+     * <p>从 VISIBLE 行集做 AVG + COUNT —— 与 mapper XML 一致。
+     *
+     * <p><b>零行时必须显式写 0，不能保留旧值</b>：评价被删光（或全被隐藏）之后，
+     * 旧实现直接 {@code return}，商品详情上就永远挂着一个<b>不存在的</b> 4.8 分 /
+     * 127 条评价 —— 数字还在，但底下已经没有任何评价行了。
+     * 「保留旧值」这个设计当初是为了不跟「从不显式回滚并发量」的原则冲突，但那条
+     * 原则说的是<b>并发计数器</b>（install_count 那种只增不减的量），
+     * 评分是<b>派生量</b>，它的唯一真相源就是那批 VISIBLE 行，没有行就是 0。
+     *
+     * <p>注意 {@code AVG()} 在零行时返回 NULL，但那只覆盖「本次算不出均值」，
+     * 覆盖不了「上一次写进去的旧值还在」—— 旧值是历史写入，不是 SQL 算出来的，
+     * 必须靠这条显式 UPDATE 清掉。
      */
     private void refreshPublicationRating(Long publicationId) {
         int count = reviewMapper.countForPublication(publicationId);
-        if (count <= 0) return;  // no VISIBLE rows — leave existing avg/count untouched
+        if (count <= 0) {
+            publicationMapper.updateRating(publicationId, BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), 0);
+            return;
+        }
         BigDecimal avg = reviewMapper.averageForPublication(publicationId);
         publicationMapper.updateRating(publicationId,
                 avg.setScale(2, RoundingMode.HALF_UP), count);

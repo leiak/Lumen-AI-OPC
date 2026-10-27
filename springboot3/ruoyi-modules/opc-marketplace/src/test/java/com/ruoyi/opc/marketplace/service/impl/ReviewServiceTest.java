@@ -177,8 +177,8 @@ class ReviewServiceTest {
     }
 
     @Test
-    @DisplayName("delete — 删掉最后一条 VISIBLE 评价:count=0 → 跳过回写(AVG 返 null,setScale 会 NPE)")
-    void delete_lastReview_skipsWriteback() {
+    @DisplayName("delete — 删掉最后一条 VISIBLE 评价:count=0 → 评分必须归零(avg=0.00, count=0)")
+    void delete_lastReview_zeroesRating() {
         MpReview r = MpReview.builder().id(1L).userId(1L).publicationId(10L).build();
         when(reviewMapper.selectById(1L)).thenReturn(r);
         // SQL AVG() 对零行返 null —— 没有 count>0 守门,avg.setScale 直接 NPE → 500
@@ -186,9 +186,10 @@ class ReviewServiceTest {
 
         assertThatNoException().isThrownBy(() -> reviewService.delete(1L, 1L));
 
-        // 软删本身照常发生,只是不动商品的 avg/count(保留既有值,不 null out)
         verify(reviewMapper).updateStatus(1L, "HIDDEN");
+        // 零行时不能去调 AVG(返 null),但**必须**把商品上的旧评分清掉 ——
+        // 否则评价全删光之后,详情页上还挂着一个不存在的 4.8 分 / 127 条评价。
         verify(reviewMapper, never()).averageForPublication(anyLong());
-        verify(publicationMapper, never()).updateRating(anyLong(), any(), anyInt());
+        verify(publicationMapper).updateRating(10L, new BigDecimal("0.00"), 0);
     }
 }

@@ -8,11 +8,14 @@ import com.ruoyi.opc.marketplace.dto.AuthorApplyRequest;
 import com.ruoyi.opc.marketplace.dto.AuthorListQuery;
 import com.ruoyi.opc.marketplace.dto.AuthorVO;
 import com.ruoyi.opc.marketplace.feign.AgentHubClient;
+import com.ruoyi.opc.marketplace.feign.CommunityClient;
+import com.ruoyi.opc.marketplace.mapper.CommunityModuleMapper;
 import com.ruoyi.opc.marketplace.mapper.MpAuthorMapper;
 import com.ruoyi.opc.marketplace.mapper.MpCategoryMapper;
 import com.ruoyi.opc.marketplace.mapper.MpInstallMapper;
 import com.ruoyi.opc.marketplace.mapper.MpPublicationMapper;
 import com.ruoyi.opc.marketplace.mapper.MpReviewMapper;
+import com.ruoyi.opc.marketplace.mapper.MpSubscriptionMapper;
 import com.ruoyi.opc.marketplace.mapper.MpTagMapper;
 import com.ruoyi.opc.marketplace.service.AuthorService;
 import org.junit.jupiter.api.AfterEach;
@@ -113,6 +116,12 @@ class AuthorControllerTest {
     // W80 P1 Task 6: InstallServiceImpl 依赖 AgentHubClient Feign;
     // @WebMvcTest 默认不初始化 FeignClientsRegistrar → 必须 @MockBean 占位
     @MockBean private AgentHubClient agentHubClient;
+    // W80 P2:社区模块只读 mapper / 订阅 mapper / 社区 Feign 客户端 ——
+    // @EnableCustomConfig → @MapperScan 把 mapper 注册成 bean,@WebMvcTest 不启 MyBatis
+    // (缺 sqlSessionFactory);Feign 同理没有 FeignClientFactory。缺任何一个都起不来。
+    @MockBean private CommunityModuleMapper communityModuleMapper;
+    @MockBean private MpSubscriptionMapper subscriptionMapper;
+    @MockBean private CommunityClient communityClient;
 
     private MockedStatic<SecurityUtils> securityUtils;
 

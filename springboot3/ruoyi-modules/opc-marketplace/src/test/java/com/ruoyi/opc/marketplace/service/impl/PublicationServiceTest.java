@@ -3,11 +3,13 @@ package com.ruoyi.opc.marketplace.service.impl;
 import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.marketplace.domain.MpAuthor;
 import com.ruoyi.opc.marketplace.domain.MpCategory;
+import com.ruoyi.opc.marketplace.domain.MpCommunityModule;
 import com.ruoyi.opc.marketplace.domain.MpPublication;
 import com.ruoyi.opc.marketplace.dto.PublicationCreateRequest;
 import com.ruoyi.opc.marketplace.dto.PublicationEditRequest;
 import com.ruoyi.opc.marketplace.dto.PublicationListQuery;
 import com.ruoyi.opc.marketplace.dto.PublicationVO;
+import com.ruoyi.opc.marketplace.mapper.CommunityModuleMapper;
 import com.ruoyi.opc.marketplace.mapper.MpAuthorMapper;
 import com.ruoyi.opc.marketplace.mapper.MpCategoryMapper;
 import com.ruoyi.opc.marketplace.mapper.MpPublicationMapper;
@@ -56,6 +58,10 @@ import static org.mockito.Mockito.when;
  *       service 必须自己给值</li>
  *   <li><b>类目外键在 create 与 edit 两侧都被守卫</b>：未知 categoryCode 一律 400，
  *       不落指向空 {@code mp_category} 行的外键</li>
+ *   <li><b>MODULE 商品挂的社区模块必须真实存在</b>（W80 P2）：悬空 moduleId 一律 400；
+ *       类目与模块类目对不上也 400 —— 但只在两边词表能对上时才拦</li>
+ *   <li><b>类目 code 归一化</b>：落库的一律是 {@code mp_category.code} 的规范写法，
+ *       防止 "FINANCE" 这种写法进到列表页的 Java Map 查找里（键大小写敏感）</li>
  *   <li><b>{@code update_by} 只记 operatorId</b>：authorId(档案 id) 与 operatorId(用户 id)
  *       是两个值，审计列里出现 authorId 就是回归</li>
  *   <li><b>浏览量计数</b>：{@code recordView} 单独委托 mapper 的自增，
@@ -74,6 +80,8 @@ class PublicationServiceTest {
     MpCategoryMapper categoryMapper;
     @Mock
     MpAuthorMapper authorMapper;
+    @Mock
+    CommunityModuleMapper communityModuleMapper;
 
     @InjectMocks
     PublicationServiceImpl service;
@@ -92,6 +100,17 @@ class PublicationServiceTest {
 
     private static MpCategory cat(String type, String code, String name) {
         return MpCategory.builder().id(1L).productType(type).code(code).name(name).build();
+    }
+
+    /** 社区模块的只读投影（{@code opc_community_module} 的一行）。 */
+    private static MpCommunityModule module(long id, String code, String name, String category) {
+        MpCommunityModule m = new MpCommunityModule();
+        m.setId(id);
+        m.setCode(code);
+        m.setName(name);
+        m.setCategory(category);
+        m.setInstallCount(0);
+        return m;
     }
 
     private static MpAuthor author(long id, String name) {
@@ -146,6 +165,9 @@ class PublicationServiceTest {
     @DisplayName("create — MODULE: 挂 moduleId,不带 agentDefinitionId")
     void create_success_MODULE() {
         when(categoryMapper.selectByCode("MODULE", "office")).thenReturn(cat("MODULE", "office", "办公"));
+        // 社区模块的类目是 "OFFICE"(大写)—— SQL 比较不区分大小写,能命中 "office" 那一行
+        when(categoryMapper.selectByCode("MODULE", "OFFICE")).thenReturn(cat("MODULE", "office", "办公"));
+        when(communityModuleMapper.selectById(200L)).thenReturn(module(200L, "mod-1", "模块一", "OFFICE"));
         when(publicationMapper.selectByCode("agent-1")).thenReturn(null);
 
         MpPublication result = service.create(createReq("MODULE"), 10L, 7L);
@@ -153,6 +175,74 @@ class PublicationServiceTest {
         assertThat(result.getModuleId()).isEqualTo(200L);
         assertThat(result.getAgentDefinitionId()).isNull();
         assertThat(result.getStatus()).isEqualTo("DRAFT");
+    }
+
+    // ——————————————— W80 P2:MODULE 商品必须挂真实存在的社区模块 ———————————————
+
+    @Test
+    @DisplayName("create — MODULE 指向的社区模块不存在 → 400「社区模块不存在」,不入库")
+    void create_400_whenModuleNotFound() {
+        when(categoryMapper.selectByCode("MODULE", "office")).thenReturn(cat("MODULE", "office", "办公"));
+        when(communityModuleMapper.selectById(200L)).thenReturn(null);
+        when(publicationMapper.selectByCode("agent-1")).thenReturn(null);
+
+        assertThatThrownBy(() -> service.create(createReq("MODULE"), 10L, 7L))
+                .isInstanceOf(OpcException.class)
+                .hasMessageContaining("社区模块不存在");
+        verify(publicationMapper, never()).insert(any());
+    }
+
+    @Test
+    @DisplayName("create — MODULE 的商品类目与模块类目对不上 → 400,不入库")
+    void create_400_whenModuleCategoryMismatch() {
+        when(categoryMapper.selectByCode("MODULE", "tool")).thenReturn(cat("MODULE", "tool", "效率工具"));
+        // 社区模块的类目 ECOM 在 marketplace 词表里对应 "ecom" 那一行
+        when(categoryMapper.selectByCode("MODULE", "ECOM")).thenReturn(cat("MODULE", "ecom", "电商运营"));
+        when(communityModuleMapper.selectById(200L)).thenReturn(module(200L, "ecom-ops", "电商运营助手", "ECOM"));
+        when(publicationMapper.selectByCode("agent-1")).thenReturn(null);
+
+        PublicationCreateRequest req = createReq("MODULE");
+        req.setCategoryCode("tool");
+
+        assertThatThrownBy(() -> service.create(req, 10L, 7L))
+                .isInstanceOf(OpcException.class)
+                .hasMessageContaining("类目与模块类目不一致");
+        verify(publicationMapper, never()).insert(any());
+    }
+
+    @Test
+    @DisplayName("create — 社区模块的类目在 marketplace 词表里没有对应行(如 CRM)→ 不拦,商品自由选类目")
+    void create_success_whenModuleCategoryNotInMarketplaceVocabulary() {
+        when(categoryMapper.selectByCode("MODULE", "tool")).thenReturn(cat("MODULE", "tool", "效率工具"));
+        // "CRM" 在 mp_category(MODULE) 里查不到 → 两套词表没有交集,不构成约束
+        when(categoryMapper.selectByCode("MODULE", "CRM")).thenReturn(null);
+        when(communityModuleMapper.selectById(200L)).thenReturn(module(200L, "crm-starter", "CRM 入门套件", "CRM"));
+        when(publicationMapper.selectByCode("agent-1")).thenReturn(null);
+
+        PublicationCreateRequest req = createReq("MODULE");
+        req.setCategoryCode("tool");
+
+        MpPublication result = service.create(req, 10L, 7L);
+
+        assertThat(result.getModuleId()).isEqualTo(200L);
+        verify(publicationMapper).insert(any(MpPublication.class));
+    }
+
+    @Test
+    @DisplayName("create — 类目 code 归一化:用户传 \"FINANCE\" 也只把规范写法 \"finance\" 落库")
+    void create_canonicalizesCategoryCode() {
+        // mp_category.code 的排序规则是 utf8mb4_unicode_ci —— SQL 比较不区分大小写,
+        // 所以 "FINANCE" 能查到 "finance" 那一行;但列表页的类目名走 Java Map(大小写敏感),
+        // 存成 "FINANCE" 的话卡片上就直接显示原始 code 了。
+        when(categoryMapper.selectByCode("AGENT", "FINANCE")).thenReturn(cat("AGENT", "finance", "财务"));
+        when(publicationMapper.selectByCode("agent-1")).thenReturn(null);
+
+        PublicationCreateRequest req = createReq("AGENT");
+        req.setCategoryCode("FINANCE");
+
+        MpPublication result = service.create(req, 10L, 7L);
+
+        assertThat(result.getCategoryCode()).isEqualTo("finance");
     }
 
     @Test
@@ -255,6 +345,60 @@ class PublicationServiceTest {
         assertThat(((OpcException) e).getCode())
                 .as("与 create() 同一条守卫:必须是 400,不能是 404/500").isEqualTo(400);
         verify(publicationMapper, never()).updateById(any());
+    }
+
+    @Test
+    @DisplayName("edit — MODULE 商品改类目:跟模块类目对不上 → 400,且不写库")
+    void edit_400_whenModuleCategoryMismatch() {
+        MpPublication draft = pub(1L, 10L, "DRAFT", "MODULE", "ecom");
+        draft.setModuleId(200L);
+        when(publicationMapper.selectById(1L)).thenReturn(draft);
+        when(categoryMapper.selectByCode("MODULE", "tool")).thenReturn(cat("MODULE", "tool", "效率工具"));
+        when(categoryMapper.selectByCode("MODULE", "ECOM")).thenReturn(cat("MODULE", "ecom", "电商运营"));
+        when(communityModuleMapper.selectById(200L)).thenReturn(module(200L, "ecom-ops", "电商运营助手", "ECOM"));
+
+        PublicationEditRequest req = new PublicationEditRequest();
+        req.setCategoryCode("tool");
+
+        Throwable e = catchThrowable(() -> service.edit(1L, req, 10L, 7L));
+
+        assertThat(e).isInstanceOf(OpcException.class)
+                .hasMessageContaining("类目与模块类目不一致");
+        verify(publicationMapper, never()).updateById(any());
+    }
+
+    @Test
+    @DisplayName("edit — MODULE 商品挂的社区模块已被删 → 只记 WARN 放行,不让这条商品被锁死")
+    void edit_success_whenModuleGone() {
+        MpPublication draft = pub(1L, 10L, "DRAFT", "MODULE", "ecom");
+        draft.setModuleId(200L);
+        when(publicationMapper.selectById(1L)).thenReturn(draft);
+        when(categoryMapper.selectByCode("MODULE", "tool")).thenReturn(cat("MODULE", "tool", "效率工具"));
+        when(communityModuleMapper.selectById(200L)).thenReturn(null);
+
+        PublicationEditRequest req = new PublicationEditRequest();
+        req.setCategoryCode("tool");
+
+        service.edit(1L, req, 10L, 7L);
+
+        verify(publicationMapper).updateById(any(MpPublication.class));
+    }
+
+    @Test
+    @DisplayName("edit — 类目 code 归一化:传 \"FINANCE\" 也只把规范写法 \"finance\" 写库")
+    void edit_canonicalizesCategoryCode() {
+        MpPublication draft = pub(1L, 10L, "DRAFT", "AGENT", "office");
+        when(publicationMapper.selectById(1L)).thenReturn(draft);
+        when(categoryMapper.selectByCode("AGENT", "FINANCE")).thenReturn(cat("AGENT", "finance", "财务"));
+
+        PublicationEditRequest req = new PublicationEditRequest();
+        req.setCategoryCode("FINANCE");
+
+        service.edit(1L, req, 10L, 7L);
+
+        var captor = ArgumentCaptor.forClass(MpPublication.class);
+        verify(publicationMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getCategoryCode()).isEqualTo("finance");
     }
 
     @Test

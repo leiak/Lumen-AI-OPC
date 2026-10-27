@@ -5,6 +5,7 @@ import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.marketplace.domain.MpInstall;
 import com.ruoyi.opc.marketplace.domain.MpPublication;
 import com.ruoyi.opc.marketplace.feign.AgentHubClient;
+import com.ruoyi.opc.marketplace.feign.CommunityClient;
 import com.ruoyi.opc.marketplace.mapper.MpInstallMapper;
 import com.ruoyi.opc.marketplace.mapper.MpPublicationMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,12 +54,14 @@ class InstallServiceTest {
     MpPublicationMapper publicationMapper;
     @Mock
     AgentHubClient agentHubClient;
+    @Mock
+    CommunityClient communityClient;
 
     private InstallServiceImpl installService;
 
     @BeforeEach
     void setUp() {
-        installService = new InstallServiceImpl(installMapper, publicationMapper, agentHubClient);
+        installService = new InstallServiceImpl(installMapper, publicationMapper, agentHubClient, communityClient);
     }
 
     private static MpPublication pub(String productType) {
@@ -184,6 +187,95 @@ class InstallServiceTest {
 
         assertThat(result.getAgentInstanceId()).isNull();
         verify(agentHubClient, never()).createAgentInstance(any());
+    }
+
+    // ——————————————— W80 P2:MODULE 安装要真的通知社区 ———————————————
+
+    @Test
+    @DisplayName("install — MODULE 商品:装完要通知社区给模块 +1,且带上租户/用户/商品三个键")
+    @SuppressWarnings("unchecked")
+    void install_MODULE_notifiesCommunity() {
+        MpPublication p = MpPublication.builder().id(1L).status("PUBLISHED")
+                .productType("MODULE").moduleId(50L).build();
+        when(publicationMapper.selectById(1L)).thenReturn(p);
+        when(installMapper.selectUnique(1L, 1L, 1L)).thenReturn(null);
+        when(installMapper.insert(any(MpInstall.class))).thenAnswer(inv -> {
+            MpInstall i = inv.getArgument(0);
+            i.setId(200L);
+            return 1;
+        });
+        when(communityClient.installModule(eq(50L), any())).thenReturn(R.ok(Map.of("installCount", 3)));
+
+        MpInstall result = installService.install(1L, 1L, 1L);
+
+        assertThat(result.getStatus()).as("安装本身成功").isEqualTo("ACTIVE");
+        ArgumentCaptor<Map<String, Object>> body = ArgumentCaptor.forClass(Map.class);
+        verify(communityClient).installModule(eq(50L), body.capture());
+        assertThat(body.getValue())
+                .containsEntry("tenantCompanyId", 1L)
+                .containsEntry("userId", 1L)
+                .containsEntry("publicationId", 1L);
+    }
+
+    @Test
+    @DisplayName("install — MODULE 商品:社区那边挂了只降级,安装照样成功(不把展示计数当事务)")
+    void install_MODULE_degradesWhenCommunityFails() {
+        MpPublication p = MpPublication.builder().id(1L).status("PUBLISHED")
+                .productType("MODULE").moduleId(50L).build();
+        when(publicationMapper.selectById(1L)).thenReturn(p);
+        when(installMapper.selectUnique(1L, 1L, 1L)).thenReturn(null);
+        when(installMapper.insert(any(MpInstall.class))).thenAnswer(inv -> {
+            MpInstall i = inv.getArgument(0);
+            i.setId(200L);
+            return 1;
+        });
+        when(communityClient.installModule(eq(50L), any())).thenThrow(new RuntimeException("opc-community 不可用"));
+
+        MpInstall result = installService.install(1L, 1L, 1L);
+
+        // 关键:社区计数没记上是「这个数字不准」,不是「模块没装」
+        assertThat(result.getStatus()).as("社区不可用不得回滚安装").isEqualTo("ACTIVE");
+        verify(installMapper).insert(any(MpInstall.class));
+        verify(publicationMapper).incrementInstallCount(1L);
+    }
+
+    @Test
+    @DisplayName("install — MODULE 商品:社区回包里没有成功标记(降级)同样不阻断安装")
+    void install_MODULE_degradesWhenCommunityReturnsFail() {
+        MpPublication p = MpPublication.builder().id(1L).status("PUBLISHED")
+                .productType("MODULE").moduleId(50L).build();
+        when(publicationMapper.selectById(1L)).thenReturn(p);
+        when(installMapper.selectUnique(1L, 1L, 1L)).thenReturn(null);
+        when(installMapper.insert(any(MpInstall.class))).thenAnswer(inv -> {
+            MpInstall i = inv.getArgument(0);
+            i.setId(200L);
+            return 1;
+        });
+        when(communityClient.installModule(eq(50L), any())).thenReturn(R.fail("社区降级"));
+
+        MpInstall result = installService.install(1L, 1L, 1L);
+
+        assertThat(result.getStatus()).isEqualTo("ACTIVE");
+        verify(publicationMapper).incrementInstallCount(1L);
+    }
+
+    @Test
+    @DisplayName("install — AGENT 商品:不通知社区(只有 MODULE 才有社区模块可加)")
+    void install_AGENT_doesNotNotifyCommunity() {
+        MpPublication p = MpPublication.builder().id(1L).status("PUBLISHED")
+                .productType("AGENT").agentDefinitionId(50L).name("AI 助手").build();
+        when(publicationMapper.selectById(1L)).thenReturn(p);
+        when(installMapper.selectUnique(1L, 1L, 1L)).thenReturn(null);
+        when(agentHubClient.createAgentInstance(any())).thenReturn(R.ok(Map.<String, Object>of("id", 100L)));
+        when(installMapper.insert(any(MpInstall.class))).thenAnswer(inv -> {
+            MpInstall i = inv.getArgument(0);
+            i.setId(200L);
+            return 1;
+        });
+
+        installService.install(1L, 1L, 1L);
+
+        verify(communityClient, never()).installModule(anyLong(), any());
     }
 
     // ——————————————— Task 8.5 code-review 补齐 ———————————————

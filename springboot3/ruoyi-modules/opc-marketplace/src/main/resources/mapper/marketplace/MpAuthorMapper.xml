@@ -76,6 +76,16 @@
     </update>
 
     <!--
+        total_subscribers 按真实订阅行数**回写**(不是 +1/-1):
+        订阅者数 = COUNT(DISTINCT tenant_company_id) —— 同一家公司的多个人订阅只算 1 个,
+        退订时不知道该减几个,增量写法在这种口径下必然漂移。回写则永远与查询一致。
+    -->
+    <update id="refreshTotalSubscribers">
+        UPDATE mp_author SET total_subscribers = #{count}, update_time = NOW(3)
+        WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <!--
         批量按 id 查询作者,服务层负责短路空集合 —— MyBatis 不能生成 IN (),需在调用前过滤.
         顺序由数据库决定(本查询未指定 ORDER BY);若调用方需要顺序,自行构建 Map<Long, MpAuthor>.
     -->

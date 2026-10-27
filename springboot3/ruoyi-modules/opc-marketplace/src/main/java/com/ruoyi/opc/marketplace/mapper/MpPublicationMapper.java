@@ -50,15 +50,25 @@ public interface MpPublicationMapper {
     int incrementInstallCount(Long id);
 
     /**
-     * <b>刻意不接线，直到 P2。</b>
+     * 订阅数 +1 — W80 P2 起有真实调用方（{@code SubscriptionServiceImpl}）。
      *
-     * <p>P1 没有「订阅」这个产品动作 —— 没有任何代码路径会写 {@code subscription_count}，
-     * 前端也<b>刻意不展示</b>它（详情页统计条只有 安装数 / 浏览量 / 评分数，见
-     * {@code detail.vue}）。别把它当成漏接线顺手接上：那会让计数器统计一个产品上不存在的
-     * 行为，页面上出现一个永远不动、或比真实情况虚高的数字，比不显示更糟。
-     * P2 真做订阅时，这里连同 UI 一起补。
+     * <p><b>口径</b>：{@code subscription_count == COUNT(mp_subscription WHERE status='ACTIVE')}。
+     * 订阅成功 +1、退订 -1、重新订阅 +1。健康检查第 19 节断言这个不变量。
+     *
+     * <p>P1 时本方法<b>刻意不接线</b> —— 那时没有「订阅」这个产品动作，
+     * 计数器统计的是一个产品上不存在的行为，页面上会出现一个永远不动的数字，
+     * 比不显示更糟。P2 把 {@code mp_subscription} 表与 UI 一起补上后才接的。
      */
     int incrementSubscriptionCount(Long id);
+
+    /**
+     * 订阅数 -1（退订）— W80 P2。
+     *
+     * <p>配 {@link #incrementSubscriptionCount(Long)} 用。下限保护在 SQL 里做：
+     * 计数不会减到负数（{@code GREATEST(subscription_count - 1, 0)}）——
+     * 计数器出现负数比偏大更像「数据坏了」。
+     */
+    int decrementSubscriptionCount(Long id);
 
     int updateRating(@Param("id") Long id, @Param("avg") BigDecimal avg, @Param("count") Integer count);
 

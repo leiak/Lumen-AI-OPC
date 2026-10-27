@@ -1,10 +1,12 @@
 package com.ruoyi.opc.marketplace;
 
+import com.ruoyi.opc.marketplace.mapper.CommunityModuleMapper;
 import com.ruoyi.opc.marketplace.mapper.MpAuthorMapper;
 import com.ruoyi.opc.marketplace.mapper.MpCategoryMapper;
 import com.ruoyi.opc.marketplace.mapper.MpInstallMapper;
 import com.ruoyi.opc.marketplace.mapper.MpPublicationMapper;
 import com.ruoyi.opc.marketplace.mapper.MpReviewMapper;
+import com.ruoyi.opc.marketplace.mapper.MpSubscriptionMapper;
 import com.ruoyi.opc.marketplace.mapper.MpTagMapper;
 import org.apache.ibatis.builder.xml.XMLMapperBuilder;
 import org.apache.ibatis.session.Configuration;
@@ -20,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 临时校验（Task 2）：6 个 mapper XML 能被 MyBatis 解析，
+ * 临时校验（Task 2）：8 个 mapper XML 能被 MyBatis 解析，
  * 且接口每个方法都有对应 statement。
  */
 class MpMapperXmlParseTest {
@@ -30,7 +32,7 @@ class MpMapperXmlParseTest {
         Configuration cfg = new Configuration();
         PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
         Resource[] resources = resolver.getResources("classpath*:mapper/marketplace/*.xml");
-        assertEquals(6, resources.length, "应有 6 个 mapper XML");
+        assertEquals(8, resources.length, "应有 8 个 mapper XML");
         for (Resource r : resources) {
             try (InputStream in = r.getInputStream()) {
                 new XMLMapperBuilder(in, cfg, r.toString(), cfg.getSqlFragments()).parse();
@@ -38,7 +40,8 @@ class MpMapperXmlParseTest {
         }
 
         List<Class<?>> mappers = List.of(MpAuthorMapper.class, MpPublicationMapper.class,
-                MpInstallMapper.class, MpReviewMapper.class, MpCategoryMapper.class, MpTagMapper.class);
+                MpInstallMapper.class, MpReviewMapper.class, MpCategoryMapper.class, MpTagMapper.class,
+                CommunityModuleMapper.class, MpSubscriptionMapper.class);
         int methods = 0;
         for (Class<?> mapper : mappers) {
             for (Method m : mapper.getDeclaredMethods()) {
@@ -47,8 +50,9 @@ class MpMapperXmlParseTest {
                 assertTrue(cfg.hasStatement(id), "缺少 statement: " + id);
             }
         }
-        assertEquals(42, methods, "6 mapper 共 42 个方法 "
-                + "(MpPublicationMapper 新增 selectPublishedById 公开详情专用过滤 PUBLISHED, "
-                + "MpCategoryMapper 新增 selectByCodes 用于列表页批量填充 categoryName)");
+        assertEquals(53, methods, "8 mapper 共 53 个方法 "
+                + "(W80 P2 新增 CommunityModuleMapper 2 个只读方法 + MpSubscriptionMapper 7 个方法; "
+                + "另加 MpPublicationMapper.decrementSubscriptionCount 与 "
+                + "MpAuthorMapper.refreshTotalSubscribers —— 42 + 2 + 7 + 1 + 1)");
     }
 }

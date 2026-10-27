@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.opc.marketplace.mapper.CommunityModuleMapper">
+
+    <!--
+        opc_community_module 的**只读**投影。
+        这张表归 opc-community 所有, marketplace 只读不写 ——
+        本文件刻意不提供 insert / update / delete,
+        写操作一律走 CommunityClient(Feign) 让社区自己写。
+    -->
+
+    <resultMap id="BaseResultMap" type="com.ruoyi.opc.marketplace.domain.MpCommunityModule">
+        <id     column="id"           property="id"/>
+        <result column="code"         property="code"/>
+        <result column="name"         property="name"/>
+        <result column="category"     property="category"/>
+        <result column="install_count" property="installCount"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, code, name, category, install_count
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_community_module
+        WHERE id = #{id} AND status != 'DELETED'
+        LIMIT 1
+    </select>
+
+    <select id="selectByCode" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM opc_community_module
+        WHERE code = #{code} AND status != 'DELETED'
+        LIMIT 1
+    </select>
+
+</mapper>
