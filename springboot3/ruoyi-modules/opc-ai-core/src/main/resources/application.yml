@@ -123,3 +123,25 @@ jasypt:
 mybatis:
   mapper-locations: classpath*:mapper/**/*.xml
   type-aliases-package: com.ruoyi.opc.ai.domain
+
+# ============================================================
+# Actuator / Prometheus 指标
+#
+# /actuator/prometheus 端点由 micrometer-registry-prometheus 注册
+# (依赖见本模块 pom.xml)。Spring Boot 默认不暴露它 —— Prometheus
+# 每 15 秒抓到的是 404,7 个 target 全部 down,监控自上线起
+# 一个指标都没收到过。
+#
+# 用白名单而不是 "*":/actuator/env 会把数据源口令、Jasypt 密钥
+# 吐出来。业务端口只绑 127.0.0.1、网关也没有 /actuator/** 路由,
+# 暴露面仅回环口与容器网。
+# ============================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      show-components: always

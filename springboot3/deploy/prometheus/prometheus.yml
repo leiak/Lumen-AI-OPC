@@ -8,7 +8,15 @@ global:
 
 scrape_configs:
   # Nacos
+  #
+  # 路径带 /nacos 前缀：Nacos 的 server.servlet.context-path 就是 /nacos，
+  # 所以 actuator 端点在 /nacos/actuator/* 下。
+  # 之前这里抓的是默认路径 /metrics —— 那是 Prometheus 自己的路径，
+  # Nacos 从来没有这个端点，这个 job 一直是 down。
+  # 要真的抓到指标，还得在 nacos/conf/application.properties 里放开
+  # management.endpoints.web.exposure.include（默认只暴露 health）。
   - job_name: 'nacos'
+    metrics_path: '/nacos/actuator/prometheus'
     static_configs:
       - targets: ['nacos1:8848']
 
@@ -53,16 +61,10 @@ scrape_configs:
     static_configs:
       - targets: ['aiopc-finance:9305']
 
-  # MySQL —— 宿主机没装 mysqld_exporter，9104 上没有东西（早于本次改动就是死的）。
-  # 要接先把 mysqld_exporter 加进 compose，再把 target 指向它。
-  - job_name: 'mysql'
-    static_configs:
-      - targets: ['host.docker.internal:9104']
-
-  # Redis —— 同上，缺 redis_exporter，9121 上没有东西。
-  - job_name: 'redis'
-    static_configs:
-      - targets: ['host.docker.internal:9121']
+  # MySQL / Redis —— 这两个 job 已删。
+  # 宿主机从来没装 mysqld_exporter / redis_exporter,9104 与 9121 上
+  # 没有任何东西,target 恒 down,只是让 Prometheus 界面上多两条噪音。
+  # 真要接:先把 exporter 加进 compose,再把 target 指向它。
 
   # RabbitMQ —— management 插件自带 /metrics（容器内 15692），
   # 宿主机没发布这个端口，用服务名直连容器端口。
