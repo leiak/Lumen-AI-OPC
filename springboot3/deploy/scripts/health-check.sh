@@ -26,6 +26,7 @@
 #  19) 市场页改名 + 数字真实性 + 监控
 #  20) 第 2 轮的动作是真的 (订阅 + MODULE 装完真的通知社区)
 #  21) CRM 的 AI 评分是真的 (分数和理由同生共死)
+#  22) Nacos 配置中心是真的在管事 (命名空间 + 配置真在跑)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -2762,6 +2763,251 @@ except Exception:
   fi
 }
 
+# ---------- 22. Nacos 配置中心是真的在管事 (不是摆设) ----------
+#
+# 这一节守的是「第 5 条假话」: 仓库里摆着一整套 deploy/nacos/*.yml,
+# 看上去「配置中心在管着服务」—— 实际上前几轮里它压根没生效:
+#   · 命名空间 opc-dev 在 tenant_info 里没有户口本 → 控制台看不见这一栏;
+#   · 7 份 dev 配置被老脚本用 namespaceId= 推进去, 服务端静默回落到默认 tenant,
+#     配置其实躺在 public 栏, 而服务端是按 tenant=opc-dev 拉的 → 拉了个空;
+#   · import-dev.sh 推送和回读用同一个错参数 → md5 校验一路 [OK], 是假阳性。
+#
+# 四件事:
+#   22.1 命名空间在控制台看得见 (tenant_info 里那本户口)
+#   22.2 9 份 dev 配置真的在 tenant=opc-dev 下, 且内容与仓库文件一致
+#   22.3 默认 tenant 下没有 OPC dev 配置残留
+#        —— 同名两份摆着, 迟早有人改错那一份 (而且那份还带着
+#           spring.datasource 指 127.0.0.1 / actuator 暴露 "*" 的老内容)
+#   22.4 冷启动那一刻服务真的读到了这份配置
+#        —— 判据: /actuator/metrics/jvm.memory.used 上带 application 标签。
+#           这个标签只写在 Nacos 那份 application-dev.yml 里
+#           (management.metrics.tags.application), 各服务本地 yml 都没有;
+#           而「公共标签」和「端点暴露面」都是**启动时**定下的, 热刷新加不了 ——
+#           所以标签在不在, 恰恰说明服务冷启动时读到没读到。
+#   22.5 没读到的服务列出来 (待重建清单)
+#
+# 注意 ruoyi-system 不在探测名单里: compose 里给它显式设了
+# SPRING_CLOUD_NACOS_CONFIG_ENABLED=false —— 它不读 Nacos 配置, 由自己的
+# 本地 application.yml 全权负责。它永远不会带上 application 标签, 那不是故障。
+check_nacos_config_center() {
+  hr
+  echo "[22] Nacos 配置中心是真的在管事"
+  hr
+
+  local ns="opc-dev"
+  local api="http://${GATEWAY_HOST}:${NACOS_PORT}/nacos"
+  local yml_dir="${DEPLOY_DIR}/nacos"
+
+  # ---- 22.1 / 22.2 / 22.3 ----
+  local out
+  out=$(python3 - "${api}" "${ns}" "${yml_dir}" <<'PY' 2>/dev/null
+import json, os, sys, urllib.parse, urllib.request
+
+api, ns, yml_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+FILES = ["application-dev.yml", "opc-common-dev.yml", "opc-notification-dev.yml",
+         "opc-crm-dev.yml", "opc-community-dev.yml", "opc-marketplace-dev.yml",
+         "opc-hr-dev.yml", "opc-erp-dev.yml", "opc-content-dev.yml"]
+
+def http(url):
+    try:
+        r = urllib.request.urlopen(url, timeout=10)
+        return r.read().decode('utf-8', errors='replace')
+    except Exception:
+        return None
+
+def norm(s):
+    return '\n'.join((s or '').splitlines())
+
+out = []
+
+# ---- 22.1 命名空间在控制台看得见 ----
+raw = http(api + '/v1/console/namespaces')
+info = {}
+if raw:
+    try:
+        for n in json.loads(raw).get('data') or []:
+            info[n.get('namespace')] = n
+    except Exception:
+        pass
+if ns in info:
+    out.append(("OK", "22.1 命名空间 %s 在控制台看得见 (configCount=%s)" % (ns, info[ns].get('configCount'))))
+else:
+    out.append(("FAIL", "22.1 命名空间 %s 不在控制台命名空间列表里 —— 控制台看不见这一栏, 配置等于没纳管" % ns))
+
+# ---- 22.2 9 份配置在 tenant=opc-dev 下, 且与仓库逐行一致 ----
+missing, drift, good = [], [], []
+for f in FILES:
+    url = api + '/v1/cs/configs?' + urllib.parse.urlencode(
+        {'dataId': f, 'group': 'DEFAULT_GROUP', 'tenant': ns})
+    body = http(url)
+    if body is None or body.strip() in ('', 'config data not exist'):
+        missing.append(f)
+        continue
+    path = os.path.join(yml_dir, f)
+    if not os.path.exists(path):
+        drift.append(f + "(仓库里没有这份文件)")
+        continue
+    with open(path, encoding='utf-8') as fh:
+        repo = fh.read()
+    if norm(body) != norm(repo):
+        drift.append(f)
+        continue
+    good.append(f)
+if missing:
+    out.append(("FAIL", "22.2 tenant=%s 下缺 %d 份配置: %s" % (ns, len(missing), ' '.join(missing))))
+elif drift:
+    out.append(("FAIL", "22.2 %d 份配置内容与仓库不一致(漂移): %s" % (len(drift), ' '.join(drift))))
+else:
+    out.append(("OK", "22.2 %d 份 dev 配置都在 tenant=%s 下, 且与仓库文件逐行一致" % (len(good), ns)))
+
+# ---- 22.3 默认 tenant 下没有 OPC dev 残留 ----
+url = api + '/v1/cs/configs?' + urllib.parse.urlencode(
+    {'search': 'blur', 'dataId': '', 'group': '', 'tenant': '', 'pageNo': 1, 'pageSize': 200})
+raw = http(url)
+leftovers = []
+if raw:
+    try:
+        for it in json.loads(raw).get('pageItems') or []:
+            did = it.get('dataId') or ''
+            if did in FILES:
+                leftovers.append(did)
+    except Exception:
+        pass
+if leftovers:
+    out.append(("FAIL", "22.3 默认 tenant 下还留着 %d 份 OPC dev 配置(同名两份, 迟早有人改错那一份): %s"
+                % (len(leftovers), ' '.join(sorted(leftovers)))))
+else:
+    out.append(("OK", "22.3 默认 tenant 下没有 OPC dev 配置残留"))
+
+for st, msg in out:
+    print(st + "\t" + msg)
+PY
+)
+
+  if [[ -z "${out}" ]]; then
+    nok "22.1-22.3 连不上 Nacos (${api}) —— 这一节空转, 证明不了任何东西"
+  else
+    while IFS=$'\t' read -r st msg; do
+      [[ -z "${st}" ]] && continue
+      case "${st}" in
+        OK)   ok   "${msg}" ;;
+        WARN) warn "${msg}" ;;
+        *)    nok  "${msg}" ;;
+      esac
+    done <<< "${out}"
+  fi
+
+  # ---- 22.4 / 22.5 冷启动时到底读到没读到 ----
+  #
+  # 判据: /actuator/metrics/jvm.memory.used 上带 application 标签。
+  #   这个标签只写在 Nacos 那份 application-dev.yml 里
+  #   (management.metrics.tags.application), 各服务本地 yml 都没有这一条;
+  #   而「公共标签」和「端点暴露面」都是**启动时**定下的, 热刷新加不了 ——
+  #   所以标签在不在, 恰恰说明服务冷启动那一刻读到没读到。
+  #
+  # 但「没有标签」有两种完全不同的原因, 严重程度也不同:
+  #   · 容器是在配置进 Nacos **之前**启动的 → 还没重建, 是待办 (WARN)
+  #   · 容器是在配置进 Nacos **之后**启动的, 却仍然没标签 → 配置没生效 (FAIL)
+  # 拿容器启动时刻 (docker inspect) 和配置落库时刻 (config_info.gmt_modified)
+  # 一比就分得清 —— 两者都是 UTC, 可以直接比。
+  local cfg_time started_at
+  cfg_time=$(db_q "SELECT DATE_FORMAT(MAX(gmt_modified), '%Y-%m-%d %H:%i:%s') FROM \`ry-config\`.config_info WHERE tenant_id = 'opc-dev';" | head -1)
+  started_at=$(docker inspect --format '{{.Name}}|{{.State.StartedAt}}' \
+    aiopc-gateway aiopc-auth aiopc-user-center aiopc-agent-hub aiopc-ai-core \
+    aiopc-billing aiopc-finance aiopc-insight aiopc-notification aiopc-crm \
+    aiopc-community aiopc-hr aiopc-erp aiopc-content aiopc-marketplace 2>/dev/null || true)
+
+  local probe
+  probe=$(python3 - "${cfg_time}" "${started_at}" <<'PY' 2>/dev/null
+import json, sys, urllib.request
+from datetime import datetime, timezone
+
+cfg_raw = (sys.argv[1] or "").strip()
+start_map = {}
+for line in (sys.argv[2] or "").split("\n"):
+    if "|" not in line:
+        continue
+    name, _, ts = line.partition("|")
+    start_map[name.strip().lstrip("/")] = ts.strip()
+
+def epoch(s):
+    if not s:
+        return None
+    try:
+        if "T" in s:
+            return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
+    except Exception:
+        return None
+
+cfg_epoch = epoch(cfg_raw)
+
+# ruoyi-system 不在名单里: compose 给它显式关了 Nacos 配置
+# (SPRING_CLOUD_NACOS_CONFIG_ENABLED=false), 它由本地 application.yml 全权负责。
+SVCS = [("gateway", 8080), ("auth", 19200), ("user-center", 9302),
+        ("agent-hub", 9303), ("ai-core", 9301), ("billing", 9304),
+        ("finance", 9305), ("insight", 9306), ("notification", 9310),
+        ("crm", 9312), ("community", 9316), ("hr", 9322), ("erp", 9311),
+        ("content", 9325), ("marketplace", 9317)]
+
+tagged, pending, broken = [], [], []
+for name, port in SVCS:
+    url = "http://127.0.0.1:%d/actuator/metrics/jvm.memory.used" % port
+    has_tag = False
+    try:
+        d = json.loads(urllib.request.urlopen(url, timeout=6).read().decode())
+        tags = {}
+        for t in (d.get("availableTags") or []):
+            vals = t.get("values") or []
+            tags[t.get("tag")] = vals[0] if vals else ""
+        has_tag = bool(tags.get("application"))
+    except Exception:
+        pass
+    started = epoch(start_map.get("aiopc-" + name, ""))
+    if has_tag:
+        tagged.append(name)
+    elif cfg_epoch is None or started is None or started < cfg_epoch:
+        pending.append(name)      # 容器比配置还老 -> 还没重建
+    else:
+        broken.append(name)       # 配置之后才重启的, 却还是没读到 -> 配置没生效
+
+print("TAGGED\t" + " ".join(tagged))
+print("PENDING\t" + " ".join(pending))
+print("BROKEN\t" + " ".join(broken))
+print("CFG\t" + (cfg_raw or "unknown"))
+PY
+)
+
+  if [[ -z "${probe}" ]]; then
+    nok "22.4 探不到任何服务的 actuator —— 这一节空转, 证明不了任何东西"
+    return
+  fi
+
+  local tagged="" pending="" broken="" cfg_seen=""
+  while IFS=$'\t' read -r kind val; do
+    case "${kind}" in
+      TAGGED)  tagged="${val}" ;;
+      PENDING) pending="${val}" ;;
+      BROKEN)  broken="${val}" ;;
+      CFG)     cfg_seen="${val}" ;;
+    esac
+  done <<< "${probe}"
+
+  if [[ -n "${tagged}" ]]; then
+    ok "22.4 ${tagged} 冷启动时读到了 Nacos 配置 (指标上带着 application 标签; 配置落库时刻 ${cfg_seen})"
+  fi
+
+  if [[ -n "${broken}" ]]; then
+    nok "22.4 ${broken} 是在配置进 Nacos 之后才重启的, 却仍然没有 application 标签 —— 配置压根没生效, 查 Nacos 连接和 bootstrap.yml 的 namespace"
+  fi
+
+  if [[ -n "${pending}" ]]; then
+    warn "22.5 ${pending} 还没在配置生效之后重建过 (容器启动早于配置落库时刻 ${cfg_seen}) —— 重建它们: bash deploy.sh rebuild <服务>"
+  else
+    ok "22.5 没有待重建的服务"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -2788,6 +3034,7 @@ main() {
   check_marketplace_truth
   check_marketplace_actions
   check_crm_ai_score
+  check_nacos_config_center
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"
