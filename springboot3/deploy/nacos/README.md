@@ -90,7 +90,7 @@ cd springboot3/deploy/nacos
 | `opc-hr-dev.yml`            | opc-hr                                      | 单服务私有                  |
 | `opc-erp-dev.yml`           | opc-erp                                     | 单服务私有                  |
 | `opc-content-dev.yml`       | opc-content                                 | 单服务私有                  |
-| `sentinel-ruoyi-gateway`    | 网关的 Sentinel 数据源（`gw-flow` 流控规则） | 内容是 `[]` = 目前没有规则   |
+| `sentinel-ruoyi-gateway`    | 网关的 Sentinel 数据源（`gw-flow` 流控规则） | **17 条规则**，一一对应网关 17 条路由 |
 
 `opc-ai-core` / `opc-agent-hub` / `opc-user-center` / `opc-billing` / `opc-finance`
 没有各自的 dev 文件：它们的私有配置（`ai.*` / `langchain4j.*` / `qdrant.*` 等）
@@ -117,6 +117,88 @@ cd springboot3/deploy/nacos
 | `opc-crm-dev.yml`           | `18c7b90`（比别的更旧，还带着已废弃的 base-url 块） |
 
 要取回：`git show 48abbee^:springboot3/deploy/nacos/application-dev.yml`。
+
+
+### 网关的 Sentinel 限流规则表（唯一一份 JSON）
+
+DataID `sentinel-ruoyi-gateway` 是这 10 份里**唯一不走 `config.import`** 的：
+Sentinel 客户端自己去 Nacos 取（`groupId=DEFAULT_GROUP`、`namespace=opc-dev`、
+`data-type=json`、`rule-type=gw-flow`），网关的 `bootstrap.yml` 里写死了这个 dataId。
+
+#### `resource` 是**路由 id**，不是 URL 路径
+
+这是最容易配错的一处。Sentinel 1.8.9 的 `SentinelGatewayFilter` 建 Entry 时，
+资源名用的是 `route.getId()`，**不是** `route.getUri()`：
+
+```java
+new EntryConfig(route.getId(), EntryType.IN, 1, params,
+                new ContextConfig(contextName(routeId), origin))
+//          ^^^^^^^^^^^^^^ 资源名 = 路由 id
+// contextName(routeId) 只是 ContextConfig 的名字，不是资源名
+```
+
+所以规则表里该写 `opc-ai-core`，**不是** `/opc/llm/**`。
+`resourceMode` 只有两个取值（`SentinelGatewayConstants`）：
+
+| 值 | 常量                        | 含义         |
+|----|-----------------------------|--------------|
+| 0  | `RESOURCE_MODE_ROUTE_ID`    | 按**路由 id**匹配（网关用这个） |
+| 1  | `RESOURCE_MODE_CUSTOM_API_NAME` | 按自定义 API 名匹配（本栈不用） |
+
+#### 规则表只有 17 条，一一对应网关的 17 条路由
+
+真相源是**仓库里**的 `deploy/nacos/sentinel-ruoyi-gateway.json`；
+Nacos 里那份是它的部署副本。改规则改仓库那份，然后 `./import-dev.sh` 重推。
+
+| 路由 id | QPS | 为什么是这个数 |
+|---------|-----|----------------|
+| `ruoyi-auth-login` | 10 | 登录是打口令的地方，限得最狠 |
+| `ruoyi-auth` | 30 | 令牌签发/校验 |
+| `opc-ai-core` | 10 | LLM 调用最贵（每次都真掏钱），限得最狠 |
+| `opc-insight` / `opc-agent-hub` / `opc-crm` / `opc-community` / `opc-hr` / `opc-erp` / `opc-content` | 20 | 重查询/重聚合 |
+| `ruoyi-auth` / `ruoyi-system` / `opc-billing` / `opc-finance` / `opc-notification` / `opc-marketplace` | 30 | 普通业务读写 |
+| `opc-notification-ws` | 50 | 长连接，握手频繁但单个请求很轻 |
+
+`grade=1`（QPS 限流）、`intervalSec=1`（每秒）、`controlBehavior=0`（直接拒绝）。
+
+**字段只能用 `GatewayFlowRule` 1.8.9 真有的那几个**：
+`resource / resourceMode / grade / count / intervalSec / controlBehavior /
+burst / maxQueueingTimeoutMs / paramItem`。
+多写一个字段不会报错，只会被 Jackson 忽略 —— **规则看起来配了，其实没生效**。
+
+#### 这张表曾经有 4 条规则，两条都死
+
+存档里那 4 条（`ruoyi-auth` / `ruoyi-system` / `ruoyi-gen` / `ruoyi-job`）**从来没生效过**，
+两个问题叠在一起：
+
+1. 带了 `strategy` 和 `limitApp` 两个字段 —— `GatewayFlowRule` 里**压根没有这两个字段**；
+2. `ruoyi-gen` / `ruoyi-job` **不是本网关的路由**（网关只有 17 条）。
+
+即便当初它被正确推到了 `opc-dev`、网关也正确连上了 Nacos，这 4 条里
+至少 2 条挂在不存在的路由上、另外 2 条带着模型里没有的字段。
+存档在 `/root/opc-archive/nacos-public-tenant-2026-10-28/`（**不在仓库里** ——
+那几份里有明文口令，而本仓库是公开的）。
+
+#### 谁是这张表的唯一主人
+
+| 位置 | 角色 |
+|------|------|
+| `deploy/nacos/sentinel-ruoyi-gateway.json` | **真相源**，改这里 |
+| Nacos `opc-dev` / `sentinel-ruoyi-gateway` | 部署副本，由 `import-dev.sh` 推 |
+| Sentinel 控制台 | **只读视图**；控制台上改的规则重启就没了（不落 Nacos） |
+
+`health-check.sh` 第 23.4 节会拿 Nacos 里那份的每条 `resource`，
+跟 `ruoyi-gateway/src/main/resources/application.yml` 里**真实存在的路由 id** 对表：
+对不上报 FAIL，**路由新增了但忘了加规则**也报 FAIL。
+
+#### 被限流时返回的是 429
+
+Sentinel 命中时，RuoYi 的 `SentinelFallbackHandler` 以前返回的是 **HTTP 200** +
+`{"code":500,"msg":"请求超过最大数，请稍候再试"}` —— 被限流的请求和成功的请求在 HTTP 层面
+一模一样，客户端拿 200 当成功，监控里一个 429 都看不到。
+
+现在返回 **429 Too Many Requests**，body 仍用 RuoYi 的 `{code,msg,data}` 信封、code 跟着是 429。
+`SentinelFallbackHandlerTest` 把这条钉住了。
 
 
 ## 这份配置**不改**任何服务的行为

@@ -133,6 +133,39 @@ services:
     restart: unless-stopped
     networks: [aiopc-net]
 
+  # ============ Sentinel 控制台 ============
+  #
+  # 以前这个栈里**没有** Sentinel 控制台 —— 网关的 bootstrap.yml 里
+  # `transport.dashboard` 只能注释着，因为指着空气发心跳比不配还糟。
+  #
+  # 现在有了：
+  #   · 网关（唯一接了 Sentinel 的服务）通过 transport.dashboard 把心跳
+  #     发到 sentinel-dashboard:8718
+  #   · 控制台读的是**同一份** Nacos 规则表（dataId=sentinel-ruoyi-gateway,
+  #     tenant=opc-dev）—— 控制台上改规则 = 改 Nacos = 改仓库那份文件，
+  #     三个地方是同一份数据，不是三份
+  #
+  # 端口只绑 127.0.0.1：控制台没有任何鉴权，谁拿到 URL 谁就能改限流规则。
+  # 演示栈里它的用途是「看得见」，不是「对外提供」。
+  sentinel-dashboard:
+    image: bladex/sentinel-dashboard:latest
+    container_name: aiopc-sentinel-dashboard
+    ports: ["127.0.0.1:8718:8718"]
+    # 镜像自带那份配置写的是 localhost:8848 + 默认命名空间 ——
+    # 在容器里 127.0.0.1 是控制台自己，它连 Nacos 会直接失败，
+    # 命名空间也是空的，于是控制台显示「零节点、零规则」还看着一切正常。
+    volumes:
+      - ./sentinel-dashboard/application.yml:/home/admin/sentinel-dashboard/application.yml:ro
+    environment:
+      # 兜底：SPRING_APPLICATION_JSON 不依赖镜像里的任何路径，
+      # 挂载路径要是猜错了（WORKDIR 不是 home/admin/sentinel-dashboard），
+      # 这一份仍然生效。两份写的是同一件事。
+      - SPRING_APPLICATION_JSON={"spring":{"cloud":{"nacos":{"discovery":{"server-addr":"nacos1:8848","namespace":"opc-dev"},"config":{"server-addr":"nacos1:8848","namespace":"opc-dev","group":"DEFAULT_GROUP"}},"sentinel":{"datasource":{"gw-flow":{"nacos":{"server-addr":"nacos1:8848","namespace":"opc-dev","group-id":"DEFAULT_GROUP","data-id":"sentinel-ruoyi-gateway","data-type":"json","rule-type":"gw-flow"}}}}}}
+    depends_on:
+      - nacos1
+    restart: unless-stopped
+    networks: [aiopc-net]
+
   # ============ SkyWalking 链路追踪 ============
   skywalking-oap:
     image: apache/skywalking-oap-server:9.7.0

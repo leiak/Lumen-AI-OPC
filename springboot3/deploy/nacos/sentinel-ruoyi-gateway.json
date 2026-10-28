@@ -1,1 +1,138 @@
-[]
+[
+  {
+    "resource": "ruoyi-auth-login",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 10,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "ruoyi-auth",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 30,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "ruoyi-system",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 30,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-user-center",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 30,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-insight",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 20,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-agent-hub",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 20,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-ai-core",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 10,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-billing",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 30,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-finance",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 30,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-notification-ws",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 50,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-notification",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 30,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-crm",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 20,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-community",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 20,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-hr",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 20,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-erp",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 20,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-content",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 20,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "opc-marketplace",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 30,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  }
+]

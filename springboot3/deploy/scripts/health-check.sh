@@ -27,6 +27,7 @@
 #  20) 第 2 轮的动作是真的 (订阅 + MODULE 装完真的通知社区)
 #  21) CRM 的 AI 评分是真的 (分数和理由同生共死)
 #  22) Nacos 配置中心是真的在管事 (命名空间 + 配置真在跑)
+#  23) 记忆系统记事 + Sentinel 限流真的在限
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -3096,6 +3097,337 @@ PY
   fi
 }
 
+# ---------- 23) 记忆系统记事 + Sentinel 限流真的在限 ----------
+#
+# 这两件事以前都是「看着有、其实没有」：
+#
+#   · 记忆系统不记事 —— embed() 返回 Math.random() 填的"向量"，
+#     loadShortTerm() 永远返回空列表，writeLongTerm/searchLongTerm 零调用方。
+#     接口一路 200，日志里什么都查不到，多轮对话没有上下文。
+#   · 网关没有限流 —— bootstrap.yml 里 transport.dashboard 是注释掉的，
+#     Nacos 里的 Sentinel 规则表是空的 []，而 bootstrap.yml 的
+#     sentinel.datasource...server-addr 还写着 127.0.0.1（容器里那是网关自己）。
+#     README 写着「网关限流已接入 Nacos 持久化」，实际上那条路是断的。
+#
+# 所以判据必须是「真的发生了一件事」，不能是「配置里写了有」：
+#   记忆 → 真做一次 embed → 写 Qdrant → 搜回来 → 删探针 的往返；
+#   限流 → 真打满并发，看有没有 429 回来。
+check_memory_and_flow_control() {
+  hr
+  echo "[23] 记忆系统记事 + Sentinel 限流真的在限"
+  hr
+
+  local ns="opc-dev"
+  local api="http://${GATEWAY_HOST}:${NACOS_PORT}/nacos"
+  local gw="http://${GATEWAY_HOST}:${GATEWAY_PORT}"
+
+  # ---- 登录拿 token ----
+  local login_body token
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "${gw}/login" 2>/dev/null) || true
+  token=$(printf '%s' "${login_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data', {})
+    print(d.get('token','') or d.get('access_token',''))
+except Exception:
+    print('')
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    nok "23.1 拿不到 admin 的 token —— 这一节空转, 证明不了任何东西"
+    return
+  fi
+
+  # ---- 23.1 记忆自检 + 23.2 embedding 端点 ----
+  local mem_body mem_code emb_body emb_code
+  mem_body=$(curl -s -m 90 -H "Authorization: Bearer ${token}" \
+    "${gw}/opc/llm/memory/health" 2>/dev/null) || mem_body=""
+  mem_code=$(body_code "${mem_body}")
+
+  emb_body=$(curl -s -m 90 -X POST \
+    -H "Authorization: Bearer ${token}" \
+    -H "Content-Type: application/json" \
+    -d '{"texts":["健康检查探针: 记忆系统自检"],"type":"query"}' \
+    "${gw}/opc/llm/embedding" 2>/dev/null) || emb_body=""
+  emb_code=$(body_code "${emb_body}")
+
+  local out
+  out=$(python3 - "${mem_body}" "${mem_code}" "${emb_body}" "${emb_code}" <<'PY' 2>/dev/null
+import json, sys
+
+mem_raw, mem_code, emb_raw, emb_code = sys.argv[1:5]
+out = []
+
+def load(raw):
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
+
+def data_of(obj):
+    d = (obj or {}).get("data")
+    return d if isinstance(d, dict) else {}
+
+# ---- 23.1 记忆往返 ----
+mem = load(mem_raw)
+if mem_code != "200" or not isinstance(mem, dict):
+    out.append(("FAIL", "23.1 记忆自检接口不可用 (code=%s): %s" % (mem_code, (mem_raw or "")[:160])))
+else:
+    d = data_of(mem)
+    coll = d.get("collection")
+    provider = d.get("embeddingProvider")
+    err = d.get("roundTripError") or d.get("qdrantError")
+    if err:
+        out.append(("FAIL", "23.1 记忆自检报错: %s" % err))
+    if d.get("roundTrip") is not True:
+        out.append(("FAIL", "23.1 记忆写进去搜不回来 (roundTrip=%s) —— 向量化或 Qdrant 这一环是断的" % d.get("roundTrip")))
+    else:
+        out.append(("OK", "23.1 记忆真的往返了一次 (embed→写 Qdrant→搜回来→删探针), provider=%s 集合=%s"
+                    % (provider, coll)))
+    if d.get("collectionExists") is not True:
+        out.append(("FAIL", "23.1 长期记忆集合 %s 不存在 —— 记忆无处可存" % coll))
+    dim, exp = d.get("collectionDimension"), d.get("expectedDimension")
+    if not isinstance(dim, int) or dim <= 0:
+        out.append(("FAIL", "23.1 读不出集合的真实维度 (collectionDimension=%s)" % dim))
+    elif isinstance(exp, int) and dim != exp:
+        out.append(("FAIL", "23.1 集合维度 %s 与配置期望 %s 对不上 —— 写进去也检索不出来" % (dim, exp)))
+    else:
+        out.append(("OK", "23.1 集合 %s 维度 %s, 与配置一致" % (coll, dim)))
+    if d.get("embeddingAvailable") is not True:
+        out.append(("FAIL", "23.1 没有可用的 embedding provider (embeddingProvider=%s) —— 长期记忆写不进去" % provider))
+
+    # ---- 23.3 短期记忆 ----
+    st = d.get("shortTermSessions")
+    if isinstance(st, int) and st > 0:
+        out.append(("OK", "23.3 Redis 里有 %d 个会话的短期记忆" % st))
+    elif st == 0:
+        out.append(("WARN", "23.3 Redis 里一个短期记忆会话都没有 —— 要么真没人聊过, 要么写入路径没通"))
+    else:
+        out.append(("WARN", "23.3 读不出短期记忆会话数 (%s)%s" % (st, (": " + d["shortTermError"]) if d.get("shortTermError") else "")))
+
+# ---- 23.2 embedding 端点真的算出向量 ----
+emb = load(emb_raw)
+if emb_code != "200" or not isinstance(emb, dict):
+    out.append(("FAIL", "23.2 embedding 接口不可用 (code=%s): %s" % (emb_code, (emb_raw or "")[:160])))
+else:
+    e = data_of(emb)
+    vecs = e.get("vectors") or []
+    dim = e.get("dimension")
+    if not vecs:
+        out.append(("FAIL", "23.2 embedding 没算出向量 (vectors 为空, provider=%s)" % e.get("provider")))
+    else:
+        got = len(vecs[0]) if isinstance(vecs[0], list) else -1
+        if got <= 0:
+            out.append(("FAIL", "23.2 第一个向量长度异常: %s" % got))
+        elif isinstance(dim, int) and dim != got:
+            out.append(("FAIL", "23.2 声明维度 %s 与实际向量长度 %s 对不上" % (dim, got)))
+        else:
+            out.append(("OK", "23.2 embedding 真的算出了向量 provider=%s model=%s 维度=%s"
+                        % (e.get("provider"), e.get("model"), got)))
+
+for st, msg in out:
+    print(st + "\t" + msg)
+PY
+)
+
+  if [[ -z "${out}" ]]; then
+    nok "23.1-23.3 解析不了自检响应 —— 这一节空转, 证明不了任何东西"
+  else
+    while IFS=$'\t' read -r st msg; do
+      [[ -z "${st}" ]] && continue
+      case "${st}" in
+        OK)   ok   "${msg}" ;;
+        WARN) warn "${msg}" ;;
+        *)    nok  "${msg}" ;;
+      esac
+    done <<< "${out}"
+  fi
+
+  # ---- 23.4 Sentinel 规则表: 每条规则都挂在真实的路由 id 上, 且没有漏网的路由 ----
+  #
+  # 23.2 只保证「配置在」, 这里保证「配置是对的」:
+  # Sentinel 的 gw-flow 规则是**按路由 id** 匹配的 (SentinelGatewayFilter 取 Route.getId()),
+  # resource 写错一个字符 → 这条规则永远不生效, 而且没有任何报错。
+  # 反过来, 路由没有规则 = 这条路没有限流, 也不该悄悄放过。
+  local rules_out
+  rules_out=$(python3 - "${api}" "${ns}" "${DEPLOY_DIR}/../ruoyi-gateway/src/main/resources/application.yml" <<'PY' 2>/dev/null
+import json, os, re, sys, urllib.parse, urllib.request
+
+api, ns, gw_yml = sys.argv[1], sys.argv[2], sys.argv[3]
+out = []
+
+def http(url):
+    try:
+        r = urllib.request.urlopen(url, timeout=10)
+        return r.read().decode('utf-8', errors='replace')
+    except Exception:
+        return None
+
+# ---- 网关里真实的路由 id ----
+#
+# 按缩进找 routes: 那一段 —— 网关的 yml 里 routes: 后面先跟两行注释,
+# 按「遇到非 - 开头的行就结束」来切会把 routes 切空(第一行注释就把它切断了)。
+route_ids = []
+if os.path.exists(gw_yml):
+    with open(gw_yml, encoding='utf-8') as fh:
+        lines = fh.read().splitlines()
+    routes_indent = None
+    for i, line in enumerate(lines):
+        m = re.match(r'^(\s*)routes:\s*$', line)
+        if not m:
+            continue
+        routes_indent = len(m.group(1))
+        for nxt in lines[i + 1:]:
+            if not nxt.strip() or nxt.strip().startswith('#'):
+                continue
+            indent = len(nxt) - len(nxt.lstrip())
+            if indent <= routes_indent:
+                break                       # 出了 routes 段
+            mi = re.match(r'^\s*- id:\s*(\S+)\s*$', nxt)
+            if mi:
+                route_ids.append(mi.group(1))
+        break
+
+# ---- Nacos 里的规则表 ----
+url = api + '/v1/cs/configs?' + urllib.parse.urlencode(
+    {'dataId': 'sentinel-ruoyi-gateway', 'group': 'DEFAULT_GROUP', 'tenant': ns})
+raw = http(url)
+rules = None
+if raw and raw.strip() not in ('', 'config data not exist'):
+    try:
+        rules = json.loads(raw)
+    except Exception:
+        rules = None
+
+if rules is None:
+    out.append(("FAIL", "23.4 tenant=%s 下读不到 Sentinel 规则表 (dataId=sentinel-ruoyi-gateway)" % ns))
+elif not isinstance(rules, list) or not rules:
+    out.append(("FAIL", "23.4 Sentinel 规则表是空的 —— 网关现在一条限流规则都没有(空数组 = 全放行)"))
+else:
+    resources = []
+    bad = []
+    for r in rules:
+        if not isinstance(r, dict):
+            bad.append("(整条不是对象)")
+            continue
+        res = r.get("resource")
+        if not res:
+            bad.append("(没有 resource)")
+            continue
+        resources.append(res)
+        if route_ids and res not in route_ids:
+            bad.append("%s(网关里没有这条路由)" % res)
+        if r.get("resourceMode") not in (0, 1):
+            bad.append("%s(resourceMode=%s, 0=路由id 1=自定义api分组)" % (res, r.get("resourceMode")))
+    if bad:
+        out.append(("FAIL", "23.4 %d 条规则有问题: %s" % (len(bad), "; ".join(sorted(set(bad))[:6]))))
+    else:
+        out.append(("OK", "23.4 Sentinel 规则表 %d 条, 每条都挂在真实的路由 id 上 (resourceMode=0=按路由 id 匹配)" % len(rules)))
+    missing = [r for r in route_ids if r not in resources]
+    if missing:
+        out.append(("FAIL", "23.4 %d 条路由没有限流规则(等于不限流): %s" % (len(missing), " ".join(missing))))
+    else:
+        out.append(("OK", "23.4 %d 条路由全部有对应的限流规则" % len(route_ids)))
+
+for st, msg in out:
+    print(st + "\t" + msg)
+PY
+)
+
+  if [[ -z "${rules_out}" ]]; then
+    nok "23.4 解析不了 Sentinel 规则表 —— 这一项空转, 证明不了任何东西"
+  else
+    while IFS=$'\t' read -r st msg; do
+      [[ -z "${st}" ]] && continue
+      case "${st}" in
+        OK)   ok   "${msg}" ;;
+        WARN) warn "${msg}" ;;
+        *)    nok  "${msg}" ;;
+      esac
+    done <<< "${rules_out}"
+  fi
+
+  # ---- 23.5 打满并发, 看有没有 429 真的回来 ----
+  #
+  # 这是唯一能证明「限流在限」的判据。配置对了不等于限流在跑 ——
+  # 网关没连上 Nacos (127.0.0.1 指容器自己)、规则 resource 写错、
+  # 数据源根本没加载, 都会让「配置看着对、限流却是摆设」。
+  #
+  # 先单发一次确认前置通: 不然 401/404 也会被误读成「限流生效了」。
+  local single
+  single=$(curl -s -m 20 -o /dev/null -w "%{http_code}" \
+    -H "Authorization: Bearer ${token}" "${gw}/opc/llm/models" 2>/dev/null) || single="000"
+  if [[ "${single}" != "200" ]]; then
+    nok "23.5 单发一次 /opc/llm/models 返回 ${single} —— 前置就没通过, 分不清 429 是限流还是别的"
+  else
+    # opc-ai-core 路由的规则是 10 QPS —— 40 个并发必然超
+    #
+    # 这里把**每个状态码 + 响应体**都留下来, 而不是只数 429:
+    # 「限流没生效」和「限流生效了但响应不是 429」是两回事, 只报一个计数分不开。
+    local burst
+    burst=$(seq 1 40 | xargs -P 20 -I{} curl -s -m 20 -w '\n<<CODE=%{http_code}>>' \
+      -H "Authorization: Bearer ${token}" "${gw}/opc/llm/models" 2>/dev/null \
+      | python3 -c "
+import sys, collections
+# curl 的 body 在前、-w 的标记在后, 所以整条流是:
+#   body_1 <<CODE=200>> body_2 <<CODE=429>> ...
+# 按标记切开后, 第 i 段的头 3 位是**第 i 个**响应的状态码,
+# 它 '>>' 之后的内容是**第 i+1 个**响应的 body。
+raw = sys.stdin.read()
+parts = raw.split('\n<<CODE=')
+bodies = [parts[0]] if parts and parts[0].strip() else []
+codes = []
+for p in parts[1:]:
+    code = p[:3]
+    rest = p[3:]
+    if rest.startswith('>>'):
+        rest = rest[2:]
+    codes.append(code if code.isdigit() else '???')
+    bodies.append(rest)
+samples, counts = {}, collections.Counter()
+for i, c in enumerate(codes):
+    counts[c] += 1
+    samples.setdefault(c, bodies[i].strip()[:120] if i < len(bodies) else '')
+for c, n in counts.most_common():
+    print('COUNT\t%s\t%d' % (c, n))
+for c in sorted(samples):
+    print('SAMPLE\t%s\t%s' % (c, samples[c]))
+" 2>/dev/null)
+
+    local hist c429 c200 samples
+    hist=$(printf '%s\n' "${burst}" | grep '^COUNT' | awk -F'\t' '{printf "%s×%s ", $2, $3}' | sed 's/ $//')
+    samples=$(printf '%s\n' "${burst}" | grep '^SAMPLE' | cut -f2,3 | tr '\t' '=' | tr '\n' ' ')
+    c429=$(printf '%s\n' "${burst}" | awk -F'\t' '$1=="COUNT" && $2=="429" {print $3+0}')
+    c200=$(printf '%s\n' "${burst}" | awk -F'\t' '$1=="COUNT" && $2=="200" {print $3+0}')
+    c429=${c429:-0}
+    c200=${c200:-0}
+
+    if [[ "${c429}" -gt 0 ]]; then
+      ok "23.5 并发 40 次打 /opc/llm/models: 出现 429 —— 限流真的在限 (分布 ${hist})"
+    else
+      nok "23.5 并发 40 次打 /opc/llm/models, 一个 429 都没有 (分布: ${hist:-空}) —— 限流规则没生效; 各种响应的样本: ${samples:-无}"
+    fi
+  fi
+
+  # ---- 23.6 tenant_id='public' 的历史配置清干净了 ----
+  #
+  # 这 9 份是当初导错了租户留下的: 配置 API 用 tenant= 查,
+  # 'public' 会被归一成默认租户(空串), 所以这 9 份**任何 API 都读不到**。
+  # 它们不是「备用的旧版本」, 是谁也读不到的死配置 ——
+  # 同样的 dataId 在 opc-dev 下还有一份活着的, 两份同名, 迟早有人改错那一份。
+  local pub
+  pub=$(db_q "SELECT COUNT(*) FROM \`ry-config\`.config_info WHERE tenant_id = 'public';" | head -1)
+  if [[ -z "${pub}" ]]; then
+    warn "23.6 查不到 ry-config.config_info —— 这一项空转"
+  elif [[ "${pub}" == "0" ]]; then
+    ok "23.6 tenant_id='public' 下的历史配置已清空(以前 9 份谁也读不到的死配置)"
+  else
+    nok "23.6 tenant_id='public' 下还留着 ${pub} 份历史配置 —— 那是任何 API 都读不到的死配置, 且与 opc-dev 下的同名配置重复"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -3123,6 +3455,7 @@ main() {
   check_marketplace_actions
   check_crm_ai_score
   check_nacos_config_center
+  check_memory_and_flow_control
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"

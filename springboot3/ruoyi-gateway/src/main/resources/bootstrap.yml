@@ -23,11 +23,19 @@ spring:
     sentinel:
       # 取消控制台懒加载
       eager: true
-      # Sentinel 控制台地址 —— 演示栈里**没有**这个服务(compose 里没有 sentinel,
-      # 也没有 8718 端口),配一个不存在的地址只会让网关对着空气发心跳。
-      # 真要接控制台: 先把它加进 compose, 再把下面这行打开。
-      # transport:
-      #   dashboard: ${SENTINEL_DASHBOARD:sentinel-dashboard}:8718
+      # Sentinel 控制台地址。
+      #
+      # 以前这行是**注释掉的**，理由是「演示栈里没有这个服务」——
+      # compose 里确实没有 sentinel,连 8718 端口都不存在,
+      # 配一个不存在的地址只会让网关对着空气发心跳。
+      #
+      # 现在 compose 里有了 aiopc-sentinel-dashboard（deploy/docker-compose.yml），
+      # 端口 8718 只绑 127.0.0.1 —— 控制台没有任何鉴权,
+      # 谁拿到 URL 谁就能改限流规则, 不该对外暴露。
+      #
+      # 地址用 compose 的服务名而不是 127.0.0.1: 容器里的 127.0.0.1 是网关自己。
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:sentinel-dashboard}:8718
       #
       # 限流规则从 Nacos 持久化 (gw-flow = 网关流控规则)。
       #

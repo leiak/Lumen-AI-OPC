@@ -1,0 +1,60 @@
+# ============================================================
+# Sentinel 控制台配置
+#
+# 挂到 aiopc-sentinel-dashboard 容器里，覆盖镜像自带的 application.yml。
+#
+# 镜像自带那份写的是 localhost:8848 + 默认命名空间 —— 在容器里 127.0.0.1
+# 指的是**控制台自己**，它连 Nacos 会直接失败；命名空间也是空的，
+# 于是控制台看到的是「一个节点都没有、零条规则」，看起来一切正常。
+# 这正是这套栈一直在说的那种假话。
+#
+# 改成容器网里的 DNS 名 nacos1 + opc-dev 命名空间之后：
+#   · 控制台和网关读的是**同一份**规则表
+#     (dataId=sentinel-ruoyi-gateway, group=DEFAULT_GROUP, tenant=opc-dev)
+#   · 控制台上改规则 = 改 Nacos = 改仓库那份文件 —— 三个地方是一份数据
+#   · 仓库那份文件是「真相源」：控制台上的改动如果没有同步回仓库，
+#     下次 import-dev.sh 一推就被覆盖 —— 所以规则表的归属仍然在仓库
+# ============================================================
+
+server:
+  port: 8718
+
+spring:
+  application:
+    name: sentinel-dashboard
+  cloud:
+    nacos:
+      discovery:
+        server-addr: nacos1:8848
+        namespace: opc-dev
+      config:
+        server-addr: nacos1:8848
+        namespace: opc-dev
+        group: DEFAULT_GROUP
+    sentinel:
+      datasource:
+        # 网关的流控规则表 —— rule-type 必须是 gw-flow
+        #
+        # flow 和 gw-flow 是两个**完全独立**的数据源（FlowRuleManager 与
+        # GatewayRuleManager），配错 rule-type 的后果是「控制台里看得到、
+        # 网关那边不生效」或者反过来。这里网关的 bootstrap.yml 用的也是
+        # gw-flow + 同一个 dataId，两边对齐。
+        gw-flow:
+          nacos:
+            server-addr: nacos1:8848
+            namespace: opc-dev
+            group-id: DEFAULT_GROUP
+            data-id: sentinel-ruoyi-gateway
+            data-type: json
+            rule-type: gw-flow
+
+csp:
+  sentinel:
+    dashboard:
+      # 控制台自己也往自己上报，端口和容器内保持一致
+      server: localhost:8718
+
+logging:
+  level:
+    root: info
+    com.alibaba.csp.sentinel: info
