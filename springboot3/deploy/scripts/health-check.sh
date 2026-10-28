@@ -3075,16 +3075,24 @@ PY
   #
   # 症状是唯一的判据: 日志里一条 "Client not connected" 都没有 = 连上了。
   # (容器重建后 docker logs 只含本次启动的日志, 不用自己算时间窗。)
-  local gw_notconn
-  gw_notconn=$(docker logs aiopc-gateway 2>&1 | grep -c "Client not connected" || true)
-  gw_notconn="${gw_notconn//[^0-9]/}"
-  if [[ -z "${gw_notconn}" ]]; then
-    gw_notconn=0
-  fi
-  if [[ "${gw_notconn}" -eq 0 ]]; then
-    ok "22.6 网关的 Sentinel 数据源没有连不上的重试 (Nacos 客户端已连上)"
+  #
+  # 但**读不到日志不等于没问题** —— 容器名写错、容器刚被删了, 一样是 0 条。
+  # 那种情况下这一项必须说"证明不了任何东西", 不能报 OK:
+  # 一个永远绿的检查等于没有检查。
+  local gw_log gw_notconn
+  gw_log=$(docker logs aiopc-gateway 2>&1 || true)
+  if [[ -z "${gw_log}" ]] || [[ "${gw_log}" == *"Error response from daemon"* ]] \
+     || [[ "${gw_log}" == *"No such container"* ]]; then
+    nok "22.6 读不到网关日志 —— 这一项证明不了任何东西"
   else
-    nok "22.6 网关日志里有 ${gw_notconn} 条 'Client not connected' —— Sentinel 的 Nacos 客户端连不上 (多半是 bootstrap.yml 里 sentinel.datasource...server-addr 还写着 127.0.0.1, 容器里那是网关自己)"
+    gw_notconn=$(grep -c "Client not connected" <<<"${gw_log}" || true)
+    gw_notconn="${gw_notconn//[^0-9]/}"
+    [[ -z "${gw_notconn}" ]] && gw_notconn=0
+    if [[ "${gw_notconn}" -eq 0 ]]; then
+      ok "22.6 网关的 Sentinel 数据源没有连不上的重试 (Nacos 客户端已连上)"
+    else
+      nok "22.6 网关日志里有 ${gw_notconn} 条 'Client not connected' —— Sentinel 的 Nacos 客户端连不上 (多半是 bootstrap.yml 里 sentinel.datasource...server-addr 还写着 127.0.0.1, 容器里那是网关自己)"
+    fi
   fi
 }
 
