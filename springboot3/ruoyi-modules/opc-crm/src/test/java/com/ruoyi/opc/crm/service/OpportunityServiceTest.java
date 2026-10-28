@@ -1,5 +1,6 @@
 package com.ruoyi.opc.crm.service;
 
+import com.ruoyi.common.core.domain.R;
 import com.ruoyi.common.core.exception.ServiceException;
 import com.ruoyi.opc.crm.domain.CrmCustomer;
 import com.ruoyi.opc.crm.domain.CrmOpportunity;
@@ -20,6 +21,7 @@ import org.mockito.quality.Strictness;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -155,15 +157,77 @@ class OpportunityServiceTest {
         CrmCustomer cust = CrmCustomer.builder().id(1L).name("客户A").build();
         when(mapper.selectByIdAndOwner(1L, 10L)).thenReturn(opp);
         when(customerMapper.selectByIdAndOwner(1L, 10L)).thenReturn(cust);
-        when(aiCoreGateway.scoreOpportunity(eq(opp), eq(cust)))
-            .thenReturn(OpportunityScoreResponse.builder().score(85).reason("需求明确").build());
+        when(aiCoreGateway.chat(any()))
+            .thenReturn(R.ok(Map.of("content", "{\"score\":85,\"reason\":\"需求明确\"}")));
         when(mapper.updateById(any())).thenReturn(1);
 
         OpportunityScoreResponse resp = service.score(1L, 10L);
         assertThat(resp.getScore()).isEqualTo(85);
         assertThat(resp.getReason()).isEqualTo("需求明确");
-        verify(aiCoreGateway).scoreOpportunity(eq(opp), eq(cust));
-        verify(mapper).updateById(argThat(o -> o.getScore() != null && o.getScore() == 85));
+        verify(aiCoreGateway).chat(any());
+        // 分数和理由必须一起写回 —— 「有分没理由」的记录就是编出来的
+        verify(mapper).updateById(argThat(o -> o.getScore() != null && o.getScore() == 85
+            && "需求明确".equals(o.getScoreReason())));
+    }
+
+    @Test
+    void score_should_strip_markdown_code_fence() {
+        when(mapper.selectByIdAndOwner(1L, 10L)).thenReturn(CrmOpportunity.builder()
+            .id(1L).customerId(1L).name("订单").build());
+        when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of("content",
+            "```json\n{\"score\":72,\"reason\":\"预算到位\"}\n```")));
+
+        OpportunityScoreResponse resp = service.score(1L, 10L);
+        assertThat(resp.getScore()).isEqualTo(72);
+        assertThat(resp.getReason()).isEqualTo("预算到位");
+    }
+
+    @Test
+    void score_should_fall_back_to_prose_and_keep_the_original_text_as_reason() {
+        // 模型没按 JSON 输出 —— 分数从正文里捞,理由就用它自己的话
+        when(mapper.selectByIdAndOwner(1L, 10L)).thenReturn(CrmOpportunity.builder()
+            .id(1L).customerId(1L).name("订单").build());
+        when(aiCoreGateway.chat(any()))
+            .thenReturn(R.ok(Map.of("content", "评分:78，预算充足，客户明确")));
+
+        OpportunityScoreResponse resp = service.score(1L, 10L);
+        assertThat(resp.getScore()).isEqualTo(78);
+        assertThat(resp.getReason()).contains("预算充足");
+    }
+
+    @Test
+    void score_should_clamp_out_of_range_score() {
+        when(mapper.selectByIdAndOwner(1L, 10L)).thenReturn(CrmOpportunity.builder()
+            .id(1L).customerId(1L).name("订单").build());
+        when(aiCoreGateway.chat(any()))
+            .thenReturn(R.ok(Map.of("content", "{\"score\":150,\"reason\":\"爆表\"}")));
+
+        assertThat(service.score(1L, 10L).getScore()).isEqualTo(100);
+    }
+
+    @Test
+    void score_should_fail_loudly_when_ai_is_unavailable_and_write_nothing() {
+        when(mapper.selectByIdAndOwner(1L, 10L)).thenReturn(CrmOpportunity.builder()
+            .id(1L).customerId(1L).name("订单").build());
+        when(aiCoreGateway.chat(any())).thenReturn(R.fail("AI 评分服务暂时不可用，请稍后重试"));
+
+        ServiceException ex = catchThrowableOfType(() -> service.score(1L, 10L), ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(503);
+        // 对端挂了不能变成「0 分」——那等于往看板上塞一个编出来的数字
+        verify(mapper, never()).updateById(any());
+    }
+
+    @Test
+    void score_should_fail_when_the_answer_cannot_be_parsed_and_write_nothing() {
+        when(mapper.selectByIdAndOwner(1L, 10L)).thenReturn(CrmOpportunity.builder()
+            .id(1L).customerId(1L).name("订单").build());
+        when(aiCoreGateway.chat(any())).thenReturn(R.ok(Map.of("content", "我不知道")));
+
+        ServiceException ex = catchThrowableOfType(() -> service.score(1L, 10L), ServiceException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getCode()).isEqualTo(502);
+        verify(mapper, never()).updateById(any());
     }
 
     @Test
@@ -243,6 +307,6 @@ class OpportunityServiceTest {
         ServiceException ex = catchThrowableOfType(() -> service.score(20L, 10L), ServiceException.class);
         assertThat(ex).isNotNull();
         assertThat(ex.getCode()).isEqualTo(403);
-        verify(aiCoreGateway, never()).scoreOpportunity(any(), any());
+        verify(aiCoreGateway, never()).chat(any());
     }
 }

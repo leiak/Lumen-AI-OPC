@@ -25,6 +25,7 @@
 #  18) 多公司切租户 (3d 回归护栏)
 #  19) 市场页改名 + 数字真实性 + 监控
 #  20) 第 2 轮的动作是真的 (订阅 + MODULE 装完真的通知社区)
+#  21) CRM 的 AI 评分是真的 (分数和理由同生共死)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -46,6 +47,10 @@ MYSQL_PORT="${MYSQL_PORT:-3308}"
 # opc-agent-hub 的宿主机端口 (只绑 127.0.0.1)。第 17 节要直连它:
 # agent-hub 的 provider 凭证配没配, 从网关那侧看不出来 —— 只能直连问它自己。
 AGENT_HUB_PORT="${AGENT_HUB_PORT:-9303}"
+# opc-ai-core 的宿主机端口 (只绑 127.0.0.1)。第 21 节要用它做分诊:
+# CRM 的「LLM 评分」失败时, 直连它探一次 —— 直连也不通 = provider 挂了,
+# 直连通了 = CRM → AI 这条路断了。
+AI_CORE_PORT="${AI_CORE_PORT:-9301}"
 RED='\033[0;31m'
 GRN='\033[0;32m'
 YEL='\033[0;33m'
@@ -2615,6 +2620,133 @@ except Exception:
   fi
 }
 
+# ---------- 21. CRM 的 AI 评分是真的 (分数和理由同生共死) ----------
+#
+# 商机看板卡片上那个「LLM 评分」按钮, 此前调的是一个**从没被实现过的地址**:
+#   POST /opc/ai-core/opportunity/score
+# opc-ai-core 里根本没有这个控制器(对端只有 /opc/llm/chat 和 /opc/llm/models);
+# 加上 @FeignClient 上写了 url, base-url 里的主机名(opc-ai-core)在容器网里也
+# 解析不了 —— Nacos 服务发现被绕开了。结论:这个按钮**点了必定报错**。
+#
+# 可看板上每张卡片却还挂着一个 85 / 70 / 95 的分数 —— 全部来自种子 SQL,
+# 理由(score_reason)是空的。而系统里**没有任何一条代码路径**能产出「有分没理由」
+# 的记录 —— 这跟市场页那批「823 次浏览 / 4.8 分 127 条评价」是同一种病。
+#
+# 这一节守两件事:
+#   21.1 数据不变式: 不存在「有分没理由」的记录 —— 有分数就必须有出处。
+#   21.2 动作是真的: 真按一下「LLM 评分」, 分数**和理由**一起落到那条商机上。
+#   21.3 分诊: 评分失败时直连 opc-ai-core 再探一次 ——
+#        直连也不通 = provider 挂了(warn, 不是代码的锅);
+#        直连通了 = CRM → AI 这条路又断了(nok)。
+#
+# 21.2 会真的调一次 LLM(有一点 token 成本)。这是故意的: 证明「按钮能用」只能靠
+# 真的按一下。反复跑会反复重评同一条商机 —— 但每次写进去的都是真分数, 不是假数。
+check_crm_ai_score() {
+  hr
+  echo "[21] CRM 的 AI 评分是真的 (分数和理由同生共死)"
+  hr
+
+  # ---- 21.1 数据不变式: 有分必须有理由 ----
+  local bad scored
+  bad=$(db_q "SELECT COUNT(*) FROM opc_crm_opportunity WHERE score <> 0 AND score_reason IS NULL;" | head -1)
+  bad=${bad:-0}
+  scored=$(db_q "SELECT COUNT(*) FROM opc_crm_opportunity WHERE score <> 0;" | head -1)
+  scored=${scored:-0}
+  if [[ "${bad}" == "0" ]]; then
+    ok "21.1 没有「有分没理由」的商机 (当前有分数的 ${scored} 条, 全部带理由)"
+  else
+    nok "21.1 有 ${bad} 条商机有分数却没有理由 —— 这些分数是编出来的 (V20261031 应已归零)"
+  fi
+
+  # ---- 选一条 admin 名下的商机当靶子 ----
+  # 客户也必须是 admin 的 —— 服务端会按 owner 查客户, 客户不是本人就 403。
+  local target
+  target=$(db_q "SELECT o.id FROM opc_crm_opportunity o JOIN opc_crm_customer c ON c.id = o.customer_id AND c.owner_id = o.owner_id AND c.deleted = 0 WHERE o.owner_id = 1 AND o.deleted = 0 ORDER BY o.id LIMIT 1;" | head -1)
+  if [[ -z "${target}" ]]; then
+    nok "21.2 找不到 admin 名下的商机 —— 护栏空转, 证明不了任何东西"
+    return
+  fi
+
+  # ---- 登录拿 token ----
+  local login_body token
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/login" 2>/dev/null) || true
+  token=$(printf '%s' "${login_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data', {})
+    print(d.get('token','') or d.get('access_token',''))
+except Exception:
+    print('')
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    nok "21.2 拿不到 admin 的 token —— 护栏空转, 证明不了任何东西"
+    return
+  fi
+
+  # ---- 21.2 真按一下「LLM 评分」 ----
+  local before_score body code
+  before_score=$(db_q "SELECT score FROM opc_crm_opportunity WHERE id = ${target};" | head -1)
+
+  # LLM 要好几秒, 超时给足
+  body=$(curl -s -m 90 -X POST \
+    -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/crm/opportunity/${target}/score" 2>/dev/null) || body=""
+  code=$(body_code "${body}")
+
+  if [[ "${code}" != "200" ]]; then
+    # ---- 21.3 分诊: 直连 opc-ai-core 探一次, 分清「provider 挂了」和「路断了」 ----
+    local direct direct_code
+    direct=$(curl -s -m 60 -X POST \
+      -H "Content-Type: application/json" \
+      -d '{"messages":[{"role":"user","content":"ping"}]}' \
+      "http://127.0.0.1:${AI_CORE_PORT}/opc/llm/chat" 2>/dev/null) || direct=""
+    direct_code=$(body_code "${direct}")
+    if [[ "${direct_code}" == "200" ]]; then
+      nok "21.2 CRM 评分接口返回 code=${code}: ${body:0:160} —— 但直连 opc-ai-core 是通的, 所以断的是 CRM→AI 这条路"
+    else
+      warn "21.2 CRM 评分返回 code=${code} —— 直连 opc-ai-core 也不通(code=${direct_code}), 是 provider 侧的问题, 不是评分路径断了"
+    fi
+    return
+  fi
+
+  # 返回体里必须有分数和理由
+  local score reason after_score after_reason
+  score=$(printf '%s' "${body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data') or {}
+    v = d.get('score')
+    print(v if isinstance(v,(int,float)) else '-1')
+except Exception:
+    print('-1')
+" 2>/dev/null)
+  reason=$(printf '%s' "${body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data') or {}
+    print((d.get('reason') or '').strip())
+except Exception:
+    print('')
+" 2>/dev/null)
+  after_score=$(db_q "SELECT score FROM opc_crm_opportunity WHERE id = ${target};" | head -1)
+  after_reason=$(db_q "SELECT IFNULL(score_reason,'') FROM opc_crm_opportunity WHERE id = ${target};" | head -1)
+
+  if [[ "${score}" == "-1" ]]; then
+    nok "21.2 返回体里没有可用的分数: ${body:0:160}"
+  elif [[ "${reason}" == "" ]]; then
+    nok "21.2 分数 ${score} 有, 理由是空的 —— 「有分没理由」就是编的"
+  elif [[ "${after_score}" != "${score}" ]]; then
+    nok "21.2 返回 ${score} 分, 库里那条商机却是 ${after_score} 分 —— 返回值和落库对不上"
+  elif [[ "${after_reason}" != "${reason}" ]]; then
+    nok "21.2 理由没落库: 库里是「${after_reason}」, 返回的是「${reason}」"
+  else
+    ok "21.2 LLM 评分是真的: 商机 ${target} 得分 ${score}(评分前 ${before_score}), 理由「${reason:0:40}」一起落库"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -2640,6 +2772,7 @@ main() {
   check_company_switch
   check_marketplace_truth
   check_marketplace_actions
+  check_crm_ai_score
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"

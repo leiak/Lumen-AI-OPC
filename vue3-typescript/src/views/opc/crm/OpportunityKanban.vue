@@ -44,6 +44,10 @@
                 />
                 <span class="score-text">{{ opp.score }} 分</span>
               </div>
+              <!-- 没评过就是没评过:不画 0 分的进度条,直接写「未评分」——
+                   种子里的 85 / 70 / 95 是编的,系统里从来没算出过分数。
+                   真要数字,点「LLM 评分」让模型给一个,并把理由一起带回来。 -->
+              <div v-else class="opp-score-none">未评分</div>
               <div v-if="opp.scoreReason" class="opp-reason">{{ opp.scoreReason }}</div>
               <div class="opp-actions">
                 <el-button link type="primary" size="small" @click="onScore(opp)">LLM 评分</el-button>
@@ -362,6 +366,11 @@ onMounted(load)
     font-size: 12px;
     color: #909399;
     white-space: nowrap;
+  }
+  .opp-score-none {
+    font-size: 12px;
+    color: #c0c4cc;
+    margin-bottom: 4px;
   }
   .opp-reason {
     font-size: 12px;

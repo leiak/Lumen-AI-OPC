@@ -40,7 +40,8 @@ public interface OpcErpNotificationGateway {
      * <p>⚠️ W49 遗留问题：对端 {@code InboxController} 当前未暴露 {@code /send} 或 {@code /push}
      * POST endpoint（{@code InboxService.push} 仅在 service 层实现）。调用会以 404 失败，
      * 触发 {@link OpcErpNotificationGatewayFactory} 降级返回 {@link R#ok()}，不阻塞主流程。
-     * 该问题与 opc-crm {@code NotificationGateway.pushInbox} 路径一致，待 W53+ 修复。
+     * 该问题与 opc-crm 曾经的 {@code NotificationGateway.pushInbox} 路径一致
+     * （CRM 那个网关已在本轮删掉 —— 它指向的端点同样不存在），待 W53+ 修复。
      *
      * @param req 含 userId / title / body 等字段
      */

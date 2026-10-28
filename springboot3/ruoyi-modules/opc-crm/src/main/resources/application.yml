@@ -41,17 +41,15 @@ mybatis:
     map-underscore-to-camel-case: true
 
 # CRM 业务配置
-# OpenFeign 下游服务地址（容器内 Docker DNS 名）
-opc:
-  crm:
-    # OpenFeign downstreams
-    notification:
-      base-url: http://opc-notification:9310
-    ai-core:
-      base-url: http://opc-ai-core:9301
-    user-center:
-      base-url: http://opc-user-center:9302
-    # State machine
-    opportunity:
-      auto-notify-on-stage-change: true
-      auto-notify-on-new-followup: true
+#
+# 原来这里配了三个 OpenFeign 下游地址(notification / ai-core / user-center),三个都用不上:
+#   · notification 的 /opc/notification/inbox/push 在对端不存在;
+#   · user-center 的 /opc/user-center/user/{id} 在对端不存在(对端是 /opc/user);
+#   · ai-core 的 base-url 写的是 http://opc-ai-core:9301,而 compose 里的服务名是
+#     aiopc-ai-core;更关键的是 FeignClient 上一旦写了 url,Nacos 服务发现就被绕过去了
+#     —— 于是「LLM 评分」按钮点了必然连不上(详见 gateway/AiCoreGateway 的类注释)。
+# 现在 AI 评分走 @FeignClient(name = "opc-ai-core", path = "/opc/llm"):
+# 只按服务名发现、不写 url,对端端点 POST /opc/llm/chat 是真实存在的。
+#
+# 「阶段变更 / 新增跟进自动通知」这两个开关从来没有任何代码读它们(对端也没有接收端点),
+# 所以一并删掉 —— 留着只会被下一个人当成「这功能已经接好了」。
