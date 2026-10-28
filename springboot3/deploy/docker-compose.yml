@@ -179,7 +179,7 @@ services:
       SPRING_DATA_REDIS_PORT: "6379"
       SPRING_DATA_REDIS_PASSWORD: Opc@2026!
       QDRANT_HOST: qdrant
-      QDRANT_PORT: "6333"
+      QDRANT_PORT: "6334"
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: "5672"
       SERVER_PORT: "9306"
@@ -414,7 +414,7 @@ services:
       SPRING_DATA_REDIS_PORT: "6379"
       SPRING_DATA_REDIS_PASSWORD: Opc@2026!
       QDRANT_HOST: qdrant
-      QDRANT_PORT: "6333"
+      QDRANT_PORT: "6334"
       SERVER_PORT: "9301"
       # Spring AI OpenAI bean 启动时强制校验 spring.ai.openai.api-key 非空;
       # 这里用 placeholder 让装配通过。实际 LLM 调用走 opc-common 自定义 HTTP 客户端。

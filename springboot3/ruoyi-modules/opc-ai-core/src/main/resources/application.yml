@@ -73,10 +73,14 @@ langchain4j:
     timeout: 60s
 
 # Qdrant 向量数据库
+# 端口说明：Qdrant 的 6333 是 REST 口（给 curl / 浏览器用），6334 才是 gRPC。
+# Java SDK（io.qdrant:client）只会说 gRPC —— 把端口配成 6333 会连不上，
+# 而以前这里写的 6334 是「碰对了」，不是「配对了」。
 qdrant:
-  host: 127.0.0.1
-  port: 6334
+  host: ${QDRANT_HOST:127.0.0.1}
+  port: ${QDRANT_PORT:6334}
   api-key: ${QDRANT_API_KEY:}
+  timeout-seconds: 10
 
 # OPC LLM Gateway 配置（W48.6: 多 provider 块）
 opc:
@@ -98,6 +102,9 @@ opc:
       api-key: ${MINIMAX_API_KEY:}
       base-url: https://api.minimaxi.com/v1
       model: MiniMax-Text-01
+      # 向量化模型与聊天模型是两回事：聊天用 MiniMax-Text-01，向量化用 embo-01
+      embedding-model: embo-01
+      embedding-dimension: 1536
     openai:
       enabled: false
       api-key: ${OPENAI_API_KEY:}
@@ -108,6 +115,10 @@ opc:
     long-term-collection: opc_memory
     enable-compression: true
     max-context-tokens: 8000
+    # 长期记忆集合的向量维度 —— 必须和 embedding 模型给的维度一致。
+    # 不一致时 QdrantVectorStore **不会**自动重建集合（那会清空所有租户的长期记忆），
+    # 而是记一条 ERROR 并拒绝这次写入 —— 换向量空间要显式重建。
+    vector-dimension: 1536
   agent:
     max-steps: 10
     step-timeout-seconds: 30

@@ -54,6 +54,9 @@ opc:
       api-key: ${MINIMAX_API_KEY:}
       base-url: https://api.minimaxi.com/v1
       model: MiniMax-Text-01
+      # 向量化模型与聊天模型是两回事：聊天用 MiniMax-Text-01，向量化用 embo-01
+      embedding-model: embo-01
+      embedding-dimension: 1536
     openai:
       enabled: false
       api-key: ${OPENAI_API_KEY:}
@@ -64,6 +67,8 @@ opc:
     long-term-collection: opc_memory
     enable-compression: true
     max-context-tokens: 8000
+    # 长期记忆集合的向量维度 —— 必须和 embedding 模型给的维度一致
+    vector-dimension: 1536
   agent:
     max-steps: 10
     step-timeout-seconds: 30
@@ -90,16 +95,18 @@ langchain4j:
 
 # Qdrant 向量数据库（只有 opc-ai-core）
 #
-# ⚠️ 说清楚: QdrantVectorStore 目前是**空壳** —— upsert/search/delete 三个方法
-# 的方法体全是注释("实际实现: 使用 Qdrant Java SDK"), 压根没有 Qdrant SDK 依赖、
-# 也不会建连接。所以这里写什么都不影响行为, 别以为改这个地址就能让向量库通。
-# 真正的长期记忆(检索/写入)还没接 —— 那是一件独立的事。
+# QdrantVectorStore 现在是真的了: 走 Qdrant Java SDK(仓库根 pom 已声明 io.qdrant:client)。
 #
-# 值与 opc-ai-core 本地 application.yml 一致(同样是 127.0.0.1), 只是留成可覆盖的写法。
+# 端口说明: 6333 是 REST 口(给 curl 用), 6334 才是 gRPC —— Java SDK 只会说 gRPC,
+# 配成 6333 会连不上。compose 里 QDRANT_PORT 写的是 6333, 那时候 SDK 是空壳,
+# 写什么都没影响; 现在它是真在用的, 必须改。
+#
+# 值与 opc-ai-core 本地 application.yml 完全一致(值相同规则)。
 qdrant:
   host: ${QDRANT_HOST:127.0.0.1}
   port: ${QDRANT_PORT:6334}
   api-key: ${QDRANT_API_KEY:}
+  timeout-seconds: 10
 
 # 日志
 logging:

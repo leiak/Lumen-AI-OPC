@@ -87,6 +87,85 @@ public class HttpLlmClient {
     }
 
     /**
+     * 同步 embedding 调用。
+     *
+     * <p>协议按 MiniMax 的 {@code /v1/embeddings}：
+     * <pre>
+     * 请求  {"model":"embo-01","type":"db","texts":["..."]}
+     * 响应  {"vectors":[[...],[...]],"base_resp":{"status_code":0,"status_msg":"success"}}
+     * </pre>
+     *
+     * <p>注意它<b>不是</b> OpenAI 的 {@code input}/{@code data[].embedding} 结构，
+     * 而且 {@code type} 必须区分「入库文档(db)」与「检索查询(query)」，
+     * 用错类型检索质量会明显下降 —— 所以 type 由调用方显式传。
+     *
+     * @param type {@code "db"} 或 {@code "query"}
+     */
+    public String callEmbeddings(String baseUrl, String apiKey, String model,
+                                  List<String> texts, String type, int timeoutSeconds) {
+        if (texts == null || texts.isEmpty()) {
+            throw new IllegalArgumentException("embeddings 请求没有文本");
+        }
+        ObjectNode body = MAPPER.createObjectNode();
+        body.put("model", model);
+        body.put("type", type);
+        ArrayNode arr = body.putArray("texts");
+        for (String t : texts) {
+            arr.add(t == null ? "" : t);
+        }
+
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/embeddings"))
+                .timeout(Duration.ofSeconds(timeoutSeconds <= 0 ? 60 : timeoutSeconds))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
+                .build();
+
+        try {
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() / 100 != 2) {
+                throw new RuntimeException("HTTP " + resp.statusCode() + " from " + baseUrl + "/embeddings: " + resp.body());
+            }
+            return resp.body();
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Embedding HTTP call failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 解析 embedding 响应：{@code {"vectors":[[...]],"base_resp":{"status_code":0}}}。
+     *
+     * <p>失败判定看 {@code base_resp.status_code} —— HTTP 200 不代表业务成功。
+     */
+    public List<float[]> parseEmbeddings(String rawJson) throws Exception {
+        JsonNode root = MAPPER.readTree(rawJson);
+        JsonNode baseResp = root.get("base_resp");
+        if (baseResp != null && baseResp.has("status_code")
+                && baseResp.get("status_code").asInt() != 0) {
+            String msg = baseResp.has("status_msg") ? baseResp.get("status_msg").asText() : "unknown";
+            throw new IllegalStateException("Embedding 接口返回失败 status_code="
+                    + baseResp.get("status_code").asInt() + " msg=" + msg);
+        }
+        JsonNode vectors = root.get("vectors");
+        if (vectors == null || !vectors.isArray()) {
+            throw new IllegalStateException("Embedding 响应里没有 vectors 字段: "
+                    + (root.toString().length() > 200 ? root.toString().substring(0, 200) : root.toString()));
+        }
+        List<float[]> out = new java.util.ArrayList<>(vectors.size());
+        for (JsonNode v : vectors) {
+            float[] arr = new float[v.size()];
+            for (int i = 0; i < v.size(); i++) {
+                arr[i] = (float) v.get(i).asDouble();
+            }
+            out.add(arr);
+        }
+        return out;
+    }
+
+    /**
      * 从 OpenAI 兼容 JSON 响应里提取关键字段。
      * 例：{@code {"choices":[{"message":{"content":"hi"}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}}
      */

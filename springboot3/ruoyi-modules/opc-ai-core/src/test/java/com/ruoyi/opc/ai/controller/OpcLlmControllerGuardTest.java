@@ -2,7 +2,9 @@ package com.ruoyi.opc.ai.controller;
 
 import com.ruoyi.opc.ai.gateway.llm.ChatMessage;
 import com.ruoyi.opc.ai.gateway.llm.ChatResponse;
+import com.ruoyi.opc.ai.gateway.llm.EmbeddingGateway;
 import com.ruoyi.opc.ai.gateway.llm.LlmGateway;
+import com.ruoyi.opc.ai.memory.Memory;
 import com.ruoyi.opc.ai.security.PromptGuard;
 import com.ruoyi.opc.common.exception.OpcException;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,7 +45,9 @@ class OpcLlmControllerGuardTest {
         when(llmGateway.chat(anyList(), any(), any()))
                 .thenReturn(ChatResponse.builder().success(true).content("ok").build());
         // providers 只被 /models 用，/chat 传空列表即可；PromptGuard 用真实实例
-        controller = new OpcLlmController(llmGateway, List.of(), new PromptGuard());
+        // embeddingGateway / memory 只被 /embedding、/memory 相关端点用，/chat 这条路径用不到
+        controller = new OpcLlmController(llmGateway, mock(EmbeddingGateway.class), mock(Memory.class),
+                List.of(), new PromptGuard());
     }
 
     private OpcLlmController.ChatRequest req(ChatMessage... messages) {

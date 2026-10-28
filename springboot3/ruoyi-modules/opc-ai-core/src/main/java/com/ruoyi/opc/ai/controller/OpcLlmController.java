@@ -6,6 +6,8 @@ import com.ruoyi.common.security.utils.SecurityUtils;
 import com.ruoyi.opc.ai.gateway.llm.ChatMessage;
 import com.ruoyi.opc.ai.gateway.llm.ChatModelProvider;
 import com.ruoyi.opc.ai.gateway.llm.ChatResponse;
+import com.ruoyi.opc.ai.gateway.llm.EmbeddingGateway;
+import com.ruoyi.opc.ai.gateway.llm.EmbeddingProvider;
 import com.ruoyi.opc.ai.gateway.llm.LlmGateway;
 import com.ruoyi.opc.ai.gateway.llm.TokenMeter;
 import com.ruoyi.opc.ai.security.PromptGuard;
@@ -17,7 +19,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -34,6 +38,15 @@ import java.util.Map;
 public class OpcLlmController {
 
     private final LlmGateway llmGateway;
+    /**
+     * 向量化网关。opc-hr 的 {@code OpcHrAiCoreGateway} 早就声明了
+     * {@code POST /opc/llm/embedding}，但对端一直没这个路由 —— 现在补上。
+     */
+    private final EmbeddingGateway embeddingGateway;
+    /**
+     * 记忆系统。用来做自检 —— 记忆到底通不通，得有个能问的地方。
+     */
+    private final com.ruoyi.opc.ai.memory.Memory memory;
     /**
      * W48.6: 注入所有 ChatModelProvider，{@code /models} 端点直接列 enabled=true 的 provider。
      * 之前是硬编码 [deepseek-v3, gpt-4o-mini, wenxin-4.0]，新增 MiniMax 时容易漏改。
@@ -199,6 +212,93 @@ public class OpcLlmController {
                 .toList());
     }
 
+    /**
+     * 文本向量化。
+     *
+     * <p><b>这个端点以前只有"合同"没有"实现"</b>：
+     * {@code opc-hr} 的 {@code OpcHrAiCoreGateway} 早就声明了
+     * {@code @PostMapping("/opc/llm/embedding")}（还配了降级工厂和单测），
+     * 而对端根本没有这个路由 —— 调过去就是 404，然后被 fallback 吞成
+     * {@code R.fail()}。候选人画像向量化、JD 技能召回因此从来没跑起来过。
+     *
+     * <p>协议：
+     * <pre>
+     * 请求  {"texts": ["..."], "type": "query"|"db"}
+     * 响应  {"provider":"minimax","model":"embo-01","dimension":1536,"vectors":[[...]]}
+     * </pre>
+     */
+    @Operation(summary = "文本向量化（embedding）")
+    @PostMapping("/embedding")
+    public R<Map<String, Object>> embedding(@RequestBody EmbeddingRequest req) {
+        List<String> texts = req.getTexts();
+        if ((texts == null || texts.isEmpty()) && req.getText() != null && !req.getText().isBlank()) {
+            texts = List.of(req.getText());
+        }
+        if (texts == null || texts.isEmpty()) {
+            return R.fail("texts 不能为空");
+        }
+        EmbeddingProvider.EmbedType type = "query".equalsIgnoreCase(req.getType())
+                ? EmbeddingProvider.EmbedType.QUERY
+                : EmbeddingProvider.EmbedType.DOCUMENT;
+
+        EmbeddingGateway.EmbeddingResult result;
+        try {
+            result = embeddingGateway.embedBatchWithProvider(texts, type);
+        } catch (Exception e) {
+            log.error("[Embedding] 调用失败: {}", e.getMessage());
+            return R.fail(e.getMessage());
+        }
+
+        List<List<Float>> vectors = new ArrayList<>(result.vectors().size());
+        for (float[] v : result.vectors()) {
+            List<Float> list = new ArrayList<>(v.length);
+            for (float f : v) {
+                list.add(f);
+            }
+            vectors.add(list);
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("provider", result.provider());
+        data.put("model", result.model());
+        data.put("dimension", result.dimension());
+        data.put("vectors", vectors);
+        return R.ok(data);
+    }
+
+    /**
+     * 记忆系统自检。
+     *
+     * <p><b>为什么需要这个端点</b>：记忆系统以前「不记事」这件事，
+     * 从外面**看不出来** —— 接口一路返回成功，日志里什么都查不到，
+     * 看板上一片绿。而记忆不记事意味着多轮对话没有上下文，
+     * 长期检索永远返回空 —— 这两件事都不会报错。
+     *
+     * <p>这里做的是真的往返：向量化 → 写进 Qdrant → 搜回来 → 删掉探针。
+     * 任何一环不通，对应字段就是 false。
+     *
+     * <p>鉴权跟 {@code /opc/llm/**} 其余端点一致（网关不放行，需要登录）。
+     */
+    @Operation(summary = "记忆系统自检（短期 + 长期 + 向量库往返）")
+    @GetMapping("/memory/health")
+    public R<Map<String, Object>> memoryHealth() {
+        try {
+            return R.ok(memory.selfCheck());
+        } catch (Exception e) {
+            log.error("[Memory] 自检失败: {}", e.getMessage(), e);
+            return R.fail("记忆自检失败: " + e.getMessage());
+        }
+    }
+
+    @lombok.Data
+    public static class EmbeddingRequest {
+        /** 待向量化的文本（多条）。 */
+        private List<String> texts;
+        /** 单条文本（texts 为空时用这个）。 */
+        private String text;
+        /** {@code query} = 用于检索；{@code db} = 要入库。不填按 db 处理。 */
+        private String type;
+    }
+
     @lombok.Data
     public static class ChatRequest {
         public List<ChatMessage> messages;
@@ -217,6 +317,7 @@ public class OpcLlmController {
     /** 简单 R 包装 */
     public record R<T>(int code, String msg, T data) {
         public static <T> R<T> ok(T data) { return new R<>(200, "OK", data); }
+        public static <T> R<T> fail(String msg) { return new R<>(500, msg, null); }
     }
 
 }

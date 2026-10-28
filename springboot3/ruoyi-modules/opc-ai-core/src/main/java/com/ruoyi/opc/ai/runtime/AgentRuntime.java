@@ -131,6 +131,12 @@ public class AgentRuntime {
             long cost = System.currentTimeMillis() - startTime;
             log.info("[AgentRuntime] 完成 steps={} cost={}ms", step, cost);
 
+            // 写长期记忆：这一问一答进向量库，下次同租户问相近的问题能被检索出来。
+            // 写不进去也不影响本次回答 —— writeLongTerm 内部会记清楚失败原因。
+            memory.writeLongTerm(request.getSessionId(), companyIdOf(request),
+                    request.getUserInput() + "\n" + resp.getContent(),
+                    Map.of("instance_id", request.getInstanceId() == null ? 0L : request.getInstanceId()));
+
             return AgentTaskResult.builder()
                     .success(true)
                     .content(resp.getContent())
@@ -161,13 +167,39 @@ public class AgentRuntime {
             list.add(ChatMessage.system(request.getSystemPrompt()));
         }
 
+        // 检索长期记忆（同一租户此前会话里的相关经验）。
+        // 以前这段根本没有 —— 记忆系统不记事，多轮对话每次都从零开始。
+        List<String> recalled = memory.searchLongTerm(companyIdOf(request), request.getUserInput(), 5);
+        if (!recalled.isEmpty()) {
+            StringBuilder sb = new StringBuilder("【历史记忆】以下是同一租户此前会话里检索到的相关记录，可能有用：\n");
+            for (String r : recalled) {
+                sb.append("- ").append(r == null ? "" : r).append('\n');
+            }
+            list.add(ChatMessage.system(sb.toString()));
+            log.info("[AgentRuntime] 注入长期记忆 {} 条 session={}", recalled.size(), request.getSessionId());
+        }
+
         // 加载历史记忆（短期）
         List<ChatMessage> history = memory.loadShortTerm(request.getSessionId(), 10);
         list.addAll(history);
 
         // v0.3：用户输入进入 LLM 之前先过 PromptGuard（注入 + 红队 5 类攻击模式）
-        list.add(ChatMessage.user(promptGuard.sanitize(request.getUserInput())));
+        String userInput = promptGuard.sanitize(request.getUserInput());
+
+        // 用户这一句也要进短期记忆 —— 以前只存了 assistant 的回答，
+        // 于是历史里全是「模型说了什么」，看不到「用户问了什么」，
+        // 多轮上下文拼出来是残的。
+        memory.appendShortTerm(request.getSessionId(), ChatMessage.user(userInput));
+
+        list.add(ChatMessage.user(userInput));
         return list;
+    }
+
+    /**
+     * 长期记忆按租户隔离，companyId 是过滤条件 —— 没有它就检索不到（也不该检索别人的）。
+     */
+    private String companyIdOf(AgentTaskRequest request) {
+        return request.getCompanyId() == null ? null : String.valueOf(request.getCompanyId());
     }
 
     @lombok.Data

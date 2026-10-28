@@ -75,6 +75,26 @@
             <groupId>io.qdrant</groupId>
             <artifactId>client</artifactId>
         </dependency>
+        <!--
+          QdrantVectorStore 直接用了 SDK 的消息类型（Protobuf）、ListenableFuture（Guava）、
+          ManagedChannel（gRPC），但 SDK 把这些都声明成 runtime scope —— 编译期不可见。
+          这里显式提到编译期，版本与 SDK 1.14.1 内置的一致。
+        -->
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-api</artifactId>
+            <version>${qdrant.grpc.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>${qdrant.protobuf.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>${qdrant.guava.version}</version>
+        </dependency>
 
         <!-- Jasypt 加密 -->
         <dependency>

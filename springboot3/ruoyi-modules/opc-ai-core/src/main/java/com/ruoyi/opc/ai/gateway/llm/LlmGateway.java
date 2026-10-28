@@ -48,8 +48,18 @@ public class LlmGateway {
         }
 
         // 2. 按优先级遍历 provider（主→备）
+        //
+        // 这里以前直接遍历注入顺序的 providers —— Spring 按类名/注册顺序注入，
+        // 和 priority 无关。后果是「主模型」根本不一定是优先级最高的那个：
+        // DeepSeekProvider(priority=10) 可能排在 MiniMaxProvider(priority=5) 前面，
+        // 于是配置里写着「MiniMax 优先」而实际先打的是 DeepSeek。
+        // chatStream() 走 pickPrimary()（排序过），两条路的行为因此一直不一致。
+        // 现在统一按 priority 升序遍历 —— 和 chatStream 对齐。
         ChatResponse lastError = null;
-        for (ChatModelProvider provider : providers) {
+        List<ChatModelProvider> ordered = providers.stream()
+                .sorted(java.util.Comparator.comparingInt(ChatModelProvider::priority))
+                .toList();
+        for (ChatModelProvider provider : ordered) {
             if (!provider.enabled()) continue;
             try {
                 long start = System.currentTimeMillis();
