@@ -10,6 +10,7 @@
 #   bash deploy.sh nuke                     # ⚠️ 删 mysql/redis 数据卷重新初始化
 #   bash deploy.sh rebuild crm              # 重建镜像(改完 OPC 源码后)
 #   bash deploy.sh rebuild gateway          # 只重建网关 (改完 ruoyi-gateway 后)
+#   bash deploy.sh rebuild auth             # 只重建认证服务 (改完 ruoyi-auth 后)
 #   bash deploy.sh rebuild frontend         # 只重建前端 (改完 vue3-typescript 后)
 #   bash deploy.sh rebuild all              # 重建所有 aiopc-* 镜像
 #   bash deploy.sh snapshot                 # 跑状态快照
@@ -160,7 +161,7 @@ cmd_rebuild() {
   require_docker
   local target="${1:-}"
   if [[ -z "${target}" ]]; then
-    fail "用法: deploy.sh rebuild <svc-name|all|gateway|frontend>     (e.g. crm / notification / ai-core / gateway / frontend / all)"
+    fail "用法: deploy.sh rebuild <svc-name|all|gateway|auth|frontend>     (e.g. crm / notification / ai-core / gateway / auth / frontend / all)"
   fi
 
   # 共享模块必须**先 install 进本地仓库** ——
@@ -283,6 +284,7 @@ cmd_rebuild() {
     # 而且它是 fat jar 启动(java -jar), 不能走 thin jar 那套
     build_one ruoyi-system
     build_gateway
+    build_auth
     build_frontend
   elif [[ "${target}" == "gateway" ]]; then
     # 网关不在 ruoyi-modules/ 下(build_one 那条路走不通:它在 ruoyi-gateway/),
@@ -292,6 +294,12 @@ cmd_rebuild() {
     # 跳过」→ 然后照样打印「rebuild 完成」。什么都没做,却看着像成功了。
     # 这跟 build_one 里「服务名拼错了就 fail」的严格程度完全两样。
     build_gateway
+  elif [[ "${target}" == "auth" ]]; then
+    # 认证服务同理: 它在 ruoyi-auth/ 下(不在 ruoyi-modules/ 里),
+    # 也是 fat jar。跟网关一样, 以前没有任何入口能重建它 ——
+    # 改完 ruoyi-auth 的代码, 只能自己去敲 mvn + docker build,
+    # 或者干脆忘了, 让线上跑着上一个 jar。
+    build_auth
   elif [[ "${target}" == "frontend" ]]; then
     # 前端不是 ruoyi-modules/ 下的 Maven 模块, build_one 那条路走不通
     # (没有 pom、没有镜像构建脚本, 它是 nginx + 预构建产物)。
@@ -318,6 +326,24 @@ build_gateway() {
   docker compose build aiopc-gateway || fail "网关 docker build 失败"
   docker compose up -d aiopc-gateway || fail "网关重启失败"
   log "[gateway] OK"
+}
+
+# 认证服务: 跟网关一样的路数 —— fat jar, 但它不在 ruoyi-modules/ 下,
+# 所以 build_one 那条路("ruoyi-modules/<module>")也走不通。
+#
+# 以前**没有任何入口**能重建它: `rebuild auth` 会掉进 build_one →
+# 「模块 auth 不存在, 跳过」→ 照样打印「rebuild 完成」。
+# 结果是: 改了 ruoyi-auth 的代码, 线上跑的还是上一个 jar, 而且没人报错。
+build_auth() {
+  log "[auth] mvn clean package (fat jar) + docker build"
+  cd "${PROJECT_ROOT}"
+  JAVA_HOME="${JAVA_HOME}" \
+    mvn -pl ruoyi-auth -am clean package -Dmaven.test.skip=true -q \
+    || fail "认证服务 package 失败"
+  cd "${SCRIPT_DIR}"
+  docker compose build aiopc-auth || fail "认证服务 docker build 失败"
+  docker compose up -d aiopc-auth || fail "认证服务重启失败"
+  log "[auth] OK"
 }
 
 # 前端: 宿主机上已有 node_modules 就在宿主机 build, 产物交给
@@ -363,7 +389,7 @@ Commands:
   status                   docker compose ps
   stop                     停所有容器,保留 host 数据
   nuke                     ⚠️  清 mysql/redis/nacos 数据卷
-  rebuild <svc|all|gateway|frontend>  重建指定服务镜像 (e.g. crm / notification / gateway / frontend / all)
+  rebuild <svc|all|gateway|auth|frontend>  重建指定服务镜像 (e.g. crm / notification / gateway / auth / frontend / all)
   snapshot                 跑全栈状态快照
   health                   跑健康检查 (36+ 项)
   help                     显示本帮助
@@ -373,6 +399,7 @@ Commands:
   bash deploy.sh up
   bash deploy.sh rebuild crm
   bash deploy.sh rebuild gateway
+  bash deploy.sh rebuild auth
   bash deploy.sh rebuild frontend
   bash deploy.sh rebuild all
   bash deploy.sh snapshot
