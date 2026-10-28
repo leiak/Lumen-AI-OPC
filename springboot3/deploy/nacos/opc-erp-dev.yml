@@ -30,13 +30,17 @@ mybatis:
     map-underscore-to-camel-case: true
 
 # ERP 业务配置
+#
+# 这里原来配了三个 OpenFeign 下游地址(notification / user-center),两个都用不上:
+#   · 没有任何代码读 opc.erp.*.base-url —— ERP 的 FeignClient
+#     (OpcErpNotificationGateway)只写 name= 不写 url=,走 Nacos 服务发现;
+#   · 就算有人照着改,这些主机名也是错的:compose 里的服务名是
+#     aiopc-notification / aiopc-user-center,
+#     「opc-notification」是 Nacos 里的**服务名**,不是能解析的 DNS 名。
+#
+# 留着只会被下一个人当成「下游地址在这里改」,所以一并删掉。
 opc:
-  erp:
-    # OpenFeign downstreams
-    notification:
-      base-url: http://opc-notification:9310
-    user-center:
-      base-url: http://opc-user-center:9302
+  erp: {}
 
 logging:
   level:

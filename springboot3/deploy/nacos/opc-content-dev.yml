@@ -29,12 +29,14 @@ spring:
 # OPC Content 业务配置 (W74)
 opc:
   content:
-    notification:
-      base-url: http://aiopc-notification:9310
-    ai-core:
-      base-url: http://aiopc-ai-core:9301
-    user-center:
-      base-url: http://aiopc-user-center:9302
+    # 这里原来还配了三个 OpenFeign 下游地址(notification / ai-core / user-center),三个都用不上:
+    #   · 没有任何代码读 opc.content.*.base-url —— Content 的三个 FeignClient
+    #     (OpcContentNotificationGateway / OpcContentAiCoreGateway / OpcContentUserCenterGateway)
+    #     都只写 name= 不写 url=,走 Nacos 服务发现;
+    #   · 而且这些主机名是 compose 里的 DNS 名(aiopc-*),不是 Nacos 里的服务名,
+    #     两者混在一起写,迟早有人照着改出一个连不通的地址。
+    # 留着只会被下一个人当成「下游地址在这里改」,所以一并删掉。
+    #
     # AES-256-GCM token 加密密钥 (32 字节 base64 = "opc-content-aes256-key-32bytes!!")
     token-encryption-key: "b3BjLWNvbnRlbnQtYWVzMjU2LWtleS0zMmJ5dGVzISE="
     # 抖音 OAuth 回调基地址 (前端用于跳转到绑定页面)
@@ -50,12 +52,10 @@ opc:
     oauth:
       state-secret: ""
       state-ttl-seconds: 600
-  llm:
-    scene-mapping:
-      DRAMA: content_short_drama
-      VIDEO: content_video_script
-      ARTICLE: content_article
-      ADAPTER: content_platform_adapter
+  # 这里原来有一份 llm.scene-mapping(DRAMA/VIDEO/ARTICLE/ADAPTER → scene 名)。
+  # 那份映射**没有任何代码读**:scene 名是 Java 里的常量
+  # (ContentLlmPrompts.SCENE_SHORT_DRAMA = "content_short_drama" 等),
+  # 不是配置出来的。留着会让人以为改这份 YAML 就能换路由 —— 删掉。
 
 # 抖音开放平台 sandbox 配置
 douyin:
@@ -67,7 +67,10 @@ douyin:
   scope: "video.create,video.upload,user_info"
 
 mybatis:
-  mapper-locations: classpath*:mapper/**/*Mapper.xml
+  # 与本地 application.yml 一致: **/*.xml 比 *Mapper.xml 宽 ——
+  # content 的 4 个 mapper 恰好都以 Mapper.xml 结尾, 两个模式眼下都能命中,
+  # 但本地那份才是 jar 里真正生效的真相源, 配置中心这边跟着它走, 别收紧。
+  mapper-locations: classpath*:mapper/**/*.xml
   type-aliases-package: com.ruoyi.opc.content.domain
   configuration:
     map-underscore-to-camel-case: true

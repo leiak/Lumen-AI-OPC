@@ -1,16 +1,100 @@
-# Nacos 配置管理（opc-prod 命名空间）
+# Nacos 配置管理
 
 ## 命名空间
 
-| 命名空间 ID       | 用途               | DataID 数量 |
-|------------------|-------------------|------------|
-| `opc-prod`       | 生产环境           | 7          |
-| `opc-staging`    | 预发环境（参考 prod） | 7        |
-| `opc-dev`        | 开发环境           | 7（已部署） |
+| 命名空间 ID       | 用途                  | DataID 数量 | 状态                     |
+|------------------|-----------------------|------------|--------------------------|
+| `opc-dev`        | 开发 / 演示环境（compose 全栈共用） | 9          | **已建、已推、已生效**   |
+| `opc-prod`       | 生产环境              | 7          | 仅本目录有 prod 模板，未部署 |
+| `opc-staging`    | 预发环境（参考 prod）  | 7          | 未部署                   |
 
-> 命名空间需先在 Nacos 控制台 → 命名空间 → 新建，拿到 namespaceId（UUID 格式）。
+> 命名空间 ID 是**自定义字符串**（`opc-dev`），不是 UUID。
+> Nacos 控制台 → 命名空间 → 新建时填「命名空间 ID」= `opc-dev` 即可，
+> 服务端认的就是这个字符串。
 
-## DataID 清单（prod）
+⚠️ **命名空间在 Nacos 里有两处，只建一处等于没建**：
+
+| 位置              | 作用                                        | 建了会怎样                       |
+|------------------|---------------------------------------------|----------------------------------|
+| `tenant_info`     | 命名空间的「户口本」，控制台的命名空间列表读它 | 控制台里能看见这一栏              |
+| `config_info.tenant_id` | 配置实际存哪一栏                        | 服务端按 `tenant=opc-dev` 拉得到 |
+
+老脚本只推配置、没建户口本，于是「配置其实躺在别处、控制台上一栏都看不见」。
+`./create-namespace.sh` 补的就是 `tenant_info` 那一行。
+
+## ⚠️ 配置 API 的参数陷阱（踩过很多次）
+
+**Nacos 配置 API 的命名空间参数叫 `tenant`，不叫 `namespaceId`。**
+
+| API                    | 参数              | 说明                                  |
+|------------------------|-------------------|---------------------------------------|
+| 配置读写 `/v1/cs/configs` | **`tenant=`**      | 用错成 `namespaceId=` 会被**静默忽略**，回落到默认 tenant(`''`) |
+| 命名空间管理 `/v1/console/namespaces` | `namespaceId=` / `customNamespaceId=` | 建命名空间时用这个 |
+
+后果：推送和回读**都**用 `namespaceId=` 时，两边一起回落到 public 栏，
+md5 照样一致 —— 脚本一路 `[OK]`，但配置压根没进目标命名空间。
+`./import-dev.sh` 现在推送和回读**都**用 `tenant=`，回读不到就直接报错。
+
+另一个坑：`tenant=public` 会被服务端归一化成 `''`。
+历史上由 `nacos_namespace_migrate` 写进去、`tenant_id='public'` 的那批行
+（RuoYi 自带的 9 份），**任何 API 调用都读不到** —— 改不回来，只能当历史遗留。
+
+## dev 环境怎么推
+
+```bash
+cd springboot3/deploy/nacos
+
+# 1. 确保 opc-dev 命名空间存在（幂等；只补 tenant_info 的户口本）
+./create-namespace.sh
+
+# 2. 推 9 份 dev 配置，并按 tenant= 回读逐行校验
+./import-dev.sh
+
+# 灰度：只推其中几份
+./import-dev.sh opc-common-dev.yml
+```
+
+`import-dev.sh` 推完会**回读比对内容**，对不上直接 `[FAIL]` 退出 1。
+改完仓库里的 yml 一定要重推 —— `deploy/scripts/health-check.sh` 第 22 节会
+盯着「Nacos 里的内容 == 仓库里的内容」这条不变量。
+
+## dev 的 DataID 清单（9 份）
+
+| DataID                      | 谁会拉它                                    | 作用                        |
+|-----------------------------|---------------------------------------------|-----------------------------|
+| `application-dev.yml`       | 几乎所有服务                                | 全局共享                    |
+| `opc-common-dev.yml`        | 除网关/社区外都拉                            | 跨服务通用（租户开关等）     |
+| `opc-notification-dev.yml`  | opc-notification                            | 单服务私有                  |
+| `opc-crm-dev.yml`           | opc-crm                                     | 单服务私有                  |
+| `opc-community-dev.yml`     | opc-community                               | 单服务私有                  |
+| `opc-marketplace-dev.yml`   | opc-marketplace                             | 单服务私有                  |
+| `opc-hr-dev.yml`            | opc-hr                                      | 单服务私有                  |
+| `opc-erp-dev.yml`           | opc-erp                                     | 单服务私有                  |
+| `opc-content-dev.yml`       | opc-content                                 | 单服务私有                  |
+
+`opc-ai-core` / `opc-agent-hub` / `opc-user-center` / `opc-billing` / `opc-finance`
+没有各自的 dev 文件：它们的私有配置（`ai.*` / `langchain4j.*` / `qdrant.*` 等）
+由 `application-dev.yml` 覆盖。
+
+> 每个服务实际会拉的 DataID 由它自己 `bootstrap.yml` 的 `spring.config.import` 决定。
+> 注意 `opc-community` **不**拉 `opc-common-dev.yml`，网关**不**拉 `opc-common-dev.yml`。
+
+## 这份配置**不改**任何服务的行为
+
+同一份配置摆两处时，本目录里的值必须和随 jar 走的本地 `application.yml` **逐条一致**。
+这样「Nacos 生效了」不会顺带改掉任何服务的实际行为 —— 配置中心是本地 yml 的
+**可运维副本**，不是偷偷换配置的另一处真相源。
+
+各服务本地没有的键（`management.metrics.tags.application`、
+`management.endpoint.health.show-components`、`opc.tenant.*`）才由这里新增，
+且都是无害的（默认值与代码里的默认值相同）。
+
+> `opc.tenant.*` 的值和 `TenantProperties` 的字段默认值相同
+> （`enabled=true` / `publicCompanyId=1`），所以推上去等于「显式写出来」，不改行为。
+
+## prod 环境
+
+### DataID 清单（prod）
 
 | DataID                    | 作用                              | 共享/私有 |
 |--------------------------|----------------------------------|----------|
@@ -22,7 +106,7 @@
 | `opc-billing-prod.yml`   | 计费特有                          | 私有 |
 | `opc-finance-prod.yml`   | 财务特有                          | 私有 |
 
-## 导入/导出/加密
+### 导入/导出/加密
 
 ```bash
 # 1. 加密敏感字段（输出 ENC(...) 格式，直接粘到 YAML）
@@ -72,6 +156,25 @@ DRY_RUN=1 ./apply-whitelist.sh dev   # 预览
 待 `IgnoreWhiteProperties` 增加 method+path 字段。
 
 ## 故障排查
+
+### 改了 `deploy/nacos/*.yml`，服务却没变
+
+配置在 Nacos 里**不是**自动同步回仓库的 —— 改了仓库文件必须重推：
+
+```bash
+cd springboot3/deploy/nacos && ./import-dev.sh
+```
+
+没重推的话，Nacos 里跑的还是旧内容（`health-check.sh` 第 22 节会报「漂移」）。
+
+推完之后还要分两种情况：
+
+- **热更新能覆盖的键**（`opc.tenant.*` 这类）：推完几秒内生效，日志里会看到
+  `Refresh keys changed: [...]`。
+- **只有启动时才定的键**（actuator 端点暴露面、`management.metrics.tags.*`）：
+  **热刷新加不了**，必须重建那个服务 —— `bash deploy.sh rebuild <服务>`。
+  判据是 `/actuator/metrics/jvm.memory.used` 上有没有 `application` 标签：
+  这个标签只写在 Nacos 那份 `application-dev.yml` 里，本地 yml 都没有。
 
 ### 启动报错 `Could not decrypt`
 原因：`JASYPT_PASSWORD` 与加密时不一致，或加密后没重新导入 Nacos。

@@ -1,0 +1,30 @@
+# ============================================================
+# opc-common dev 共享配置（Nacos 命名空间 opc-dev / DataID opc-common-dev.yml）
+#
+# 14 个业务服务的 bootstrap.yml 都会 import 这一份：
+#   - nacos:application-${profile}.yml     全局共享（application-dev.yml）
+#   - nacos:${spring.application.name}-${profile}.yml   单服务私有
+#   - nacos:opc-common-${profile}.yml      ← 就是这份，跨服务通用
+#
+# 以前这个 DataID **根本不存在**（仓库里只有 prod 版），所以这一行 import
+# 一直是空转。现在补上，但**只放真正被代码读、且值与现状一致的键** ——
+# 放一堆没人读的键（比如 prod 那份里的 gray / cors / rate-limit / audit），
+# 只会让下一个人以为「这些功能已经接好了」。
+#
+# 命名空间：opc-dev
+# DataID  ：opc-common-dev.yml
+# ============================================================
+
+# 租户守卫（com.ruoyi.common.security.tenant.TenantProperties，prefix=opc.tenant）
+#
+# enabled 是给运维留的「不用重新发版就能止血」的开关：
+# 守卫误伤时先把这里改成 false，刷新配置（或重启）即刻生效。
+# 两个值都与代码里的默认值一致 —— 推这份配置**不改变任何行为**，
+# 只是把那个开关从「注释里的承诺」变成「配置中心里真能改的一行」。
+#
+# ⚠️ 改这个要重启或触发 refresh 才生效（config.import 是启动期拉的）。
+opc:
+  tenant:
+    enabled: true
+    # 匿名「公开浏览」端点可见的那一家公司（演示环境是公司 1）
+    public-company-id: 1

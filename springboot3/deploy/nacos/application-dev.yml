@@ -1,36 +1,51 @@
 # ============================================================
-# OPC 全局配置（Nacos 共享配置 application-dev.yml）
+# OPC 全局共享配置（Nacos 命名空间 opc-dev / DataID application-dev.yml）
+#
+# 这份文件是「配置中心真的在管事」的证据之一，所以它必须同时满足两条：
+#
+#   1) 容器里安全
+#      每一个占位符都有默认值，每一个主机名都能用容器 DNS 解析。
+#      —— 这份文件以前有三个坑，每一个都是「一激活就炸」：
+#         · ai.openai / ai.zhipuai / qdrant 的 api-key 写成 ${VAR}（没有默认值），
+#           容器里没有这个环境变量时占位符解析不了，服务**启动直接挂**；
+#         · qdrant.host 写死 127.0.0.1 —— 容器里 127.0.0.1 是容器自己；
+#         · sentinel / skywalking 都指着 127.0.0.1，而 compose 里根本没有这两个服务。
+#      另外 application-dev.yml 原来还带了一整块 spring.datasource，
+#      主机名是 127.0.0.1 —— 容器里连的是「容器自己」，全栈数据库连接会一起断。
+#      所以那一块**整段删掉**：数据源由各服务本地 application.yml + compose env 决定。
+#
+#   2) 与各服务本地 application.yml 逐条一致
+#      同一个键如果两边都写了，值必须一样。这样「Nacos 生效了」不会顺带改掉
+#      任何服务的实际行为 —— 配置中心只是同内容的另一份副本，不是在偷偷换配置。
+#      （随 jar 走的本地 application.yml 仍然是真相源；Nacos 这份是它的可运维副本。）
+#      各服务本地没有的键（management.metrics.tags 等）才由这里新增，且都是无害的。
+#
+# 命名空间：opc-dev
+# DataID  ：application-dev.yml
+# 导入方式：各服务 bootstrap.yml 的 spring.config.import
 # ============================================================
 
-spring:
-  datasource:
-    dynamic:
-      primary: master
-      datasource:
-        master:
-          url: jdbc:mysql://127.0.0.1:3306/ry-vue-opc?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=Asia/Shanghai
-          username: root
-          password: root
-  # W74.1 修复: Spring Boot 3.2 已移除 spring.redis.* 自动配置,Lettuce 只看 spring.data.redis.*
-  data:
-
+# Jasypt（Nacos 里也可以直接放 ENC(...) 密文）
 jasypt:
   encryptor:
-    password: OpcEncrypt!2026
+    password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
     algorithm: PBEWithMD5AndDES
 
 # OPC 通用
+#
+# 只有 opc-ai-core 读这一段（其余服务没装 langchain4j / spring-ai，
+# 读不到也不装 Bean），值与 opc-ai-core 本地 application.yml 逐条一致。
 opc:
   llm:
-    primary: MiniMax-Text-01
+    primary: MiniMax-Text-01  # MiniMax 优先 (priority=5)
     fallback: deepseek-v3
     enable-cache: true
     cache-ttl: 3600
     max-retries: 3
     timeout-seconds: 60
-    # W48.6: dev 本地多 provider（无 key 时 enabled 自动 false）
+    # 各 provider 配置（被各 Provider @Component 读取）
     deepseek:
-      enabled: false  # W48.6: 用户要求本轮测试只走 MiniMax，临时关
+      enabled: false
       api-key: ${DEEPSEEK_API_KEY:}
       base-url: https://api.deepseek.com/v1
       model: deepseek-chat
@@ -39,6 +54,11 @@ opc:
       api-key: ${MINIMAX_API_KEY:}
       base-url: https://api.minimaxi.com/v1
       model: MiniMax-Text-01
+    openai:
+      enabled: false
+      api-key: ${OPENAI_API_KEY:}
+      base-url: https://api.openai.com/v1
+      model: gpt-4o-mini
   memory:
     short-term-ttl: 86400
     long-term-collection: opc_memory
@@ -49,37 +69,37 @@ opc:
     step-timeout-seconds: 30
     enable-trace: true
 
-# AI 模型 Key（生产请用 Nacos 加密配置）
+# Spring AI 配置（只有 opc-ai-core 装了这个 starter）
+#
+# api-key 的默认值必须是**非空**占位符：Spring AI 的 OpenAiChatAutoConfiguration
+# 在启动时校验 key 非空，空的会把整个 context 拉爆。真实 key 用 env 注入。
 ai:
   openai:
-    api-key: ${OPENAI_API_KEY}
+    api-key: ${OPENAI_API_KEY:sk-placeholder-deepseek}
     base-url: https://api.deepseek.com/v1
   zhipuai:
-    api-key: ${ZHIPUAI_API_KEY}
+    api-key: ${ZHIPUAI_API_KEY:placeholder}
 
+# LangChain4j（只有 opc-ai-core）
 langchain4j:
   chat-model:
     model-name: gpt-4o-mini
     temperature: 0.3
+    max-tokens: 2048
+    timeout: 60s
 
+# Qdrant 向量数据库（只有 opc-ai-core）
+#
+# ⚠️ 说清楚: QdrantVectorStore 目前是**空壳** —— upsert/search/delete 三个方法
+# 的方法体全是注释("实际实现: 使用 Qdrant Java SDK"), 压根没有 Qdrant SDK 依赖、
+# 也不会建连接。所以这里写什么都不影响行为, 别以为改这个地址就能让向量库通。
+# 真正的长期记忆(检索/写入)还没接 —— 那是一件独立的事。
+#
+# 值与 opc-ai-core 本地 application.yml 一致(同样是 127.0.0.1), 只是留成可覆盖的写法。
 qdrant:
-  host: 127.0.0.1
-  port: 6334
-  api-key: ${QDRANT_API_KEY}
-
-# Sentinel 限流
-sentinel:
-  eager: true
-  transport:
-    dashboard: 127.0.0.1:8718
-  datasource:
-    ds1:
-      nacos:
-        server-addr: 127.0.0.1:8848
-        dataId: sentinel-ruoyi-gateway
-        groupId: DEFAULT_GROUP
-        data-type: json
-        rule-type: gw-flow
+  host: ${QDRANT_HOST:127.0.0.1}
+  port: ${QDRANT_PORT:6334}
+  api-key: ${QDRANT_API_KEY:}
 
 # 日志
 logging:
@@ -88,21 +108,25 @@ logging:
     com.ruoyi.opc: debug
     dev.langchain4j: info
 
-# SkyWalking Agent
-agent:
-  service_name: ${spring.application.name}
-  collector:
-    backend_service: 127.0.0.1:11800
-
 # 监控
+#
+# 暴露面是**白名单**，不是 "*"：
+# /actuator/env 会把数据源口令、Jasypt 密钥原样吐出来。
+# 业务端口只绑 127.0.0.1 且网关没有 /actuator/** 路由，暴露面仅回环口 + 容器网，
+# 但仍然不给它机会。
+#
+# 这也是「Nacos 配置真的生效了」最直接的一个观察点：
+# 没有本地 management 配置的服务，/actuator 原本只有 self/health/health-path，
+# 加载这份配置后才会多出 info/metrics，/actuator/health 也会带上 components。
 management:
   endpoints:
     web:
       exposure:
-        include: "*"
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: always
+      show-components: always
   metrics:
     tags:
       application: ${spring.application.name}

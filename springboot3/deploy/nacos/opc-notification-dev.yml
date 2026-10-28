@@ -19,16 +19,26 @@ spring:
           username: ${MYSQL_USER:root}
           password: ${MYSQL_PASSWORD:root}
 
-# 邮件（dev 指向本地 MailHog / mailpit，无需真实凭据）
+# 邮件
+#
+# 这里原来写的是「dev 指向本地 MailHog / mailpit」, host=smtp.dev.local port=1025,
+# 还配了 dev@opc.local / devpass —— **整个演示栈里根本没有邮件服务器**
+# (compose 里没有 mailhog / mailpit / maildev, 也没有 MAIL_HOST 环境变量),
+# smtp.dev.local 这个域名压根解析不出来。
+# 也就是说: 这份配置在替一个不存在的环境作证, 正是这轮要消灭的那类东西。
+#
+# 现在跟各服务本地 application.yml 逐条一致 —— 演示环境没有邮件服务器,
+# 发信就会失败, 这是事实。想接真邮件就配 MAIL_HOST / MAIL_PORT / MAIL_USER /
+# MAIL_PASSWORD 四个环境变量, 别在配置里编一台不存在的服务器。
 mail:
-  host: ${MAIL_HOST:smtp.dev.local}
-  port: ${MAIL_PORT:1025}
-  username: ${MAIL_USER:dev@opc.local}
-  password: ${MAIL_PASSWORD:devpass}
+  host: ${MAIL_HOST:localhost}
+  port: ${MAIL_PORT:25}
+  username: ${MAIL_USER:}
+  password: ${MAIL_PASSWORD:}
   properties:
     mail:
       smtp:
-        auth: true
+        auth: false
         starttls:
           enable: false
         ssl:
