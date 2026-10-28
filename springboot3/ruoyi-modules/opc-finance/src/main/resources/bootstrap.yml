@@ -11,12 +11,13 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: 127.0.0.1:8848
+        # 容器里 127.0.0.1 指向容器自己, 不是 Nacos —— 用 compose 里的 DNS 名。
+        server-addr: ${NACOS_SERVER:nacos1}:8848
         namespace: ${NACOS_NAMESPACE:public}
         fail-fast: true
         fail-fast-on-connection-refused: true
       config:
-        server-addr: 127.0.0.1:8848
+        server-addr: ${NACOS_SERVER:nacos1}:8848
         namespace: ${NACOS_NAMESPACE:public}
         file-extension: yml
         fail-fast: true

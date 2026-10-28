@@ -14,10 +14,11 @@ spring:
     nacos:
       discovery:
         # 服务注册地址
-        server-addr: 127.0.0.1:8848
+        # 容器里 127.0.0.1 指向容器自己, 不是 Nacos —— 用 compose 里的 DNS 名。
+        server-addr: ${NACOS_SERVER:nacos1}:8848
       config:
         # 配置中心地址
-        server-addr: 127.0.0.1:8848
+        server-addr: ${NACOS_SERVER:nacos1}:8848
   config:
     # 配置文件格式
     file-extension: yml

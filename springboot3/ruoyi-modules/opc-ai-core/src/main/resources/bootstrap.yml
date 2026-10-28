@@ -13,7 +13,8 @@ spring:
     nacos:
       # ====== 服务发现 ======
       discovery:
-        server-addr: 127.0.0.1:8848
+        # 容器里 127.0.0.1 指向容器自己, 不是 Nacos —— 用 compose 里的 DNS 名。
+        server-addr: ${NACOS_SERVER:nacos1}:8848
         namespace: ${NACOS_NAMESPACE:public}
         # prod 必须显式开启；fail-fast 后启动失败直接退出
         fail-fast: true
@@ -23,7 +24,7 @@ spring:
           watch-delay: 30000
       # ====== 配置中心 ======
       config:
-        server-addr: 127.0.0.1:8848
+        server-addr: ${NACOS_SERVER:nacos1}:8848
         namespace: ${NACOS_NAMESPACE:public}
         file-extension: yml
         # prod 配置拉取失败立即抛错（Spring Cloud Alibaba 原生支持）

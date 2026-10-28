@@ -23,14 +23,24 @@ spring:
     sentinel:
       # 取消控制台懒加载
       eager: true
-      transport:
-        # 控制台地址
-        dashboard: 127.0.0.1:8718
-      # nacos配置持久化
+      # Sentinel 控制台地址 —— 演示栈里**没有**这个服务(compose 里没有 sentinel,
+      # 也没有 8718 端口),配一个不存在的地址只会让网关对着空气发心跳。
+      # 真要接控制台: 先把它加进 compose, 再把下面这行打开。
+      # transport:
+      #   dashboard: ${SENTINEL_DASHBOARD:sentinel-dashboard}:8718
+      #
+      # 限流规则从 Nacos 持久化 (gw-flow = 网关流控规则)。
+      #
+      # server-addr 这里原来写的是 127.0.0.1:8848 —— 在容器里那是**网关自己**,
+      # Nacos 客户端永远连不上。表现是日志里每秒十几条
+      # "Client not connected, current status:STARTING",
+      # 而网关的流控规则一条都从来没加载过(仓库里写着「nacos配置持久化」,
+      # 实际上那条路是断的)。必须用容器网里的 DNS 名, 和上面 discovery/config 同源。
       datasource:
         ds1:
           nacos:
-            server-addr: 127.0.0.1:8848
+            server-addr: ${NACOS_SERVER:nacos1}:8848
+            namespace: opc-dev
             dataId: sentinel-ruoyi-gateway
             groupId: DEFAULT_GROUP
             data-type: json
