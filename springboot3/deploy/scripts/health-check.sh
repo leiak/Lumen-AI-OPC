@@ -24,6 +24,7 @@
 #  17) LLM 计量链 (3c 回归护栏)
 #  18) 多公司切租户 (3d 回归护栏)
 #  19) 市场页改名 + 数字真实性 + 监控
+#  20) 第 2 轮的动作是真的 (订阅 + MODULE 装完真的通知社区)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -2427,6 +2428,193 @@ print('%d %d' % (down, len(want - seen)))
   fi
 }
 
+# ---------- 20. 第 2 轮的动作是真的 (订阅 + MODULE 装完真的通知社区) ----------
+#
+# 第 19 节守的是「静态数字对得上」—— 页面上的数能不能从表里推出来。
+# 这一节守的是「**动作**是不是真的」—— 点一下订阅 / 装一下模块, 库里到底有没有变。
+#
+# 只读库的护栏证明不了「点一下按钮真的有反应」—— 那正是第 2 轮修的病:
+# 订阅页面上挂着一个数, 底下什么都没有; MODULE 装完弹一句「安装成功」,
+# 社区那边一行没动。
+#
+# 设计约束(健康检查得能反复跑):
+#   装 / 订阅这类动作如果每次跑都往库里堆东西, 数字就会离「真实」越来越远 ——
+#   护栏自己变成了制造假数字的机器。所以:
+#     · 订阅 → 退订 是闭环(退订有 -1 的减法), 跑完回到原点, 数字不漂。
+#     · 重复安装 → 409 且一个数都不动(证明不重复计数), 这条每次都跑。
+#     · 首次安装 → 三个数一起 +1, 只在第一次跑时执行 —— 之后那条 mp_install 行
+#       一直存在, 再点就是 409。这不是「测一次就作废」: 20.5 每次都跑, 而且它守的
+#       正是「社区那边没漏通知」—— 那条通知路径一断, 20.5 立刻就红。
+check_marketplace_actions() {
+  hr
+  echo "[20] 第 2 轮的动作是真的 (订阅 + MODULE 装完真的通知社区)"
+  hr
+
+  # ---- 登录拿 token ----
+  local login_body token
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/login" 2>/dev/null) || true
+  token=$(printf '%s' "${login_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data', {})
+    print(d.get('token','') or d.get('access_token',''))
+except Exception:
+    print('')
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    nok "20.0 拿不到 admin 的 token —— 动作类检查全部跳过"
+    return
+  fi
+
+  # 带 JWT 打网关(前端走的就是这条路: nginx → 网关 → 服务)
+  mp_api() {
+    local method="$1" path="$2" data="${3:-}"
+    if [[ -n "${data}" ]]; then
+      curl -s -m 20 -X "${method}" \
+        -H "Authorization: Bearer ${token}" \
+        -H "Content-Type: application/json" \
+        -d "${data}" \
+        "http://${GATEWAY_HOST}:${GATEWAY_PORT}${path}" 2>/dev/null || true
+    else
+      curl -s -m 20 -X "${method}" \
+        -H "Authorization: Bearer ${token}" \
+        "http://${GATEWAY_HOST}:${GATEWAY_PORT}${path}" 2>/dev/null || true
+    fi
+  }
+
+  # ---------------- 20.1 / 20.2 订阅 ↔ 退订 ----------------
+  #
+  # 选一件已发布的商品当靶子。admin(user_id=1, company_id=1)没有订阅过任何商品,
+  # 所以第一次跑是「新插入行」, 之后是「复活既有行」—— 两条路径的计数都该 +1/-1。
+  local sub_pub
+  sub_pub=$(db_q "SELECT id FROM mp_publication WHERE deleted = 0 AND status = 'PUBLISHED' ORDER BY id LIMIT 1;" | head -1)
+  if [[ -z "${sub_pub}" ]]; then
+    nok "20.1 查不到已发布的商品 —— 护栏空转, 证明不了什么"
+  else
+    local c0 s0 c1 s1
+    c0=$(db_q "SELECT subscription_count FROM mp_publication WHERE id = ${sub_pub};" | head -1); c0=${c0:-0}
+    s0=$(db_q "SELECT COUNT(*) FROM mp_subscription WHERE publication_id = ${sub_pub} AND status = 'ACTIVE' AND deleted = 0;" | head -1); s0=${s0:-0}
+
+    local body code
+    body=$(mp_api POST "/opc/marketplace/subscription/${sub_pub}")
+    code=$(body_code "${body}")
+    if [[ "${code}" != "200" ]]; then
+      nok "20.1 订阅接口返回 code=${code}: ${body:0:160}"
+    else
+      c1=$(db_q "SELECT subscription_count FROM mp_publication WHERE id = ${sub_pub};" | head -1); c1=${c1:-0}
+      s1=$(db_q "SELECT COUNT(*) FROM mp_subscription WHERE publication_id = ${sub_pub} AND status = 'ACTIVE' AND deleted = 0;" | head -1); s1=${s1:-0}
+      if [[ "${c1}" == "$((c0 + 1))" && "${s1}" == "$((s0 + 1))" ]]; then
+        ok "20.1 订阅是真的: 商品 ${sub_pub} 订阅数 ${c0} → ${c1}, 活跃订阅行 ${s0} → ${s1}"
+      else
+        nok "20.1 订阅后数字没对上: 订阅数 ${c0} → ${c1}(应 $((c0 + 1))), 活跃订阅行 ${s0} → ${s1}(应 $((s0 + 1)))"
+      fi
+    fi
+
+    # 退订 —— 必须把数字还原回去, 否则健康检查自己就是个造假机器
+    body=$(mp_api DELETE "/opc/marketplace/subscription/${sub_pub}")
+    code=$(body_code "${body}")
+    if [[ "${code}" != "200" ]]; then
+      nok "20.2 退订接口返回 code=${code}: ${body:0:160}"
+    else
+      c1=$(db_q "SELECT subscription_count FROM mp_publication WHERE id = ${sub_pub};" | head -1); c1=${c1:-0}
+      s1=$(db_q "SELECT COUNT(*) FROM mp_subscription WHERE publication_id = ${sub_pub} AND status = 'ACTIVE' AND deleted = 0;" | head -1); s1=${s1:-0}
+      local row_status
+      row_status=$(db_q "SELECT status FROM mp_subscription WHERE publication_id = ${sub_pub} AND user_id = 1 ORDER BY id DESC LIMIT 1;" | head -1)
+      if [[ "${c1}" == "${c0}" && "${s1}" == "${s0}" && "${row_status}" == "CANCELLED" ]]; then
+        ok "20.2 退订是真的: 订阅数回到 ${c1}, 活跃订阅行回到 ${s1}, 那行状态 = ${row_status}"
+      else
+        nok "20.2 退订后数字没还原: 订阅数 ${c1}(应 ${c0}), 活跃订阅行 ${s1}(应 ${s0}), 行状态 = ${row_status:-<无行>}(应 CANCELLED)"
+      fi
+    fi
+  fi
+
+  # ---------------- 20.3 / 20.4 MODULE 装完真的通知社区 ----------------
+  #
+  # 三个数必须一起动:
+  #   mp_publication.install_count   (集市卡片上的「安装」)
+  #   COUNT(mp_install)              (集市这一行真的存在)
+  #   opc_community_module.install_count (模块社区卡片上的「安装」)
+  # W80 P2 之前只有第一个会动, 后两个不动 —— 同一件事在两个页面上显示成
+  # 两个对不上的数字。
+  local mod_pub mod_id
+  mod_pub=$(db_q "SELECT id FROM mp_publication WHERE deleted = 0 AND status = 'PUBLISHED' AND product_type = 'MODULE' AND module_id IS NOT NULL ORDER BY id LIMIT 1;" | head -1)
+  if [[ -z "${mod_pub}" ]]; then
+    nok "20.3 查不到已发布的功能模块商品 —— 护栏空转, 证明不了什么"
+  else
+    mod_id=$(db_q "SELECT module_id FROM mp_publication WHERE id = ${mod_pub};" | head -1)
+    local p0 r0 m0 p1 r1 m1
+    p0=$(db_q "SELECT install_count FROM mp_publication WHERE id = ${mod_pub};" | head -1); p0=${p0:-0}
+    r0=$(db_q "SELECT COUNT(*) FROM mp_install WHERE publication_id = ${mod_pub};" | head -1); r0=${r0:-0}
+    m0=$(db_q "SELECT install_count FROM opc_community_module WHERE id = ${mod_id};" | head -1); m0=${m0:-0}
+
+    body=$(mp_api POST "/opc/marketplace/install/${mod_pub}")
+    code=$(body_code "${body}")
+    p1=$(db_q "SELECT install_count FROM mp_publication WHERE id = ${mod_pub};" | head -1); p1=${p1:-0}
+    r1=$(db_q "SELECT COUNT(*) FROM mp_install WHERE publication_id = ${mod_pub};" | head -1); r1=${r1:-0}
+    m1=$(db_q "SELECT install_count FROM opc_community_module WHERE id = ${mod_id};" | head -1); m1=${m1:-0}
+
+    if [[ "${code}" == "200" ]]; then
+      if [[ "${r1}" == "$((r0 + 1))" ]]; then
+        # 新插入一行 → 三个数必须一起 +1
+        if [[ "${p1}" == "$((p0 + 1))" && "${m1}" == "$((m0 + 1))" ]]; then
+          ok "20.3 MODULE 首次安装: 三个数一起 +1 (商品 ${p0}→${p1} / 安装行 ${r0}→${r1} / 社区模块 ${m0}→${m1})"
+        else
+          nok "20.3 MODULE 首次安装但三个数没一起动: 商品 ${p0}→${p1}(应 $((p0+1))) / 安装行 ${r0}→${r1} / 社区模块 ${m0}→${m1}(应 $((m0+1)))"
+        fi
+      else
+        # 复活既有行 → 三个数都不该动(重装不刷榜; 社区侧跟市场侧同一口径)
+        if [[ "${p1}" == "${p0}" && "${m1}" == "${m0}" ]]; then
+          ok "20.3 MODULE 重装(复活既有行): 三个数一个都没动 (商品 ${p1} / 安装行 ${r1} / 社区模块 ${m1}) —— 重装不刷榜"
+        else
+          nok "20.3 MODULE 重装却动了计数: 商品 ${p0}→${p1} / 安装行 ${r0}→${r1} / 社区模块 ${m0}→${m1}(应都不动)"
+        fi
+      fi
+    elif [[ "${code}" == "409" ]]; then
+      ok "20.3 该模块已装过 → 409(不重复计数); 三个数未动 (商品 ${p1} / 安装行 ${r1} / 社区模块 ${m1})"
+    else
+      nok "20.3 安装接口返回 code=${code}: ${body:0:160}"
+    fi
+
+    # 20.4 再点一次 → 必须 409,且一个数都不动(用户连点两下按钮)
+    p0=$(db_q "SELECT install_count FROM mp_publication WHERE id = ${mod_pub};" | head -1); p0=${p0:-0}
+    r0=$(db_q "SELECT COUNT(*) FROM mp_install WHERE publication_id = ${mod_pub};" | head -1); r0=${r0:-0}
+    m0=$(db_q "SELECT install_count FROM opc_community_module WHERE id = ${mod_id};" | head -1); m0=${m0:-0}
+
+    body=$(mp_api POST "/opc/marketplace/install/${mod_pub}")
+    code=$(body_code "${body}")
+    p1=$(db_q "SELECT install_count FROM mp_publication WHERE id = ${mod_pub};" | head -1); p1=${p1:-0}
+    r1=$(db_q "SELECT COUNT(*) FROM mp_install WHERE publication_id = ${mod_pub};" | head -1); r1=${r1:-0}
+    m1=$(db_q "SELECT install_count FROM opc_community_module WHERE id = ${mod_id};" | head -1); m1=${m1:-0}
+
+    if [[ "${code}" == "409" && "${p1}" == "${p0}" && "${r1}" == "${r0}" && "${m1}" == "${m0}" ]]; then
+      ok "20.4 重复安装被拒(409), 三个数一个都没动 —— 连点两下不会重复计数"
+    else
+      nok "20.4 重复安装没被挡住: code=${code} / 商品 ${p0}→${p1} / 安装行 ${r0}→${r1} / 社区模块 ${m0}→${m1}(应 409 且都不动)"
+    fi
+  fi
+
+  # ---------------- 20.5 社区那边没漏通知 ----------------
+  #
+  # 对每个被 MODULE 商品引用的模块: 社区显示的安装数必须 >= 集市里真实存在的
+  # 安装行数。少一个就说明「装完没通知社区」那条路断了。
+  #
+  # 用 >= 而不是 =: 社区自己页面上那个「安装」按钮也给同一个计数 +1, 而那次安装
+  # **不留任何记录**(ModuleController#install → incrementInstall, 没有表)。
+  # 所以社区计数天然可能比「可推导的行数」大 —— 但绝不能比它小。
+  local bad_mod mod_detail
+  bad_mod=$(db_q "SELECT COUNT(*) FROM ( SELECT m.id, m.install_count AS shown, COUNT(i.id) AS rows_cnt FROM opc_community_module m JOIN mp_publication p ON p.module_id = m.id AND p.product_type = 'MODULE' LEFT JOIN mp_install i ON i.publication_id = p.id GROUP BY m.id, m.install_count ) t WHERE t.shown < t.rows_cnt;" | head -1)
+  bad_mod=${bad_mod:-0}
+  mod_detail=$(db_q "SELECT CONCAT(m.code, ': 显示 ', m.install_count, ' / 真实 ', COUNT(i.id)) FROM opc_community_module m JOIN mp_publication p ON p.module_id = m.id AND p.product_type = 'MODULE' LEFT JOIN mp_install i ON i.publication_id = p.id GROUP BY m.id, m.code, m.install_count;" | tr '\n' ' ')
+  if [[ "${bad_mod}" == "0" ]]; then
+    ok "20.5 社区那边没漏通知 (${mod_detail:-无 MODULE 商品})"
+  else
+    nok "20.5 有 ${bad_mod} 个模块的显示安装数小于真实安装行数 —— 装完没通知到社区 (${mod_detail})"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -2451,6 +2639,7 @@ main() {
   check_metering_chain
   check_company_switch
   check_marketplace_truth
+  check_marketplace_actions
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"

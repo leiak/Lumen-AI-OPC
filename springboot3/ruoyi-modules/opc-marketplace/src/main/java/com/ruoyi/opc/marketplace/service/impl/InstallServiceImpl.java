@@ -42,6 +42,10 @@ import java.util.Map;
  *       调失败只降级记 WARN、<b>不阻断安装</b>。理由见
  *       {@link #notifyCommunityInstall}:社区的 {@code install_count} 是展示计数,
  *       它没涨只说明这次计数没记上, 不说明模块没装。</li>
+ *   <li><b>MODULE 的社区通知只发生在「新插入行」时</b>,复活既有行不通知。
+ *       社区的 {@code install_count} 与市场的 {@code install_count} 是同一口径
+ *       ——「现在有几条安装记录」,不是「装过几次」。两边必须一起动,否则
+ *       「卸载-重装」一次就能让两个页面显示出对不上的数字。</li>
  * </ol>
  *
  * @author OAC
@@ -93,9 +97,12 @@ public class InstallServiceImpl implements InstallService {
                 existing.setStatus("ACTIVE");
                 existing.setInstalledAt(now);
                 // 不自增 install_count:见类注释 §4
-                // MODULE:本地登记成功了,才通知社区 +1 —— 顺序反过来的话,
-                // 本地写失败就会留下「社区说装过了、市场说没装」的孤儿计数。
-                notifyCommunityInstall(p, tenantCompanyId, userId, publicationId);
+                //
+                // 同样**不**通知社区 —— 社区那个计数也是「装了几次」的展示数,
+                // 不是「装过几次」的事件数。复活行意味着「这个人本来就在装」,
+                // 市场侧的口径是「不算新装」(否则卸载-重装就能刷榜),
+                // 社区侧必须跟市场侧同一个口径 —— 否则同一个事件在两个页面上
+                // 显示出两个对不上的数字,那正是这个特性要修的病。
                 log.info("[Install] reinstalled (revived row) publicationId={} userId={} instanceId={}",
                         publicationId, userId, instanceId);
                 return existing;
@@ -187,6 +194,9 @@ public class InstallServiceImpl implements InstallService {
      * <p><b>失败只降级，不阻断</b>（与 {@link #createRemoteAgentInstance} 相反）：
      * 社区那个数字只是展示计数，它没涨只说明这次计数没记上，不说明模块没装。
      * 拿一个展示计数把整个安装操作回滚，比数字不准更糟。
+     *
+     * <p><b>只在「新插入行」时调</b> —— 复活既有行不调（见类注释 §6）。
+     * 两边的计数器是同一口径，通知跟着行走，不跟着「事件」走。
      *
      * <p>本方法<b>不抛异常</b> —— 调用点在 try 块里，抛出去会被外层的
      * catch 当成「本地写失败」而触发远端 revoke，那是彻底的误判。

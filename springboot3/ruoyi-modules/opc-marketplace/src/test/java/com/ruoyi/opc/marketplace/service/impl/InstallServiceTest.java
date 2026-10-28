@@ -218,6 +218,30 @@ class InstallServiceTest {
     }
 
     @Test
+    @DisplayName("install — MODULE 商品重装(复活行):不得通知社区 —— 两个页面的计数是同一口径")
+    void install_MODULE_revive_doesNotNotifyCommunity() {
+        // 社区的 install_count 与市场的 install_count 说的是同一件事:
+        // 「这个模块现在有几条安装记录」。市场的口径是「复活不算新装」(防刷榜),
+        // 社区必须跟同一个口径 —— 否则「卸载-重装」一次就能让两个页面显示出
+        // 对不上的数字,那正是这个特性要修的病。
+        MpPublication p = MpPublication.builder().id(1L).status("PUBLISHED")
+                .productType("MODULE").moduleId(50L).build();
+        when(publicationMapper.selectById(1L)).thenReturn(p);
+        MpInstall existing = MpInstall.builder().id(99L).status("UNINSTALLED").build();
+        when(installMapper.selectUnique(1L, 1L, 1L)).thenReturn(existing);
+
+        MpInstall result = installService.install(1L, 1L, 1L);
+
+        assertThat(result.getId()).isEqualTo(99L);
+        assertThat(result.getStatus()).isEqualTo("ACTIVE");
+        verify(installMapper).reactivate(eq(99L), isNull(), any(LocalDateTime.class), eq("1"));
+        // 市场侧:复活不涨计数
+        verify(publicationMapper, never()).incrementInstallCount(anyLong());
+        // 社区侧:同样不涨 —— 否则两个页面的数字从此对不上
+        verify(communityClient, never()).installModule(anyLong(), any());
+    }
+
+    @Test
     @DisplayName("install — MODULE 商品:社区那边挂了只降级,安装照样成功(不把展示计数当事务)")
     void install_MODULE_degradesWhenCommunityFails() {
         MpPublication p = MpPublication.builder().id(1L).status("PUBLISHED")
