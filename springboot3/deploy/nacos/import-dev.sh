@@ -32,6 +32,35 @@ GROUP="DEFAULT_GROUP"
 TYPE="yaml"
 PROTOCOL="http"
 
+# 配置类型: 按文件名后缀定。
+#
+# 只有一份是 json —— sentinel-ruoyi-gateway.json 是网关的 Sentinel 数据源
+# (gw-flow 流控规则)读的那张表, Sentinel 那边写死 data-type: json。
+# Nacos 里的 type 只是控制台编辑器的元数据, 推错类型不影响 Sentinel 解析,
+# 但控制台里用 JSON 编辑器打开一份标成 yaml 的规则表是很别扭的。
+type_of() {
+  case "$1" in
+    *.json) echo "json" ;;
+    *)      echo "${TYPE}" ;;
+  esac
+}
+
+# 仓库文件名 → Nacos DataID
+#
+# 绝大多数情况下两者同名。但 Sentinel 的流控规则表是**例外**: 网关的
+# bootstrap.yml 里写死了 dataId: sentinel-ruoyi-gateway —— 不带扩展名。
+# 仓库里的文件叫 .json 只是为了让编辑器把它当 JSON 打开。
+#
+# 这里要是图省事直接把文件名当 DataID 推上去, Nacos 里就会多出一份
+# sentinel-ruoyi-gateway.json, 而网关找的是 sentinel-ruoyi-gateway ——
+# 规则永远读不到, 而配置中心那几节还都显示"正常"。
+dataid_of() {
+  case "$1" in
+    sentinel-ruoyi-gateway.json) echo "sentinel-ruoyi-gateway" ;;
+    *) echo "$1" ;;
+  esac
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # dev 命名空间里实际存在的 DataID
@@ -57,6 +86,11 @@ NAMES=(
   "opc-hr-dev.yml"
   "opc-erp-dev.yml"
   "opc-content-dev.yml"
+  # 网关 Sentinel 的流控规则表 —— 唯一一份**不走 config.import** 的配置:
+  # Sentinel 客户端自己按 dataId=sentinel-ruoyi-gateway 去 Nacos 取,
+  # groupId=DEFAULT_GROUP, namespace=opc-dev, data-type=json。
+  # 内容是 [] = 目前一条规则都没有(不是"忘了填",是真的没有)。
+  "sentinel-ruoyi-gateway.json"
 )
 
 # ---------- 单文件推送（Python urllib + content 走 stdin）----------
@@ -67,16 +101,20 @@ import_one() {
     echo "[FAIL] 缺少文件：${path}" >&2
     return 1
   fi
-  echo "[INFO] 导入 ${name} (group=${GROUP}, tenant=${NAMESPACE_ID})"
+  local ftype
+  ftype="$(type_of "${name}")"
+  local dataid
+  dataid="$(dataid_of "${name}")"
+  echo "[INFO] 导入 ${name} → dataId=${dataid} (group=${GROUP}, tenant=${NAMESPACE_ID}, type=${ftype})"
   local resp
   resp=$(python -c "
 import urllib.request, urllib.parse, sys
 content = sys.stdin.buffer.read().decode('utf-8')
 data = urllib.parse.urlencode({
-    'dataId': '${name}',
+    'dataId': '${dataid}',
     'group': '${GROUP}',
     'tenant': '${NAMESPACE_ID}',
-    'type': '${TYPE}',
+    'type': '${ftype}',
     'content': content
 }).encode('utf-8')
 req = urllib.request.Request('${PROTOCOL}://${NACOS_ADDR}/nacos/v1/cs/configs', data=data, method='POST')
@@ -104,19 +142,22 @@ except urllib.error.HTTPError as e:
 verify_one() {
   local name="$1"
   local path="${SCRIPT_DIR}/${name}"
+  local dataid
+  dataid="$(dataid_of "${name}")"
   python -c "
 import urllib.request, hashlib, sys
 name = '${name}'
-url = ('${PROTOCOL}://${NACOS_ADDR}/nacos/v1/cs/configs?dataId=' + name
+dataid = '${dataid}'
+url = ('${PROTOCOL}://${NACOS_ADDR}/nacos/v1/cs/configs?dataId=' + dataid
        + '&group=${GROUP}&tenant=${NAMESPACE_ID}')
 try:
     r = urllib.request.urlopen(url, timeout=10)
     nacos = r.read().decode('utf-8')
 except Exception as e:
-    print('  [FAIL] ' + name + ' 回读失败 (tenant=${NAMESPACE_ID}): ' + str(e))
+    print('  [FAIL] ' + name + ' (dataId=' + dataid + ') 回读失败 (tenant=${NAMESPACE_ID}): ' + str(e))
     sys.exit(1)
 if nacos.strip() in ('config data not exist', ''):
-    print('  [FAIL] ' + name + ' 在 tenant=${NAMESPACE_ID} 下不存在 —— 推送没进去')
+    print('  [FAIL] ' + name + ' (dataId=' + dataid + ') 在 tenant=${NAMESPACE_ID} 下不存在 —— 推送没进去')
     sys.exit(1)
 repo = sys.stdin.buffer.read().decode('utf-8')
 # Nacos 服务端会标准化行尾, 用 splitlines 归一化
@@ -125,7 +166,7 @@ repo_norm = '\n'.join(repo.splitlines())
 nacos_h = hashlib.md5(nacos_norm.encode('utf-8')).hexdigest()[:10]
 repo_h = hashlib.md5(repo_norm.encode('utf-8')).hexdigest()[:10]
 if nacos_norm == repo_norm:
-    print('  [OK  ] ' + name + ' (tenant=${NAMESPACE_ID}, md5=' + repo_h + ', ' + str(len(repo)) + 'B)')
+    print('  [OK  ] ' + name + ' (dataId=' + dataid + ', tenant=${NAMESPACE_ID}, md5=' + repo_h + ', ' + str(len(repo)) + 'B)')
 else:
     print('  [FAIL] ' + name + ' 内容已漂移! nacos=' + nacos_h + ' repo=' + repo_h)
     for i, (a, b) in enumerate(zip(nacos_norm, repo_norm)):

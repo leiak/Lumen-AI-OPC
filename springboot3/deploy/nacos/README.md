@@ -4,7 +4,7 @@
 
 | 命名空间 ID       | 用途                  | DataID 数量 | 状态                     |
 |------------------|-----------------------|------------|--------------------------|
-| `opc-dev`        | 开发 / 演示环境（compose 全栈共用） | 9          | **已建、已推、已生效**   |
+| `opc-dev`        | 开发 / 演示环境（compose 全栈共用） | 10         | **已建、已推、已生效**   |
 | `opc-prod`       | 生产环境              | 7          | 仅本目录有 prod 模板，未部署 |
 | `opc-staging`    | 预发环境（参考 prod）  | 7          | 未部署                   |
 
@@ -47,7 +47,7 @@ cd springboot3/deploy/nacos
 # 1. 确保 opc-dev 命名空间存在（幂等；只补 tenant_info 的户口本）
 ./create-namespace.sh
 
-# 2. 推 9 份 dev 配置，并按 tenant= 回读逐行校验
+# 2. 推 10 份配置（9 份 dev yml + 网关的 Sentinel 规则表），并按 tenant= 回读逐行校验
 ./import-dev.sh
 
 # 灰度：只推其中几份
@@ -58,7 +58,26 @@ cd springboot3/deploy/nacos
 改完仓库里的 yml 一定要重推 —— `deploy/scripts/health-check.sh` 第 22 节会
 盯着「Nacos 里的内容 == 仓库里的内容」这条不变量。
 
-## dev 的 DataID 清单（9 份）
+### 仓库文件名 ≠ DataID（唯一的一处例外）
+
+| 仓库文件                        | Nacos DataID                | type  |
+|---------------------------------|-----------------------------|-------|
+| `application-dev.yml` 等 9 份   | 同名                        | yaml  |
+| `sentinel-ruoyi-gateway.json`   | **`sentinel-ruoyi-gateway`** | json |
+
+网关的 `bootstrap.yml` 里写死的是 `dataId: sentinel-ruoyi-gateway`（**不带扩展名**）——
+仓库里的文件叫 `.json` 只是为了让编辑器把它当 JSON 打开。
+
+这里要是图省事直接拿文件名当 DataID 推上去，Nacos 里就会多出一份
+`sentinel-ruoyi-gateway.json`，而网关找的是不带扩展名的那个 —— **规则永远读不到，
+而配置中心那几节还都显示「正常」**。`import-dev.sh` 里的 `dataid_of()` 就是
+专门挡这一下的。
+
+`type`（yaml / json）只是 Nacos 控制台决定用哪个编辑器打开的元数据，
+**不影响 Sentinel 解析**——Sentinel 那边认的是 `bootstrap.yml` 里的
+`data-type: json`。但把规则表标成 yaml 让人用 YAML 编辑器打开 JSON，很别扭。
+
+## dev 的 DataID 清单（10 份）
 
 | DataID                      | 谁会拉它                                    | 作用                        |
 |-----------------------------|---------------------------------------------|-----------------------------|
@@ -71,6 +90,7 @@ cd springboot3/deploy/nacos
 | `opc-hr-dev.yml`            | opc-hr                                      | 单服务私有                  |
 | `opc-erp-dev.yml`           | opc-erp                                     | 单服务私有                  |
 | `opc-content-dev.yml`       | opc-content                                 | 单服务私有                  |
+| `sentinel-ruoyi-gateway`    | 网关的 Sentinel 数据源（`gw-flow` 流控规则） | 内容是 `[]` = 目前没有规则   |
 
 `opc-ai-core` / `opc-agent-hub` / `opc-user-center` / `opc-billing` / `opc-finance`
 没有各自的 dev 文件：它们的私有配置（`ai.*` / `langchain4j.*` / `qdrant.*` 等）
@@ -78,6 +98,26 @@ cd springboot3/deploy/nacos
 
 > 每个服务实际会拉的 DataID 由它自己 `bootstrap.yml` 的 `spring.config.import` 决定。
 > 注意 `opc-community` **不**拉 `opc-common-dev.yml`，网关**不**拉 `opc-common-dev.yml`。
+> 网关的 Sentinel 数据源不走 `config.import`，它自己按 `dataId=sentinel-ruoyi-gateway`
+> 去 Nacos 取流控规则（`groupId=DEFAULT_GROUP`、`namespace=opc-dev`）。
+
+### 被清掉的同名残留（历史遗留）
+
+老脚本用 `namespaceId=` 推的那 7 份配置，一直躺在**默认 tenant**（`''`）里，
+和 `opc-dev` 里的同名两份并存。现已删除，内容逐字保存在 git 里：
+
+| DataID                      | 内容在 git 的哪个版本                          |
+|-----------------------------|-----------------------------------------------|
+| `application-dev.yml`       | `48abbee^`                                    |
+| `opc-notification-dev.yml`  | `48abbee^`                                    |
+| `opc-community-dev.yml`     | `48abbee^`                                    |
+| `opc-hr-dev.yml`            | `48abbee^`                                    |
+| `opc-erp-dev.yml`           | `48abbee^`                                    |
+| `opc-content-dev.yml`       | `48abbee^`                                    |
+| `opc-crm-dev.yml`           | `18c7b90`（比别的更旧，还带着已废弃的 base-url 块） |
+
+要取回：`git show 48abbee^:springboot3/deploy/nacos/application-dev.yml`。
+
 
 ## 这份配置**不改**任何服务的行为
 
@@ -175,6 +215,24 @@ cd springboot3/deploy/nacos && ./import-dev.sh
   **热刷新加不了**，必须重建那个服务 —— `bash deploy.sh rebuild <服务>`。
   判据是 `/actuator/metrics/jvm.memory.used` 上有没有 `application` 标签：
   这个标签只写在 Nacos 那份 `application-dev.yml` 里，本地 yml 都没有。
+
+### 网关日志里每秒十几条 `Client not connected, current status:STARTING`
+
+这是 Nacos 客户端连不上服务端在重试。栈里最容易踩的一处是**容器里的
+`127.0.0.1` 指向容器自己** —— 网关的 Sentinel 数据源原来写着
+`server-addr: 127.0.0.1:8848`，在容器里那是网关自己，客户端永远停在 STARTING。
+
+表现极具迷惑性：**配置本身看上去一切正常**（Nacos 里有那几份配置、控制台能看见、
+健康检查第 22 节全绿），但网关的流控规则一条都没加载过。
+
+`health-check.sh` 第 **22.6** 项盯的就是它：网关日志里一条
+`Client not connected` 都没有，才算连上了。修法是把地址换成容器网里的 DNS 名：
+
+```yaml
+server-addr: ${NACOS_SERVER:nacos1}:8848
+```
+
+（`nacos1` 是 compose 里的服务名；各服务统一用它，别写 `127.0.0.1`。）
 
 ### 启动报错 `Could not decrypt`
 原因：`JASYPT_PASSWORD` 与加密时不一致，或加密后没重新导入 Nacos。

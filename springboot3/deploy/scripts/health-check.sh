@@ -2774,7 +2774,8 @@ except Exception:
 #
 # 四件事:
 #   22.1 命名空间在控制台看得见 (tenant_info 里那本户口)
-#   22.2 9 份 dev 配置真的在 tenant=opc-dev 下, 且内容与仓库文件一致
+#   22.2 10 份配置真的在 tenant=opc-dev 下, 且内容与仓库文件一致
+#        (9 份 dev yml + 网关的 Sentinel 流控规则表 sentinel-ruoyi-gateway)
 #   22.3 默认 tenant 下没有 OPC dev 配置残留
 #        —— 同名两份摆着, 迟早有人改错那一份 (而且那份还带着
 #           spring.datasource 指 127.0.0.1 / actuator 暴露 "*" 的老内容)
@@ -2785,6 +2786,9 @@ except Exception:
 #           而「公共标签」和「端点暴露面」都是**启动时**定下的, 热刷新加不了 ——
 #           所以标签在不在, 恰恰说明服务冷启动时读到没读到。
 #   22.5 没读到的服务列出来 (待重建清单)
+#        —— 「待重建」是按**每个服务自己拉的**那几份配置算的, 不是按全体配置的最新时刻:
+#           动一份只有网关读的 Sentinel 规则表, 不该把 15 个服务全标成待重建。
+#   22.6 网关的 Sentinel 数据源真的连上了 Nacos (日志里一条重试都没有)
 #
 # 注意 ruoyi-system 不在探测名单里: compose 里给它显式设了
 # SPRING_CLOUD_NACOS_CONFIG_ENABLED=false —— 它不读 Nacos 配置, 由自己的
@@ -2804,9 +2808,24 @@ check_nacos_config_center() {
 import json, os, sys, urllib.parse, urllib.request
 
 api, ns, yml_dir = sys.argv[1], sys.argv[2], sys.argv[3]
-FILES = ["application-dev.yml", "opc-common-dev.yml", "opc-notification-dev.yml",
-         "opc-crm-dev.yml", "opc-community-dev.yml", "opc-marketplace-dev.yml",
-         "opc-hr-dev.yml", "opc-erp-dev.yml", "opc-content-dev.yml"]
+# (仓库文件名, Nacos DataID)
+#
+# 两者绝大多数同名; 唯一的例外是网关的 Sentinel 流控规则表 ——
+# 网关 bootstrap.yml 里写死 dataId=sentinel-ruoyi-gateway(不带扩展名),
+# 仓库里的文件叫 .json 只是为了让它被当 JSON 编辑。
+# 这一对如果写成同名, 22.2 会拿一份压根没人读的配置去比, 22.3 也会去
+# 默认 tenant 里找一份不存在的残留 —— 两个错都查不出来。
+FILES = [("application-dev.yml", "application-dev.yml"),
+         ("opc-common-dev.yml", "opc-common-dev.yml"),
+         ("opc-notification-dev.yml", "opc-notification-dev.yml"),
+         ("opc-crm-dev.yml", "opc-crm-dev.yml"),
+         ("opc-community-dev.yml", "opc-community-dev.yml"),
+         ("opc-marketplace-dev.yml", "opc-marketplace-dev.yml"),
+         ("opc-hr-dev.yml", "opc-hr-dev.yml"),
+         ("opc-erp-dev.yml", "opc-erp-dev.yml"),
+         ("opc-content-dev.yml", "opc-content-dev.yml"),
+         ("sentinel-ruoyi-gateway.json", "sentinel-ruoyi-gateway")]
+DATAIDS = set(d for _, d in FILES)
 
 def http(url):
     try:
@@ -2834,14 +2853,14 @@ if ns in info:
 else:
     out.append(("FAIL", "22.1 命名空间 %s 不在控制台命名空间列表里 —— 控制台看不见这一栏, 配置等于没纳管" % ns))
 
-# ---- 22.2 9 份配置在 tenant=opc-dev 下, 且与仓库逐行一致 ----
+# ---- 22.2 N 份配置在 tenant=opc-dev 下, 且与仓库逐行一致 ----
 missing, drift, good = [], [], []
-for f in FILES:
+for f, dataid in FILES:
     url = api + '/v1/cs/configs?' + urllib.parse.urlencode(
-        {'dataId': f, 'group': 'DEFAULT_GROUP', 'tenant': ns})
+        {'dataId': dataid, 'group': 'DEFAULT_GROUP', 'tenant': ns})
     body = http(url)
     if body is None or body.strip() in ('', 'config data not exist'):
-        missing.append(f)
+        missing.append(dataid)
         continue
     path = os.path.join(yml_dir, f)
     if not os.path.exists(path):
@@ -2850,15 +2869,15 @@ for f in FILES:
     with open(path, encoding='utf-8') as fh:
         repo = fh.read()
     if norm(body) != norm(repo):
-        drift.append(f)
+        drift.append(dataid)
         continue
-    good.append(f)
+    good.append(dataid)
 if missing:
     out.append(("FAIL", "22.2 tenant=%s 下缺 %d 份配置: %s" % (ns, len(missing), ' '.join(missing))))
 elif drift:
     out.append(("FAIL", "22.2 %d 份配置内容与仓库不一致(漂移): %s" % (len(drift), ' '.join(drift))))
 else:
-    out.append(("OK", "22.2 %d 份 dev 配置都在 tenant=%s 下, 且与仓库文件逐行一致" % (len(good), ns)))
+    out.append(("OK", "22.2 %d 份配置都在 tenant=%s 下, 且与仓库文件逐行一致" % (len(good), ns)))
 
 # ---- 22.3 默认 tenant 下没有 OPC dev 残留 ----
 url = api + '/v1/cs/configs?' + urllib.parse.urlencode(
@@ -2869,7 +2888,7 @@ if raw:
     try:
         for it in json.loads(raw).get('pageItems') or []:
             did = it.get('dataId') or ''
-            if did in FILES:
+            if did in DATAIDS:
                 leftovers.append(did)
     except Exception:
         pass
@@ -2910,15 +2929,15 @@ PY
   #   · 容器是在配置进 Nacos **之后**启动的, 却仍然没标签 → 配置没生效 (FAIL)
   # 拿容器启动时刻 (docker inspect) 和配置落库时刻 (config_info.gmt_modified)
   # 一比就分得清 —— 两者都是 UTC, 可以直接比。
-  local cfg_time started_at
-  cfg_time=$(db_q "SELECT DATE_FORMAT(MAX(gmt_modified), '%Y-%m-%d %H:%i:%s') FROM \`ry-config\`.config_info WHERE tenant_id = 'opc-dev';" | head -1)
+  local cfg_rows started_at
+  cfg_rows=$(db_q "SELECT data_id, DATE_FORMAT(gmt_modified, '%Y-%m-%d %H:%i:%s') FROM \`ry-config\`.config_info WHERE tenant_id = 'opc-dev';" | head -20)
   started_at=$(docker inspect --format '{{.Name}}|{{.State.StartedAt}}' \
     aiopc-gateway aiopc-auth aiopc-user-center aiopc-agent-hub aiopc-ai-core \
     aiopc-billing aiopc-finance aiopc-insight aiopc-notification aiopc-crm \
     aiopc-community aiopc-hr aiopc-erp aiopc-content aiopc-marketplace 2>/dev/null || true)
 
   local probe
-  probe=$(python3 - "${cfg_time}" "${started_at}" <<'PY' 2>/dev/null
+  probe=$(python3 - "${cfg_rows}" "${started_at}" <<'PY' 2>/dev/null
 import json, sys, urllib.request
 from datetime import datetime, timezone
 
@@ -2930,6 +2949,20 @@ for line in (sys.argv[2] or "").split("\n"):
     name, _, ts = line.partition("|")
     start_map[name.strip().lstrip("/")] = ts.strip()
 
+# 每份 DataID 各自的落库时刻。
+#
+# 为什么不能只取 MAX: 网关的 Sentinel 规则表只有网关读, 它一动就会把
+# MAX 推到当下 —— 于是**所有**服务都成了"配置比容器新", 全被标成待重建。
+# 那种告警没人会当真, 下一次就不看了。而真正要重建的往往只有一个。
+cfg_time = {}
+for line in cfg_raw.split("\n"):
+    if "\t" not in line:
+        continue
+    did, _, ts = line.partition("\t")
+    did, ts = did.strip(), ts.strip()
+    if did and ts:
+        cfg_time[did] = ts
+
 def epoch(s):
     if not s:
         return None
@@ -2940,7 +2973,28 @@ def epoch(s):
     except Exception:
         return None
 
-cfg_epoch = epoch(cfg_raw)
+# 每个服务实际会拉的 DataID —— 抄自各服务 bootstrap.yml 的 spring.config.import:
+#   nacos:application-${profile}.yml                -> application-dev.yml (全体)
+#   nacos:${spring.application.name}-${profile}.yml -> <app>-dev.yml (不存在的那份 Nacos 记 "is empty" 跳过)
+#   nacos:opc-common-${profile}.yml                 -> opc-common-dev.yml
+# 网关的 Sentinel 数据源不走 config.import, 它自己按 dataId 取流控规则。
+SVC_IMPORTS = {
+    "gateway":      ["application-dev.yml", "sentinel-ruoyi-gateway"],
+    "auth":         ["application-dev.yml"],
+    "community":    ["application-dev.yml", "opc-community-dev.yml"],
+    "crm":          ["application-dev.yml", "opc-crm-dev.yml", "opc-common-dev.yml"],
+    "notification": ["application-dev.yml", "opc-notification-dev.yml", "opc-common-dev.yml"],
+    "marketplace":  ["application-dev.yml", "opc-marketplace-dev.yml", "opc-common-dev.yml"],
+    "hr":           ["application-dev.yml", "opc-hr-dev.yml", "opc-common-dev.yml"],
+    "erp":          ["application-dev.yml", "opc-erp-dev.yml", "opc-common-dev.yml"],
+    "content":      ["application-dev.yml", "opc-content-dev.yml", "opc-common-dev.yml"],
+    "ai-core":      ["application-dev.yml", "opc-common-dev.yml"],
+    "agent-hub":    ["application-dev.yml", "opc-common-dev.yml"],
+    "user-center":  ["application-dev.yml", "opc-common-dev.yml"],
+    "billing":      ["application-dev.yml", "opc-common-dev.yml"],
+    "finance":      ["application-dev.yml", "opc-common-dev.yml"],
+    "insight":      ["application-dev.yml", "opc-common-dev.yml"],
+}
 
 # ruoyi-system 不在名单里: compose 给它显式关了 Nacos 配置
 # (SPRING_CLOUD_NACOS_CONFIG_ENABLED=false), 它由本地 application.yml 全权负责。
@@ -2964,17 +3018,22 @@ for name, port in SVCS:
     except Exception:
         pass
     started = epoch(start_map.get("aiopc-" + name, ""))
+    # 这个服务自己关心的那些配置里, 最新的一份是何时落库的
+    pairs = [(epoch(cfg_time[d]), cfg_time[d]) for d in SVC_IMPORTS.get(name, []) if d in cfg_time]
+    pairs = [(e, s) for e, s in pairs if e is not None]
+    best = max(pairs) if pairs else (None, "")
     if has_tag:
         tagged.append(name)
-    elif cfg_epoch is None or started is None or started < cfg_epoch:
-        pending.append(name)      # 容器比配置还老 -> 还没重建
+    elif best[0] is None or started is None or started < best[0]:
+        pending.append((name, best[1]))   # 容器比它关心的配置还老 -> 还没重建
     else:
-        broken.append(name)       # 配置之后才重启的, 却还是没读到 -> 配置没生效
+        broken.append((name, best[1]))    # 配置之后才重启的, 却还是没读到 -> 配置没生效
 
 print("TAGGED\t" + " ".join(tagged))
-print("PENDING\t" + " ".join(pending))
-print("BROKEN\t" + " ".join(broken))
-print("CFG\t" + (cfg_raw or "unknown"))
+for n, t in pending:
+    print("PENDING\t" + n + "\t" + t)
+for n, t in broken:
+    print("BROKEN\t" + n + "\t" + t)
 PY
 )
 
@@ -2983,18 +3042,18 @@ PY
     return
   fi
 
-  local tagged="" pending="" broken="" cfg_seen=""
-  while IFS=$'\t' read -r kind val; do
+  local tagged="" pending="" broken=""
+  while IFS=$'\t' read -r kind val extra; do
     case "${kind}" in
-      TAGGED)  tagged="${val}" ;;
-      PENDING) pending="${val}" ;;
-      BROKEN)  broken="${val}" ;;
-      CFG)     cfg_seen="${val}" ;;
+      TAGGED)  tagged="${tagged} ${val}" ;;
+      PENDING) pending="${pending} ${val}(配置 ${extra})" ;;
+      BROKEN)  broken="${broken} ${val}(配置 ${extra})" ;;
     esac
   done <<< "${probe}"
+  tagged="${tagged# }"; pending="${pending# }"; broken="${broken# }"
 
   if [[ -n "${tagged}" ]]; then
-    ok "22.4 ${tagged} 冷启动时读到了 Nacos 配置 (指标上带着 application 标签; 配置落库时刻 ${cfg_seen})"
+    ok "22.4 ${tagged} 冷启动时读到了 Nacos 配置 (指标上带着 application 标签)"
   fi
 
   if [[ -n "${broken}" ]]; then
@@ -3002,9 +3061,30 @@ PY
   fi
 
   if [[ -n "${pending}" ]]; then
-    warn "22.5 ${pending} 还没在配置生效之后重建过 (容器启动早于配置落库时刻 ${cfg_seen}) —— 重建它们: bash deploy.sh rebuild <服务>"
+    warn "22.5 ${pending} 还没在配置生效之后重建过 (容器启动早于它自己那份配置落库的时刻) —— 重建它们: bash deploy.sh rebuild <服务>"
   else
     ok "22.5 没有待重建的服务"
+  fi
+
+  # ---- 22.6 网关的 Sentinel 数据源真的连上了 Nacos ----
+  #
+  # 这条不是查配置, 是查**连接**。Sentinel 的 Nacos 数据源自己起一个
+  # Nacos 客户端; 那个地址要是写着 127.0.0.1, 容器里指的就是网关自己,
+  # 客户端永远停在 STARTING, 每秒十几条 "Client not connected",
+  # 而网关的流控规则一条都从来没加载过 —— 而配置本身看上去一切正常。
+  #
+  # 症状是唯一的判据: 日志里一条 "Client not connected" 都没有 = 连上了。
+  # (容器重建后 docker logs 只含本次启动的日志, 不用自己算时间窗。)
+  local gw_notconn
+  gw_notconn=$(docker logs aiopc-gateway 2>&1 | grep -c "Client not connected" || true)
+  gw_notconn="${gw_notconn//[^0-9]/}"
+  if [[ -z "${gw_notconn}" ]]; then
+    gw_notconn=0
+  fi
+  if [[ "${gw_notconn}" -eq 0 ]]; then
+    ok "22.6 网关的 Sentinel 数据源没有连不上的重试 (Nacos 客户端已连上)"
+  else
+    nok "22.6 网关日志里有 ${gw_notconn} 条 'Client not connected' —— Sentinel 的 Nacos 客户端连不上 (多半是 bootstrap.yml 里 sentinel.datasource...server-addr 还写着 127.0.0.1, 容器里那是网关自己)"
   fi
 }
 
