@@ -719,12 +719,20 @@ UNION ALL SELECT c.id, ct.id, 'PHONE', '展会后首次跟进,对方要小批量
 UNION ALL SELECT c.id, ct.id, 'EMAIL', '发去公司介绍与报价单,待回复。', DATE_ADD(NOW(), INTERVAL 9 DAY), @uid, @by, DATE_SUB(NOW(), INTERVAL 1 DAY)
   FROM opc_crm_customer c JOIN opc_crm_contact ct ON ct.customer_id=c.id AND ct.name='周助理' WHERE c.name='南京简屿文化用品'   AND c.owner_id=@uid;
 
-INSERT INTO `opc_crm_opportunity` (`customer_id`, `name`, `amount`, `stage`, `score`, `score_reason`, `expected_close`, `owner_id`, `create_by`, `create_time`)
+-- score / score_reason 故意不给(列默认值 0 / NULL)—— 「还没评过」。
+--
+-- 这两条原来写死了 82 分和 75 分,还配了像模像样的理由(「对方采购预算明确,决策链短」)。
+-- 可那会儿 CRM 的「LLM 评分」按钮调的是一个**从没被实现过的地址** ——
+-- 系统里没有任何一条代码路径能算出过任何分数。所以这两个分数(连同理由一起)
+-- 是编的: 理由写得再像, 也只是一段手写的字符串。
+--
+-- 真实起点是「还没评过」: 点一次「LLM 评分」, 让模型给一个, 理由也跟着一起落库。
+INSERT INTO `opc_crm_opportunity` (`customer_id`, `name`, `amount`, `stage`, `expected_close`, `owner_id`, `create_by`, `create_time`)
 VALUES
   ((SELECT id FROM opc_crm_customer WHERE name='杭州拾光家居旗舰店' AND owner_id=@uid),
-   '拾光家居-季度补货(1500 件)', 88500.00,  'NEGOTIATION', 82, '对方采购预算明确,决策链短',     DATE_ADD(CURDATE(), INTERVAL 25 DAY), @uid, @by, DATE_SUB(NOW(), INTERVAL 8 DAY)),
+   '拾光家居-季度补货(1500 件)', 88500.00,  'NEGOTIATION', DATE_ADD(CURDATE(), INTERVAL 25 DAY), @uid, @by, DATE_SUB(NOW(), INTERVAL 8 DAY)),
   ((SELECT id FROM opc_crm_customer WHERE name='苏州悦享生活馆' AND owner_id=@uid),
-   '悦享生活-双十一专场备货',    118000.00, 'PROPOSAL',    75, '已确认参与专场,待确认备货量',   DATE_ADD(CURDATE(), INTERVAL 35 DAY), @uid, @by, DATE_SUB(NOW(), INTERVAL 4 DAY));
+   '悦享生活-双十一专场备货',    118000.00, 'PROPOSAL',    DATE_ADD(CURDATE(), INTERVAL 35 DAY), @uid, @by, DATE_SUB(NOW(), INTERVAL 4 DAY));
 
 COMMIT;
 
