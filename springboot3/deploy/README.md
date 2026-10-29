@@ -63,6 +63,29 @@ cd ../tmp_e2e && OPC_GATEWAY=http://127.0.0.1:8080 python e2e_content.py
 | aiopc-erp | 9311 | opc-dev | /opc/erp | 进销存 (W72) |
 | **aiopc-content (W74 NEW)** | **9325** | **opc-dev** | **/opc/content** | **AI 内容创作中心** |
 | aiopc-frontend | 8079 | - | - | Vue 3 + TS (nginx 反向代理) |
+| aiopc-sentinel-dashboard | 8718 | - | - | Sentinel 控制台 (网关限流规则可视化) |
+
+### Sentinel 控制台
+
+`http://127.0.0.1:8718` —— 账号口令在 `deploy/sentinel-dashboard/application.yml` 的
+`auth:` 段（演示环境的公开口令，只绑 127.0.0.1，公网够不着）。
+
+控制台**不连 Nacos**（它的 jar 里没有 Nacos 客户端）。它显示的网关限流规则是
+**回头问网关要的**：`GET http://<网关ip>:8719/gateway/getRules`。
+所以数据流是
+
+```
+Nacos(sentinel-ruoyi-gateway, tenant=opc-dev)
+  → 网关的 GatewayRuleManager（内存）
+    → 控制台
+```
+
+第 24 节健康检查盯的就是这条链的最后一环 —— 控制台显示 0 条规则，
+就是网关内存里真的一条都没加载，不是控制台自己的问题。
+
+> 网关的心跳地址**只在启动那一刻解析一次**。控制台比网关晚起时，
+> 网关解析不到就整组丢弃，之后永远不再重试 —— 症状是控制台永远「零节点」。
+> 这时候要**重启网关**（`docker compose restart aiopc-gateway`），不是重启控制台。
 
 ## 关键文件
 

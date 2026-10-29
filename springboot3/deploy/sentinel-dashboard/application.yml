@@ -8,51 +8,51 @@
 # 于是控制台看到的是「一个节点都没有、零条规则」，看起来一切正常。
 # 这正是这套栈一直在说的那种假话。
 #
-# 改成容器网里的 DNS 名 nacos1 + opc-dev 命名空间之后：
-#   · 控制台和网关读的是**同一份**规则表
-#     (dataId=sentinel-ruoyi-gateway, group=DEFAULT_GROUP, tenant=opc-dev)
-#   · 控制台上改规则 = 改 Nacos = 改仓库那份文件 —— 三个地方是一份数据
-#   · 仓库那份文件是「真相源」：控制台上的改动如果没有同步回仓库，
-#     下次 import-dev.sh 一推就被覆盖 —— 所以规则表的归属仍然在仓库
+# ⚠️ 但别以为「改成 nacos1:8848 + opc-dev」就通了 ——
+# **控制台的 jar 里根本没有 Nacos 客户端**（BOOT-INF/lib 下没有 nacos-client，
+# 也没有 spring-cloud-starter）。它压根不连 Nacos。
+#
+# 控制台的规则是**回头问网关要**的：
+#   GET http://<网关ip>:<网关port>/gateway/getRules
+# 网关侧的 handler 是 GetGatewayRuleCommandHandler（sentinel-api-gateway-adapter-common），
+# 读的是 GatewayRuleManager 里网关自己的内存规则 ——
+# 而那份内存规则是网关从 Nacos 的 sentinel-ruoyi-gateway 加载来的。
+#
+# 所以数据流是：
+#   Nacos(sentinel-ruoyi-gateway, tenant=opc-dev)
+#     → 网关的 GatewayRuleManager（内存）
+#       → 控制台（问网关要）
+# 一条链，任何一环断了控制台就显示「零规则」，而它自己看起来一切正常。
+# 第 24 节健康检查盯的就是这条链的最后一环。
 # ============================================================
 
 server:
+  # 镜像自带的是 8858，compose 映射的是 8718 —— 端口对不上等于没起。
+  # 这份同时冗余写进了 compose 的 SPRING_APPLICATION_JSON，
+  # 免得挂载路径哪天又对不上时端口跟着一起歪。
   port: 8718
 
 spring:
   application:
     name: sentinel-dashboard
-  cloud:
-    nacos:
-      discovery:
-        server-addr: nacos1:8848
-        namespace: opc-dev
-      config:
-        server-addr: nacos1:8848
-        namespace: opc-dev
-        group: DEFAULT_GROUP
-    sentinel:
-      datasource:
-        # 网关的流控规则表 —— rule-type 必须是 gw-flow
-        #
-        # flow 和 gw-flow 是两个**完全独立**的数据源（FlowRuleManager 与
-        # GatewayRuleManager），配错 rule-type 的后果是「控制台里看得到、
-        # 网关那边不生效」或者反过来。这里网关的 bootstrap.yml 用的也是
-        # gw-flow + 同一个 dataId，两边对齐。
-        gw-flow:
-          nacos:
-            server-addr: nacos1:8848
-            namespace: opc-dev
-            group-id: DEFAULT_GROUP
-            data-id: sentinel-ruoyi-gateway
-            data-type: json
-            rule-type: gw-flow
 
-csp:
-  sentinel:
-    dashboard:
-      # 控制台自己也往自己上报，端口和容器内保持一致
-      server: localhost:8718
+# 控制台的登录。
+#
+# 镜像的 jar 里带了一份 classpath:/application.yml（Spring Boot 里
+# classpath 的优先级低于外部文件，但**列表属性是整个替换、不合并**），
+# auth.filter.exclude-urls 就在那一份里 —— 别去覆盖它，
+# 一覆盖控制台的静态资源就全要登录，页面直接打不开。
+#
+# 这里显式写死账号密码，是不想让它停在「上游默认值」上：
+# 默认值是人人皆知的 sentinel/sentinel，谁知道控制台地址谁就能登进去改规则。
+#
+# 口令是**演示环境的公开口令**（这个仓库本来就是公开的，
+# docker-compose.yml 里的 JASYPT_PASSWORD / REDIS 口令同理）。
+# 控制台只绑 127.0.0.1，公网够不着；第 24 节健康检查也是从这份文件里
+# 读这两个值去登录的 —— 口令不落命令行、不进日志。
+auth:
+  username: opc
+  password: opc-sentinel-2026
 
 logging:
   level:

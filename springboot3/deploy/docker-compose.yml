@@ -138,29 +138,46 @@ services:
   # 以前这个栈里**没有** Sentinel 控制台 —— 网关的 bootstrap.yml 里
   # `transport.dashboard` 只能注释着，因为指着空气发心跳比不配还糟。
   #
-  # 现在有了：
+  # 现在有了，而且数据流是**查出来的**、不是猜的：
   #   · 网关（唯一接了 Sentinel 的服务）通过 transport.dashboard 把心跳
   #     发到 sentinel-dashboard:8718
-  #   · 控制台读的是**同一份** Nacos 规则表（dataId=sentinel-ruoyi-gateway,
-  #     tenant=opc-dev）—— 控制台上改规则 = 改 Nacos = 改仓库那份文件，
-  #     三个地方是同一份数据，不是三份
+  #   · 控制台**不连 Nacos** —— 它的 jar 里没有 Nacos 客户端。它显示的
+  #     网关限流规则是**回头问网关要的**：GET http://<网关ip>:8719/gateway/getRules
+  #   · 网关那一份内存规则又是从 Nacos 加载的（dataId=sentinel-ruoyi-gateway,
+  #     tenant=opc-dev）
+  #   所以链子是：Nacos → 网关内存 → 控制台。
+  #   控制台上改规则只改到网关内存，不落 Nacos，网关一重启就没了 ——
+  #   真相源始终是 deploy/nacos/sentinel-ruoyi-gateway.json。
   #
-  # 端口只绑 127.0.0.1：控制台没有任何鉴权，谁拿到 URL 谁就能改限流规则。
-  # 演示栈里它的用途是「看得见」，不是「对外提供」。
+  # 端口只绑 127.0.0.1：控制台的账号口令在 sentinel-dashboard/application.yml 里
+  # （演示环境的公开口令），公网够不着。演示栈里它的用途是「看得见」，
+  # 不是「对外提供」。
   sentinel-dashboard:
     image: bladex/sentinel-dashboard:latest
     container_name: aiopc-sentinel-dashboard
     ports: ["127.0.0.1:8718:8718"]
-    # 镜像自带那份配置写的是 localhost:8848 + 默认命名空间 ——
-    # 在容器里 127.0.0.1 是控制台自己，它连 Nacos 会直接失败，
-    # 命名空间也是空的，于是控制台显示「零节点、零规则」还看着一切正常。
+    # 挂载路径是**从镜像里查出来的**，不是猜的：WORKDIR=/bladex/sentinel，
+    # jar 在 /bladex/sentinel/app.jar，Spring Boot 从同目录读 application.yml。
+    # （原先挂的是 /home/admin/sentinel-dashboard/ —— 那个路径不存在，
+    #   挂载静默失败，镜像自带的 application.yml 照旧生效。）
+    #
+    # 镜像自带的 server.port 是 8858，而这里映射的是 8718 —— 端口对不上等于没起，
+    # 而控制台「没起」的样子是「一个节点都没有」，看着还挺正常。
     volumes:
-      - ./sentinel-dashboard/application.yml:/home/admin/sentinel-dashboard/application.yml:ro
+      - ./sentinel-dashboard/application.yml:/bladex/sentinel/application.yml:ro
     environment:
       # 兜底：SPRING_APPLICATION_JSON 不依赖镜像里的任何路径，
-      # 挂载路径要是猜错了（WORKDIR 不是 home/admin/sentinel-dashboard），
-      # 这一份仍然生效。两份写的是同一件事。
-      - SPRING_APPLICATION_JSON={"spring":{"cloud":{"nacos":{"discovery":{"server-addr":"nacos1:8848","namespace":"opc-dev"},"config":{"server-addr":"nacos1:8848","namespace":"opc-dev","group":"DEFAULT_GROUP"}},"sentinel":{"datasource":{"gw-flow":{"nacos":{"server-addr":"nacos1:8848","namespace":"opc-dev","group-id":"DEFAULT_GROUP","data-id":"sentinel-ruoyi-gateway","data-type":"json","rule-type":"gw-flow"}}}}}}
+      # 就算上面那个挂载路径哪天又对不上，这一份仍然生效。
+      #
+      # 这里只放**端口** —— 它是「容器起没起」的唯一开关：
+      # 镜像自带 server.port 是 8858，而 compose 映射的是 8718，端口对不上等于没起。
+      #
+      # 刻意**不放** Nacos 那几段：控制台的 jar 里根本没有 Nacos 客户端，
+      # 写上去也只是让人以为「控制台在管 Nacos 里的规则」——
+      # 其实控制台的规则是回头问网关要的 (GET /gateway/getRules)。
+      # 账号口令也不往这儿抄 —— 那是 sentinel-dashboard/application.yml 里的，
+      # 抄两遍迟早对不上。
+      - SPRING_APPLICATION_JSON={"server":{"port":8718}}
     depends_on:
       - nacos1
     restart: unless-stopped

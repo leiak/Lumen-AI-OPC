@@ -185,11 +185,15 @@ burst / maxQueueingTimeoutMs / paramItem`。
 |------|------|
 | `deploy/nacos/sentinel-ruoyi-gateway.json` | **真相源**，改这里 |
 | Nacos `opc-dev` / `sentinel-ruoyi-gateway` | 部署副本，由 `import-dev.sh` 推 |
-| Sentinel 控制台 | **只读视图**；控制台上改的规则重启就没了（不落 Nacos） |
+| 网关内存（`GatewayRuleManager`） | 运行时副本，**限流真正依据的是这一份** |
+| Sentinel 控制台 | **网关内存的视图**（它回头问网关要：`GET /gateway/getRules`）；控制台上改的规则只改到网关内存，**不落 Nacos**，网关一重启就没了 |
 
 `health-check.sh` 第 23.4 节会拿 Nacos 里那份的每条 `resource`，
 跟 `ruoyi-gateway/src/main/resources/application.yml` 里**真实存在的路由 id** 对表：
 对不上报 FAIL，**路由新增了但忘了加规则**也报 FAIL。
+
+第 24 节再往下一层查：控制台**真的**从网关取到了多少条规则，
+跟 Nacos 那份逐条对账。控制台显示 0 条，就是网关内存里真的一条都没加载。
 
 #### 被限流时返回的是 429
 

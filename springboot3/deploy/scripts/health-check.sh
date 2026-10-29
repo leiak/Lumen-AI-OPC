@@ -54,6 +54,10 @@ AGENT_HUB_PORT="${AGENT_HUB_PORT:-9303}"
 # 直连通了 = CRM → AI 这条路断了。
 AI_CORE_PORT="${AI_CORE_PORT:-9301}"
 RED='\033[0;31m'
+# Sentinel 控制台的宿主机端口 (只绑 127.0.0.1)。第 24 节要用它:
+# 控制台不是自己存规则的 —— 它是回头问网关要 (GET http://<网关ip>:<网关port>/gateway/getRules),
+# 所以「控制台看得见规则」= 「网关内存里真的加载了规则」, 这是限流那条链的最后一环。
+SENTINEL_DASHBOARD_PORT="${SENTINEL_DASHBOARD_PORT:-8718}"
 GRN='\033[0;32m'
 YEL='\033[0;33m'
 NC='\033[0m'
@@ -114,6 +118,7 @@ check_containers() {
     "aiopc-billing"
     "aiopc-finance"
     "aiopc-frontend"
+    "aiopc-sentinel-dashboard"
   )
   for c in "${containers[@]}"; do
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${c}$"; then
@@ -3428,34 +3433,294 @@ for c in sorted(samples):
   fi
 }
 
+# ---------- 24) Sentinel 控制台是真的在管事 ----------
+#
+# 控制台自己不拦流量 —— 它只是把网关的状态和规则显示出来。
+# 所以它天生容易变成一个「看着一切正常、其实什么都没连上」的空壳:
+#
+#   · 镜像自带的 application.yml 写的是 localhost:8848 + 默认命名空间,
+#     可在容器里 127.0.0.1 是控制台自己 —— 它连 Nacos 必然失败;
+#   · 镜像自带 server.port 是 8858, 而 compose 映射的是 8718 —— 端口对不上;
+#   · 挂载路径写成 /home/admin/sentinel-dashboard/application.yml 时挂载**静默失败**
+#     (镜像的 WORKDIR 是 /bladex/sentinel), 镜像自带那份照旧生效, 一个异常都不报;
+#   · Sentinel 的心跳地址在**启动那一刻**解析一次就固定了 ——
+#     网关先起、控制台后起时解析不到就整组丢弃, 之后永远不再重试,
+#     控制台就永远是「零节点、零规则」。
+#
+# 所以判据必须是「控制台真的看得见网关、真的拿到了网关的限流规则」,
+# 不是「控制台容器在跑」。
+check_sentinel_dashboard() {
+  hr
+  echo "[24] Sentinel 控制台是真的在管事"
+  hr
+
+  local out
+  out=$(python3 - \
+      "http://127.0.0.1:${SENTINEL_DASHBOARD_PORT}" \
+      "http://${GATEWAY_HOST}:${NACOS_PORT}/nacos" \
+      "opc-dev" \
+      "${DEPLOY_DIR}/../ruoyi-gateway/src/main/resources/application.yml" \
+      "${DEPLOY_DIR}/sentinel-dashboard/application.yml" <<'PY' 2>/dev/null
+import http.cookiejar, json, os, re, sys, urllib.error, urllib.parse, urllib.request
+
+dash, api, ns, gw_yml, dash_yml = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+out = []
+APP = 'ruoyi-gateway'
+
+# 控制台是 session 鉴权的 —— 没登录就 401。
+# 账号口令从控制台自己的配置文件里读 (不落命令行、不打日志),
+# 跟控制台拿的是同一份, 不会对不上。
+jar = http.cookiejar.CookieJar()
+opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+
+
+def auth_from(path):
+    """从控制台的 application.yml 里读 auth.username / auth.password"""
+    cred = {}
+    if not os.path.exists(path):
+        return cred
+    inside = False
+    with open(path, encoding='utf-8') as fh:
+        for line in fh:
+            raw = line.rstrip('\n')
+            if not raw.strip() or raw.strip().startswith('#'):
+                continue
+            if not raw.startswith((' ', '\t')):
+                inside = raw.strip() == 'auth:'
+                continue
+            if inside:
+                m = re.match(r'^\s+(username|password)\s*:\s*(\S+)\s*$', raw)
+                if m:
+                    cred[m.group(1)] = m.group(2).strip('"\'')
+    return cred
+
+
+def http(url, method='GET', form=None):
+    data = urllib.parse.urlencode(form).encode() if form is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    try:
+        r = opener.open(req, timeout=10)
+        return r.status, r.read().decode('utf-8', errors='replace')
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode('utf-8', errors='replace')
+    except Exception as e:
+        return None, str(e)
+
+
+def data_of(raw):
+    """控制台的统一返回体: {"success":..,"code":..,"msg":..,"data":..}"""
+    if raw is None:
+        return None
+    try:
+        d = json.loads(raw)
+    except Exception:
+        return None
+    if not isinstance(d, dict):
+        return None
+    return d.get('data')
+
+
+def route_ids_of(path):
+    """网关里真实的路由 id (按缩进切出 routes: 段)"""
+    ids = []
+    if not os.path.exists(path):
+        return ids
+    with open(path, encoding='utf-8') as fh:
+        lines = fh.read().splitlines()
+    for i, line in enumerate(lines):
+        m = re.match(r'^(\s*)routes:\s*$', line)
+        if not m:
+            continue
+        base = len(m.group(1))
+        for nxt in lines[i + 1:]:
+            if not nxt.strip() or nxt.strip().startswith('#'):
+                continue
+            if len(nxt) - len(nxt.lstrip()) <= base:
+                break
+            mi = re.match(r'^\s*- id:\s*(\S+)\s*$', nxt)
+            if mi:
+                ids.append(mi.group(1))
+        break
+    return ids
+
+
+def emit():
+    for st, msg in out:
+        print(st + "\t" + msg)
+
+
+# ---- 24.1 控制台活着, 而且登录得上 ----
+cred = auth_from(dash_yml)
+if not cred.get('username') or not cred.get('password'):
+    out.append(("FAIL", "24.1 %s 里读不到 auth.username / auth.password —— 没法登录控制台" % dash_yml))
+    emit()
+    raise SystemExit(0)
+
+st, _ = http(dash + '/app/names.json')
+if st is None:
+    out.append(("FAIL", "24.1 控制台 %s 没应答 —— 容器没起来, 或者 compose 映射的端口跟它的 server.port 对不上" % dash))
+    emit()
+    raise SystemExit(0)
+
+# 未登录时 401 是正常的 —— 判据是「能不能用配置里的账号登进去」。
+st, body = http(dash + '/auth/login', method='POST',
+                form={'username': cred['username'], 'password': cred['password']})
+if st != 200:
+    out.append(("FAIL", "24.1 控制台登录失败 (HTTP %s) —— %s 里的账号口令跟控制台对不上, "
+                        "多半是那份挂载没生效" % (st, os.path.basename(dash_yml))))
+    emit()
+    raise SystemExit(0)
+out.append(("OK", "24.1 控制台 %s 活着, 登录得上 (账号来自 %s)" % (dash, os.path.basename(dash_yml))))
+
+# ---- 24.2 控制台看得见网关这个应用 (心跳真的到了) ----
+names = data_of(http(dash + '/app/names.json')[1])
+if not isinstance(names, list):
+    out.append(("FAIL", "24.2 读不出控制台的应用列表 (data=%s) —— 这一项空转" % type(names).__name__))
+elif APP in names:
+    out.append(("OK", "24.2 控制台的应用列表里有 %s —— 网关的心跳真的到了控制台" % APP))
+else:
+    out.append(("FAIL", "24.2 控制台的应用列表里没有 %s (现在有: %s) —— 网关没把心跳发过来"
+                        "(控制台比网关晚起的话, 网关必须重启: Sentinel 的心跳地址只在启动那一刻解析一次)"
+                % (APP, ",".join(names) if names else "空")))
+
+# ---- 24.3 控制台看得见网关这台机器 (ip + 端口) ----
+machines = data_of(http(dash + '/app/' + APP + '/machines.json')[1])
+ip = port = None
+if not isinstance(machines, list) or not machines:
+    out.append(("FAIL", "24.3 控制台里没有 %s 的机器 —— 网关没注册上来" % APP))
+else:
+    m = max(machines, key=lambda x: x.get('lastHeartbeat') or 0)
+    ip, port = m.get('ip'), m.get('port')
+    if not ip or not port:
+        out.append(("FAIL", "24.3 控制台记下了机器但没有 ip/port: %s" % json.dumps(m, ensure_ascii=False)[:160]))
+    else:
+        out.append(("OK", "24.3 控制台看得见网关这台机器 (ip=%s port=%s healthy=%s)" % (ip, port, m.get('healthy'))))
+
+# ---- 24.4 控制台真的拿到了网关的限流规则 ----
+#
+# 控制台不是自己存规则 —— 它是回头问网关:
+#   GET http://<网关ip>:<网关port>/gateway/getRules
+# (网关侧的 handler 是 GetGatewayRuleCommandHandler, 读的是 GatewayRuleManager 里的内存规则)
+# 所以这里能拿到多少条, 就等于网关内存里真的加载了多少条。
+dash_rules = []
+if ip and port:
+    q = urllib.parse.urlencode({'app': APP, 'ip': ip, 'port': port})
+    st, raw = http(dash + '/gateway/flow/list.json?' + q)
+    dash_rules = data_of(raw)
+    if st != 200:
+        out.append(("FAIL", "24.4 控制台问网关要限流规则要不到 (HTTP %s) —— "
+                            "网关的命令服务(默认 8719)没开, 或控制台够不着它" % st))
+    elif not isinstance(dash_rules, list):
+        out.append(("FAIL", "24.4 控制台返回的规则不是列表: %s" % str(dash_rules)[:160]))
+    elif not dash_rules:
+        out.append(("FAIL", "24.4 控制台问网关要来了 0 条限流规则 —— 网关内存里一条都没加载"))
+    else:
+        out.append(("OK", "24.4 控制台真的从网关取到了 %d 条网关限流规则" % len(dash_rules)))
+else:
+    out.append(("FAIL", "24.4 拿不到网关的 ip/port, 没法问它要规则"))
+
+# ---- 24.5 控制台看到的规则 = Nacos 里的规则表 = 网关的路由表 ----
+#
+# 三张表必须对得上:
+#   Nacos(sentinel-ruoyi-gateway) = 网关内存(GatewayRuleManager) = 控制台看到的
+# 对不上就说明中间某一环在骗人: 规则写进了 Nacos 但网关没加载, 或者
+# 网关加载了但控制台看的是另一份。
+route_ids = route_ids_of(gw_yml)
+nacos_url = api + '/v1/cs/configs?' + urllib.parse.urlencode(
+    {'dataId': 'sentinel-ruoyi-gateway', 'group': 'DEFAULT_GROUP', 'tenant': ns})
+nacos_raw = http(nacos_url)[1]
+nacos_rules = None
+if nacos_raw and nacos_raw.strip() not in ('', 'config data not exist'):
+    try:
+        nacos_rules = json.loads(nacos_raw)
+    except Exception:
+        nacos_rules = None
+
+if not isinstance(nacos_rules, list) or not nacos_rules:
+    out.append(("FAIL", "24.5 tenant=%s 下读不到 Sentinel 规则表 —— 没法跟控制台对账" % ns))
+elif not isinstance(dash_rules, list):
+    out.append(("FAIL", "24.5 控制台那侧没取到规则, 对不了账"))
+else:
+    nacos_res = sorted({r.get('resource') for r in nacos_rules if isinstance(r, dict) and r.get('resource')})
+    dash_res = sorted({r.get('resource') for r in dash_rules
+                       if isinstance(r, dict) and r.get('resource')})
+    only_nacos = [r for r in nacos_res if r not in dash_res]
+    only_dash = [r for r in dash_res if r not in nacos_res]
+    if only_nacos:
+        out.append(("FAIL", "24.5 Nacos 里有、控制台里没有的规则: %s —— 网关没把它们加载进内存"
+                    % " ".join(only_nacos)))
+    if only_dash:
+        out.append(("FAIL", "24.5 控制台里有、Nacos 里没有的规则: %s —— 这一份是凭空来的"
+                    % " ".join(only_dash)))
+    if not only_nacos and not only_dash:
+        out.append(("OK", "24.5 控制台看到的 %d 条规则与 Nacos 规则表逐条对得上" % len(dash_res)))
+    bad = [r.get('resource') for r in dash_rules
+           if isinstance(r, dict) and r.get('resource') and r.get('resource') not in route_ids]
+    if bad:
+        out.append(("FAIL", "24.5 控制台上有 %d 条规则挂在不存在的路由上: %s"
+                    % (len(bad), " ".join(sorted(set(bad))[:6]))))
+    elif route_ids:
+        missing = [r for r in route_ids if r not in dash_res]
+        if missing:
+            out.append(("FAIL", "24.5 %d 条路由没有限流规则(等于不限流): %s"
+                        % (len(missing), " ".join(missing))))
+        else:
+            out.append(("OK", "24.5 网关 %d 条路由全部有对应的限流规则, 控制台上一条不缺" % len(route_ids)))
+
+emit()
+PY
+)
+
+  if [[ -z "${out}" ]]; then
+    nok "24 解析不了控制台的响应 —— 这一节空转, 证明不了任何东西"
+  else
+    while IFS=$'\t' read -r st msg; do
+      [[ -z "${st}" ]] && continue
+      case "${st}" in
+        OK)   ok   "${msg}" ;;
+        WARN) warn "${msg}" ;;
+        *)    nok  "${msg}" ;;
+      esac
+    done <<< "${out}"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
   echo " OPC stack 健康检查 ($(date '+%Y-%m-%d %H:%M:%S'))"
   echo "=================================================="
-  check_containers
-  check_nacos
-  check_mysql
-  check_frontend
-  login_and_check
-  check_notification
-  check_crm
-  check_hr
-  check_erp
-  check_content
-  check_marketplace
-  check_gateway_whitelist
-  check_tenant_guard
-  check_crm_ownership
-  check_port_exposure
-  check_body_tenant_and_oauth_state
-  check_metering_chain
-  check_company_switch
-  check_marketplace_truth
-  check_marketplace_actions
-  check_crm_ai_score
-  check_nacos_config_center
-  check_memory_and_flow_control
+  # HEALTH_ONLY=<节号> 只跑那一节 —— 调单节时用, 不影响全量跑法。
+  # 例: HEALTH_ONLY=24 bash deploy.sh health
+  local only="${HEALTH_ONLY:-}"
+  step() {
+    local num="$1"; shift
+    if [[ -z "${only}" || "${only}" == "${num}" ]]; then "$@"; fi
+  }
+  step 1  check_containers
+  step 2  check_nacos
+  step 5  check_mysql
+  step 4  check_frontend
+  step 3  login_and_check
+  step 6  check_notification
+  step 7  check_crm
+  step 8  check_hr
+  step 9  check_erp
+  step 10 check_content
+  step 11 check_marketplace
+  step 12 check_gateway_whitelist
+  step 13 check_tenant_guard
+  step 14 check_crm_ownership
+  step 15 check_port_exposure
+  step 16 check_body_tenant_and_oauth_state
+  step 17 check_metering_chain
+  step 18 check_company_switch
+  step 19 check_marketplace_truth
+  step 20 check_marketplace_actions
+  step 21 check_crm_ai_score
+  step 22 check_nacos_config_center
+  step 23 check_memory_and_flow_control
+  step 24 check_sentinel_dashboard
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"
