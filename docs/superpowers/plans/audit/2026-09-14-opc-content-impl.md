@@ -27,7 +27,7 @@
 | Task 12 | Nacos 配置 + ENC secret | 4 | 3 | 1 | **配置做了，secret 没加密**。`opc-content-dev.yml` 在、也真的推进了 Nacos；**client-secret 是明文占位符，不是 `ENC(...)`** |
 | Task 13 | Dockerfile + compose + initdb | 4 | 4 | 0 | **做了**。thin jar Dockerfile + `aiopc-content` 服务 + 4 张表 DDL + seed 数据 |
 | Task 14 | Helm chart | 4 | 3 | 1 | **做了**。deployment-content.yaml + service-content.yaml + values.yaml `services.content` |
-| Task 15 | health-check | 4 | 3 | 1 | **做了，但里面有一条恒失败的检查**（10.6 查的 `/opc/content/script/recent` 从来没有 handler） |
+| Task 15 | health-check | 4 | 3 | 1 | **做了，但里面有一条恒绿的假检查**（10.6 查的 `/opc/content/script/recent` 从来没有 handler —— 它是 HTTP 200 + `body.code=500`，老写法只看 HTTP 码所以一直报 ok。**2026-10-29 已重写第 10 节**） |
 | Task 16 | VERIFICATION 报告 + e2e | 3 | 3 | 0 | **做了**。`e2e_content.py` 328 行 10 步 + week-74 VERIFICATION 报告 |
 | **合计** | | **78** | **61** | **17** | |
 
@@ -145,7 +145,7 @@ Script 的 11 条：`POST /script`、`GET /script/list`、`GET|PUT|DELETE /scrip
 | 3 | **Task 4 Step 3「5. 发通知 (NotificationGateway)」** | `OpcContentPublishServiceImpl.java` 没有任何 `NotificationGateway` 注入，代码里留着 `// 7) TODO Task 8: NotificationGateway.send(...) 发通知` |
 | 4 | **Task 9 Step 3 的两个平台层测试文件** | `DouyinClientTest.java` / `MockPlatformClientTest.java` 在仓库里不存在 |
 | 5 | **Task 11 Step 7 的 6 条 router 路由** | `router/index.ts` 只有 2 条隐藏详情路由；菜单路由是后来用 sys_menu 数据库菜单补的（`08305b8` 自称「Task 11 漏掉菜单配置」） |
-| 6 | **Task 15 Step 1 里 health-check 的 10.6 条** | 检查 `/opc/content/script/recent`，但这个 handler **从来没有存在过**（`git log --all -S '"/recent"' -- springboot3/ruoyi-modules/opc-content` 无输出；gateway 白名单里也有注释「原 `/opc/content/script/recent` 没有任何 handler … 已删」）。`nok` 会让 `health-check.sh` 整体 `exit 1` |
+| 6 | **Task 15 Step 1 里 health-check 的 10.6 条** | 检查 `/opc/content/script/recent`，但这个 handler **从来没有存在过**（`git log --all -S '"/recent"' -- springboot3/ruoyi-modules/opc-content` 无输出；gateway 白名单里也有注释「原 `/opc/content/script/recent` 没有任何 handler … 已删」）。⚠️ **本条此前的表述错了**：不是「nok 会让 health-check.sh 整体 exit 1」，而是它**一直是绿的** —— `"recent"` 转不成 Long → `MethodArgumentTypeMismatchException` → `GlobalExceptionHandler` 转成 **HTTP 200 + `body.code=500`**，而老写法 `curl -sf` 只看 HTTP 状态码 → 200 即成功 → 那条检查**什么都没断言却一直报 ok**。**2026-10-29 已修**：第 10 节整体重写为「看 `body.code`、验真实存在的端点、要求真的取到数据」 |
 | 7 | **Task 12 Step 2 的 `ENC(...)` secret** | 从来没有真实 secret 被加密过 |
 | 8 | **Task 16 Step 2 模板里的「e2e: 10 步全过 / 端点: 22/22」** | W74 报告自己写的是 **8/10 PASS**、**20 端点**；W75 报告改成 10/10。两份都是自述，无运行记录 |
 
@@ -195,6 +195,6 @@ Script 的 11 条：`POST /script`、`GET /script/list`、`GET|PUT|DELETE /scrip
 - Task 11 —— 路由没做、生成页被合并掉
 - Task 12 —— secret 没加密
 - Task 13 —— seed 数据量只有 plan 的三分之一
-- Task 15 —— health-check 里有一条查不存在端点的恒失败检查
+- Task 15 —— health-check 里有一条查不存在端点的**恒绿假检查**（不是恒失败 —— 它一直报 ok，却什么都没断言。2026-10-29 已重写第 10 节修掉）
 
 **一句话**：这份 plan 的**结构性工作量是真的、对外交付的说法是虚的**。拿它当"opc-content 交付清单"会多算 2 个端点、多算一次抖音集成、多算 6 条前端路由；拿它当"还差什么"的清单，则会漏掉"抖音从来没真跑通"和"secret 从没加密"这两件真事。**代码层面可以信任，数字和外部集成层面不能信任。**

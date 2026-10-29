@@ -1123,6 +1123,17 @@ aiopc-content                     Up
 
 ## 3. health-check.sh 输出
 
+> ⚠️ **下面这段是「预期输出」的示意, 不是实测记录** —— 这份 plan 里的验证框在审计时
+> 全部被退回 `[ ]`(理由见 `docs/superpowers/plans/audit/2026-09-22-remote-ssh-opc-deploy.md`)。
+> 而且**输出格式也已经过期**: 现在健康检查看的是 `body.code` 而不是 HTTP 状态码
+> (RuoYi 把所有异常都转成 HTTP 200 + `body.code=500`),所以别拿这段当模板照抄。
+>
+> 2026-10-29 修掉的一处假象: 原来这段里有一行 `[OK] /opc/content/script/recent 200 OK`
+> —— **`/opc/content/script/recent` 这个 handler 从来没存在过**,它撞上
+> `@GetMapping("/{id}")`,`"recent"` 转不成 Long → `body.code=500`,而 HTTP 仍是 200,
+> 于是一条什么都没断言的检查一直显示绿。行已删;「最近脚本」这个功能是真的,
+> 它住在 `dashboard.recent_scripts` 字段里,健康检查现在去验那个字段。
+
 ```
 $ bash scripts/health-check.sh | tail -60
 
@@ -1133,8 +1144,8 @@ $ bash scripts/health-check.sh | tail -60
 [OK] opc-ai-core /actuator/health UP
 [OK] /opc/ai-core/models 200 OK
 ... (省略中间)
-[OK] /opc/content/script/recent 200 OK
-[OK] /opc/content/publish/list 200 OK
+[OK] /opc/content/script/list body.code=200
+[OK] /opc/content/publish/list body.code=200
 [OK] /opc/community/module/list 200 OK
 [OK] /opc/community/rating/list 200 OK
 [OK] 鉴权拦截正确

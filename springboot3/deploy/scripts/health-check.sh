@@ -14,7 +14,9 @@
 #   7) opc-crm 8 项健康检查 (W50 Task 17)
 #   8) opc-hr 8 项健康检查 (W71 Task 12)
 #   9) opc-erp 9 项健康检查 (W72 Task 12)
-#  10) opc-content 10 项健康检查 (W74 Task 15)
+#  10) opc-content 11 项健康检查 (W74 Task 15; 2026-10-29 重写 ——
+#      原来 5 条业务端点检查全是 `curl -sf` 看 HTTP 状态码, 而 RuoYi 把所有异常
+#      都转成 HTTP 200 + body.code=500 → 一条查不存在端点的检查一直报 ok)
 #  11) opc-marketplace 10 项健康检查 (W80 P1)
 #  12) 网关白名单 method 限定 (3c 回归护栏)
 #  13) 租户守卫 + LLM 计量 (3b / 3a 回归护栏)
@@ -961,51 +963,156 @@ except Exception:
     nok "opc-content /actuator/health: ${health_body:-<no response>}"
   fi
 
-  # 10.4 ScriptController GET /opc/content/script/list (阻塞)
-  if curl -sf -m 10 "${base_url}/opc/content/script/list?pageNum=1&pageSize=10" >/dev/null 2>&1; then
-    ok "/opc/content/script/list 200 OK"
+  # 10.4 公开浏览端点 (阻塞)
+  #
+  # ⚠️ 这里必须看 body.code, 不能只看 HTTP 状态码:
+  #    RuoYi 的 GlobalExceptionHandler 把**所有**异常都转成 HTTP 200 + body.code=500
+  #    (AjaxResult.error(...)), 缺必填参数、路径变量类型不匹配都走这条路。
+  #    所以 `curl -sf` 会对一个「压根没返回数据」的端点报成功。
+  #
+  #    原来那条查的是 /opc/content/script/recent —— opc-content 只有 3 个
+  #    controller, **没有 recent 这个 handler**。它撞上 @GetMapping("/{id}"),
+  #    "recent" 转不成 Long → MethodArgumentTypeMismatchException → HTTP 200 +
+  #    code=500 → 那条检查一直报 ok。
+  #    网关白名单里早就把它记成「失效条目」(nacos/whitelist-opc-invite.yml 的
+  #    whitesRemove), 只有健康检查还当它存在。
+  #
+  # 这几条走**网关**而不是服务直连: 这几个 GET 本来就在网关的公开白名单里
+  # (GET:/opc/content/script/list|dashboard|**, GET:/opc/content/platform-account/list),
+  # 匿名可读就是它本来的样子 —— 公开浏览就是给匿名看的。
+  #
+  # companyId 显式带上: 租户守卫(TenantCompanyFilter)会把它改写成服务端判定的
+  # 作用域(匿名 → 公开租户 opc.tenant.public-company-id, 默认 1), 但守卫被关掉时
+  # 就不会补 —— 那时缺参数会得到 code=500, 这条检查就该红。
+  local content_eps=(
+    "/opc/content/script/list?companyId=1&page=1&size=10"
+    "/opc/content/script/dashboard?companyId=1"
+    "/opc/content/platform-account/list?companyId=1"
+  )
+  local -A c_body=()
+  for ep in "${content_eps[@]}"; do
+    local cbody ccode
+    cbody=$(curl -s -m 10 "http://${GATEWAY_HOST}:${GATEWAY_PORT}${ep}" 2>/dev/null) || cbody=""
+    c_body["${ep}"]="${cbody}"
+    ccode=$(body_code "${cbody}")
+    if [[ "${ccode}" == "200" ]]; then
+      ok "${ep} body.code=200"
+    elif echo "${cbody}" | grep -q "No static resource"; then
+      nok "${ep} 网关未路由 (静态回退): ${cbody:0:120}"
+    else
+      nok "${ep} body.code=${ccode}: ${cbody:0:120}"
+    fi
+  done
+
+  # 10.4b 发布记录列表 (阻塞) —— 这条**不在**公开白名单里, 必须带 token
+  #      (白名单只有 4 条 GET: script/list | script/dashboard | script/** |
+  #       platform-account/list)。拿不到 token 就报「无法验证」, 不假装通过 ——
+  #      悄悄跳过一条检查, 就是在制造下一句假话。
+  #
+  #      断言两件事: code=200 (端点真的通) + total>0 (真的取到了这家公司的记录)。
+  #      admin 属于 company 1 (opc_company_member 里 user_id=1 → company_id=1),
+  #      租户守卫会把 companyId 改写成登录态作用域, 所以 companyId=1 是对的。
+  local c_login c_token c_pub_body c_pub_code c_pub_total
+  # 口令经 stdin 送进去, 不进 argv —— ps aux / /proc/*/cmdline 看不到它。
+  # (文件里其余 14 处还是 `-d '{...}'` 的老写法, 那是历史, 不在这里扩大。)
+  c_login=$(printf '%s' '{"username":"admin","password":"admin123"}' \
+    | curl -s -m 15 -X POST \
+        -H "Content-Type: application/json" \
+        --data-binary @- \
+        "http://${GATEWAY_HOST}:${GATEWAY_PORT}/login" 2>/dev/null) || c_login=""
+  c_token=$(printf '%s' "${c_login}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data', {}) or {}
+    print(d.get('token','') or d.get('access_token',''))
+except Exception:
+    print('')
+" 2>/dev/null)
+  if [[ -z "${c_token}" ]]; then
+    nok "拿不到 admin token —— /opc/content/publish/list 无法验证(它不在公开白名单里)"
   else
-    nok "/opc/content/script/list 不可达"
+    c_pub_body=$(curl -s -m 10 \
+      -H "Authorization: Bearer ${c_token}" \
+      "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/content/publish/list?companyId=1&page=1&size=10" 2>/dev/null) || c_pub_body=""
+    c_pub_code=$(body_code "${c_pub_body}")
+    c_pub_total=$(printf '%s' "${c_pub_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data') or {}
+    print(d.get('total', 0) if isinstance(d, dict) else 0)
+except Exception:
+    print(-1)
+" 2>/dev/null)
+    if [[ "${c_pub_code}" != "200" ]]; then
+      nok "/opc/content/publish/list body.code=${c_pub_code}: ${c_pub_body:0:120}"
+    elif [[ "${c_pub_total}" -le 0 ]]; then
+      nok "/opc/content/publish/list body.code=200 但 total=${c_pub_total} —— company 1 名下没有发布记录"
+    else
+      ok "/opc/content/publish/list body.code=200 total=${c_pub_total}"
+    fi
   fi
 
-  # 10.5 ScriptController GET /opc/content/script/dashboard (阻塞)
-  if curl -sf -m 10 "${base_url}/opc/content/script/dashboard" >/dev/null 2>&1; then
-    ok "/opc/content/script/dashboard 200 OK"
+  # 10.5 最近脚本: 原来那条查的 /script/recent 压根不存在, 但「最近脚本」这个
+  #     功能是真的 —— 它住在 dashboard 的 recent_scripts 字段里
+  #     (OpcContentScriptServiceImpl:297 scriptMapper.selectRecent(companyId, 5))。
+  #     所以这里查它真正的位置, 并且要求真的取到数据, 而不是「返回了一个 200」。
+  #     复用 10.4 已经取到的 dashboard 响应体, 不重复发请求。
+  local dash_body dash_code recent_n
+  dash_body="${c_body["/opc/content/script/dashboard?companyId=1"]:-}"
+  dash_code=$(body_code "${dash_body}")
+  recent_n=$(printf '%s' "${dash_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data') or {}
+    print(len(d.get('recent_scripts') or []))
+except Exception:
+    print(-1)
+" 2>/dev/null)
+  if [[ "${dash_code}" != "200" ]]; then
+    nok "dashboard body.code=${dash_code}: ${dash_body:0:120}"
+  elif [[ "${recent_n}" -gt 0 ]]; then
+    ok "最近脚本真的取到了 ${recent_n} 条 (dashboard.recent_scripts)"
   else
-    nok "/opc/content/script/dashboard 不可达"
+    nok "dashboard.recent_scripts 取不到数据 (条数=${recent_n}): ${dash_body:0:120}"
   fi
 
-  # 10.6 ScriptController GET /opc/content/script/recent (阻塞)
-  if curl -sf -m 10 "${base_url}/opc/content/script/recent?limit=5" >/dev/null 2>&1; then
-    ok "/opc/content/script/recent 200 OK"
+  # 10.6 脚本详情路由 (阻塞) —— id 从库里取一条真实脚本, 不写死
+  #     (写死的 id 会随种子变化而失效, 那才是另一种「不说假话」)
+  local content_sid
+  content_sid=$(db_q "SELECT id FROM opc_content_script WHERE company_id = 1 ORDER BY id LIMIT 1;" | head -1)
+  if [[ -z "${content_sid}" ]]; then
+    nok "取不到 company_id=1 的脚本 id (mysql 客户端缺失 / 查询失败 / 库里没这家公司数据) —— 详情路由无从验证"
   else
-    nok "/opc/content/script/recent 不可达"
+    local sbody scode
+    sbody=$(curl -s -m 10 "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/content/script/${content_sid}?companyId=1" 2>/dev/null) || sbody=""
+    scode=$(body_code "${sbody}")
+    if [[ "${scode}" == "200" ]]; then
+      ok "/opc/content/script/${content_sid} body.code=200"
+    else
+      nok "/opc/content/script/${content_sid} body.code=${scode}: ${sbody:0:120}"
+    fi
   fi
 
-  # 10.7 PlatformAccountController GET /opc/content/platform-account/list (阻塞)
-  if curl -sf -m 10 "${base_url}/opc/content/platform-account/list" >/dev/null 2>&1; then
-    ok "/opc/content/platform-account/list 200 OK"
+  # 10.7 鉴权: 闸在网关, 不在 opc-content (阻塞)
+  #
+  # ⚠️ 原来这条查的是**服务直连**(127.0.0.1:9325)的 HTTP 状态码, 而且把 200
+  #    也算成「拦截正确」—— 等于什么都没断言: 直连本来就绕过网关的 AuthFilter,
+  #    opc-content 的 controller 上也没有 @SaCheckPermission。
+  #
+  #    真正的闸是网关: 白名单只放行了 4 条 GET, POST /opc/content/script 不在
+  #    里面 → 匿名必须被拦。网关的拒绝也是 HTTP 200 + body.code=401
+  #    (ServletUtils.webFluxResponseWriter 传的是 HttpStatus.OK), 只能看 body.code。
+  local cgw_body cgw_code
+  cgw_body=$(curl -s -m 10 -X POST -H "Content-Type: application/json" \
+    -d '{}' "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/content/script" 2>/dev/null) || cgw_body=""
+  cgw_code=$(body_code "${cgw_body}")
+  if [[ "${cgw_code}" == "401" ]] || [[ "${cgw_code}" == "403" ]]; then
+    ok "网关拦截正确 (POST /opc/content/script → body.code=${cgw_code})"
   else
-    nok "/opc/content/platform-account/list 不可达"
+    nok "网关未拦截匿名写请求 (body.code=${cgw_code}): ${cgw_body:0:120} — opc-content 的写端点匿名可达"
   fi
 
-  # 10.8 PublishController GET /opc/content/publish/list (阻塞)
-  if curl -sf -m 10 "${base_url}/opc/content/publish/list" >/dev/null 2>&1; then
-    ok "/opc/content/publish/list 200 OK"
-  else
-    nok "/opc/content/publish/list 不可达"
-  fi
-
-  # 10.9 鉴权拦截 (非阻塞, dev 模式可能关闭)
-  local HTTP_CODE
-  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "${base_url}/opc/content/script/list" 2>/dev/null)
-  if [[ "${HTTP_CODE}" == "401" ]] || [[ "${HTTP_CODE}" == "403" ]] || [[ "${HTTP_CODE}" == "200" ]]; then
-    ok "鉴权拦截正确 (HTTP ${HTTP_CODE})"
-  else
-    warn "鉴权状态异常 (HTTP ${HTTP_CODE})"
-  fi
-
-  # 10.10 数据库连接 (非阻塞, db indicator)
+  # 10.8 数据库连接 (非阻塞, db indicator)
   local db_health
   db_health=$(curl -sf -m 10 "${base_url}/actuator/health/db" 2>/dev/null) || db_health=""
   if echo "${db_health}" | grep -q "UP" || [[ -z "${db_health}" ]]; then

@@ -509,7 +509,14 @@ python tmp_e2e/e2e_erp.py
 ### 端口与路由
 - 微服务端口: 9325 (容器外直接访问 `127.0.0.1:9325`)
 - Gateway 路由: `/opc/content/**` → `http://aiopc-content:9325` (在 `ruoyi-gateway/src/main/resources/application.yml` 配)
-- 白名单: `/opc/content/script/list` `/script/dashboard` `/script/recent` `/script/**` `/platform-account/list` (GET 公开,POST 需登录)
+- 白名单(4 条, **全部带 `GET:` method 前缀** —— 只有 GET 放行,同前缀下的写端点仍需登录):
+  `GET:/opc/content/script/list` `GET:/opc/content/script/dashboard` `GET:/opc/content/script/**`
+  `GET:/opc/content/platform-account/list`
+  - ⚠️ **`/opc/content/script/recent` 不在白名单里** —— 它从来就没有 handler(opc-content 只有
+    Script / Platform / Publish 三个 controller)。网关配置里那条早就被记成失效条目
+    (`whitesRemove`),别再按它写文档。
+  - ⚠️ **`/opc/content/publish/list` 也不在白名单里** —— 发布记录要登录态才能看,
+    所以健康检查里那条是带 admin token 验的。
 
 ### 关键文件 (W74 已固化)
 | 文件 | 作用 |
@@ -602,18 +609,32 @@ cd ../tmp_e2e && OPC_GATEWAY=http://127.0.0.1:8080 python e2e_content.py
 ### W74 健康检查
 ```bash
 bash scripts/health-check.sh
-# 期望 check_content() 输出:
+# 期望 check_content() 输出 (2026-10-29 重写后的形状):
 #   [OK] aiopc-content running
 #   [OK] Nacos opc-content 注册 1 实例 (opc-dev)
 #   [OK] opc-content /actuator/health UP
-#   [OK] /opc/content/script/list 200 OK
-#   [OK] /opc/content/script/dashboard 200 OK
-#   [OK] /opc/content/script/recent 200 OK
-#   [OK] /opc/content/platform-account/list 200 OK
-#   [OK] /opc/content/publish/list 200 OK
-#   [OK] 鉴权拦截正确
-#   [OK] 数据库健康
+#   [OK] /opc/content/script/list?companyId=1&page=1&size=10 body.code=200
+#   [OK] /opc/content/script/dashboard?companyId=1 body.code=200
+#   [OK] /opc/content/platform-account/list?companyId=1 body.code=200
+#   [OK] /opc/content/publish/list body.code=200 total=1
+#   [OK] 最近脚本真的取到了 3 条 (dashboard.recent_scripts)
+#   [OK] /opc/content/script/1 body.code=200
+#   [OK] 网关拦截正确 (POST /opc/content/script → body.code=401)
+#   [OK] 数据库健康 (db indicator UP 或未启用)
 ```
+
+> ⚠️ **两处跟老文档不一样，别按老样子判读**：
+> 1. **看的是 `body.code`,不是 HTTP 状态码。** RuoYi 的 `GlobalExceptionHandler` 把
+>    **所有**异常都转成 HTTP 200 + `body.code=500`（缺必填参数、路径变量类型不匹配
+>    都走这条路），所以「HTTP 200」不等于「端点能用」。
+> 2. **`/opc/content/script/recent` 这一行没了。** 那个 handler 从来没存在过 ——
+>    老文档里 `[OK] /opc/content/script/recent 200 OK` 是**假的**（它撞上
+>    `@GetMapping("/{id}")`，`"recent"` 转不成 Long → code=500，可 HTTP 仍是 200，
+>    于是一条什么都没断言的检查一直显示绿）。「最近脚本」这个功能是真的，只是住在
+>    `dashboard.recent_scripts` 字段里，现在那条检查去验它，而且要求**真的取到数据**。
+>
+> 10.4b 那条 `/opc/content/publish/list` 需要登录态 —— 健康检查用 admin 登录拿 token，
+> 拿不到就报「无法验证」(红)，不会悄悄跳过。
 
 ### W74 e2e 验证
 ```bash

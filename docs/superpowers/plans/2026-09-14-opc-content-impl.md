@@ -10,7 +10,7 @@
 - **声称做了但其实没有的（重点）**：
   - **「22 REST 端点」是虚的 —— 实际 20 个**。后端 3 个 controller 一共 20 个 `@*Mapping`（Script 11 + Platform 5 + Publish 4），前端 `content.ts` 20 个 API 函数，文件头注释自己写的是「11 + 5 + 4 = 20 endpoints」，仓库自带的 `docs/verification/week-74/OPC-W74-VERIFICATION-opc-content.md` §3 也只列了 20 条。plan 里连自己的加法都对不上（11+5+4+1=21≠22）
   - **「抖音 sandbox 真实 OAuth/上传/发布」没真打通**。`DouyinClient` 写了真的 HTTP 调用（`/oauth/access_token/`、`/oauth/refresh_token/`、`/video/upload/`、`/video/create/`），但 client_key/client_secret 是占位符 `dev_client_key_placeholder`，且 4 个方法每个 catch 住异常就降级到 `MockPlatformClient`；`application.yml` 与 nacos 里都是 `platform.mock: true`。也就是说这套代码**在没有任何真实凭据的情况下不可能成功过一次**
-  - **health-check 里有条恒失败的检查**：`check_content()` 的 10.6 查 `/opc/content/script/recent`，这个 handler 从来没存在过（git 历史里 opc-content 的 java 侧从未出现过 `/recent` 映射），而 `nok` 会让 `health-check.sh` 整体 `exit 1`
+  - **health-check 里有条恒失败的检查**：`check_content()` 的 10.6 查 `/opc/content/script/recent`，这个 handler 从来没存在过（git 历史里 opc-content 的 java 侧从未出现过 `/recent` 映射）—— **已于 2026-10-29 修掉**。补充一点本条此前的说法是错的：它不是「恒失败」，它是**恒绿**。`/script/recent` 撞上 `@GetMapping("/{id}")`，`"recent"` 转不成 Long → `MethodArgumentTypeMismatchException` → RuoYi 的 `GlobalExceptionHandler` 把它转成 **HTTP 200 + `body.code=500`**；老写法用 `curl -sf` 只看 HTTP 状态码 → 200 就算成功 → 那条检查一直在报 `ok`。也就是说它不是"红着"，是**绿着但什么都没断言** —— 一条假绿。现在第 10 节整体重写：看 `body.code` 不看 HTTP 码、验的是真实存在的端点、并且要求真的取到数据
   - **Task 11 的「6 条路由」没做**：router/index.ts 只加了 2 条隐藏详情路由，4 个菜单页是后来（2026-10-21，commit 08305b8）用 sys_menu 数据库菜单补的
   - **publish() 的第 5 步「发通知」没做**：`PublishServiceImpl` 没有注入 NotificationGateway，只留了一行 `// 7) TODO Task 8`
 - **其他偏差（不影响勾否，但别被 plan 骗了）**：前端目录实际叫 `vue3-typescript/`（不是 plan 写的 `RuoYi-Cloud-Vue3-typescript/`）；schema 文件叫 `16-opc-content-schema.sql`（不是 `11-`）；Dockerfile 叫 `Dockerfile`（不是 `Dockerfile.opc-content`）；6 个 Vue 页的实际构成是 dashboard / script/{list,detail,adapt} / platform-account / publish（plan 写的 `generate.vue` 换成了 `script/adapt.vue`，生成功能做成了脚本列表页里的弹窗）；seed 数据是 3 脚本 + 1 账号 + 1 发布 + 1 适配（plan 写 7+2+2）
@@ -1504,7 +1504,7 @@ git commit -am "feat(helm): Task 14 - deployment-content + service-content + val
 **Files:**
 - Modify: `springboot3/deploy/scripts/health-check.sh`
 
-- [x] **Step 1: 加 check_content() 函数** （函数在，但 10.6 检查的 `/opc/content/script/recent` 从来没有对应 handler —— git 历史里 opc-content 的 java 侧从未出现过 `/recent` 映射，这条检查恒定失败）
+- [x] **Step 1: 加 check_content() 函数** （函数在，但 10.6 检查的 `/opc/content/script/recent` 从来没有对应 handler —— git 历史里 opc-content 的 java 侧从未出现过 `/recent` 映射。⚠️ 这条检查当时**不是恒失败，是恒绿**：`"recent"` 转不成 Long → `body.code=500`，而 HTTP 仍是 200，`curl -sf` 只看状态码 → 一直报 ok。**2026-10-29 已修**：第 10 节整体重写，改看 `body.code`）
 
 ```bash
 check_content() {
