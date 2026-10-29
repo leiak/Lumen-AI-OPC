@@ -19,6 +19,21 @@
 
 ---
 
+> **审计说明（2026-10-29）**
+>
+> - **目标一句话**：建 `opc-notification` 统一通知中心（邮件 + 短信 + 站内收件箱 + WebSocket 实时推送），作为 OPC 扩展路线图的基础服务（W49-W50，2 周）。
+> - **本轮核实结果**：勾了 **94** / 没勾 **25** / 共 **119** 个 checkbox（审计前是 9 勾 / 110 空）。
+> - **原本就勾上的 9 个**逐条复核后全部站得住 —— 部署类结论都能在 `docs/verification/week-49/opc-notification-task*-*.md` 里找到实测输出，没有一条要退回。
+> - **没勾的 25 条卡在四类**：
+>   1. **17 条**是「跑一遍看输出」类（`mvn compile` / `mvn test` / 灌库 `SHOW TABLES`）—— 仓库里没有 CI 记录、没有测试报告文件，运行结果无从查证。
+>   2. **5 条**是 Task 19 报告模板里的 AC 指标（邮件成功率 ≥99%、分页 <200ms、WS 100 并发 <1s、模板灰度、SMS 模板变量渲染）—— 属指标/压测类，或与代码实情不符。
+>   3. **2 条**是 Task 20 收尾：MEMORY.md 没写 W49 条目，仓库里也没有 `memory/` 目录。
+>   4. **1 条**是 Task 17 的 `NotificationItem.vue` 拆组件 —— 实际实现改成了单文件 `views/opc/inbox.vue`。
+> - **实现与 plan 有出入、但仍可勾选的**（已在对应行尾注明）：模块注册在 `ruoyi-modules/pom.xml` 而非 `springboot3/pom.xml`；initdb 副本是 `08-` 前缀不是 `06-`；WS composable 改名 `useNotificationSocket.ts`；验证报告文件名不同；E2E 是 11/11 不是 5/5。
+> - 逐条证据见 `docs/superpowers/plans/audit/2026-09-10-opc-notification-impl.md`。
+
+---
+
 ## File Structure
 
 ```
@@ -100,7 +115,7 @@ docs/verification/week-49/OPC-W49-VERIFICATION-opc-notification.md
 - Create: `springboot3/ruoyi-modules/opc-notification/pom.xml`
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/OpcNotificationApplication.java`
 
-- [ ] **Step 1: Create pom.xml extending ruoyi-modules**
+- [x] **Step 1: Create pom.xml extending ruoyi-modules**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -170,7 +185,7 @@ docs/verification/week-49/OPC-W49-VERIFICATION-opc-notification.md
 </project>
 ```
 
-- [ ] **Step 2: Create OpcNotificationApplication.java**
+- [x] **Step 2: Create OpcNotificationApplication.java**
 
 ```java
 package com.ruoyi.opc.notification;
@@ -190,16 +205,16 @@ public class OpcNotificationApplication {
 }
 ```
 
-- [ ] **Step 3: Add module to parent pom**
+- [x] **Step 3: Add module to parent pom**（注：实际加在 `springboot3/ruoyi-modules/pom.xml` 的 `<module>` 列表里 —— RuoYi 的布局是 `springboot3/pom.xml` 只列 `ruoyi-modules`，子模块挂在下一层，不是 plan 写的 `springboot3/pom.xml`）
 
 Edit `springboot3/pom.xml` and add `<module>ruoyi-modules/opc-notification</module>` in the modules section.
 
-- [ ] **Step 4: Verify Maven compiles**
+- [ ] **Step 4: Verify Maven compiles**（未完成：仓库里查不到运行结果 —— 没有提交过 mvn compile 的 BUILD SUCCESS 输出）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification -am compile -DskipTests`
 Expected: BUILD SUCCESS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-notification/pom.xml \
@@ -216,7 +231,7 @@ git commit -m "feat(notification): scaffold opc-notification module (Task 1)"
 - Create: `springboot3/sql/migrations/V20260915__notification_schema.sql`
 - Create: `springboot3/sql/seed/notification_template_seed.sql`
 
-- [ ] **Step 1: Create V20260915__notification_schema.sql**
+- [x] **Step 1: Create V20260915__notification_schema.sql**
 
 ```sql
 -- OPC Notification schema (W49)
@@ -281,7 +296,7 @@ CREATE TABLE IF NOT EXISTS opc_notification_template (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知模板';
 ```
 
-- [ ] **Step 2: Create notification_template_seed.sql with 4 default templates**
+- [x] **Step 2: Create notification_template_seed.sql with 4 default templates**
 
 ```sql
 -- Default templates (W49)
@@ -305,18 +320,18 @@ INSERT INTO opc_notification_template (id, code, channel, subject, body, vars_sc
 ON DUPLICATE KEY UPDATE subject=VALUES(subject), body=VALUES(body);
 ```
 
-- [ ] **Step 3: Verify SQL applies cleanly**
+- [ ] **Step 3: Verify SQL applies cleanly**（未完成：仓库里查不到运行结果 —— 没有提交过 SHOW TABLES LIKE 'opc_notification%' 的执行记录）
 
 Run: `docker exec aiopc-mysql mysql -uroot -p'Opc@2026!' ry-vue-opc < springboot3/sql/migrations/V20260915__notification_schema.sql`
 Expected: No errors. Then verify: `docker exec aiopc-mysql mysql -uroot -p'Opc@2026!' ry-vue-opc -e "SHOW TABLES LIKE 'opc_notification%'"`
 Expected: 4 rows (email_log, sms_log, inbox, template)
 
-- [ ] **Step 4: Apply seed**
+- [ ] **Step 4: Apply seed**（未完成：仓库里查不到运行结果 —— 没有提交过 seed 灌库 4 行的执行记录）
 
 Run: `docker exec aiopc-mysql mysql -uroot -p'Opc@2026!' ry-vue-opc < springboot3/sql/seed/notification_template_seed.sql`
 Expected: 4 rows inserted
 
-- [ ] **Step 5: Copy SQL files into deploy/mysql-initdb.d for fresh-start recovery**
+- [x] **Step 5: Copy SQL files into deploy/mysql-initdb.d for fresh-start recovery**（注：实际文件名是 `08-opc-notification-schema.sql`，不是 plan 写的 `06-` —— 见 commit bf10f05「rename deploy copy to 08- prefix」）
 
 ```bash
 cp springboot3/sql/migrations/V20260915__notification_schema.sql \
@@ -325,7 +340,7 @@ cp springboot3/sql/seed/notification_template_seed.sql \
    springboot3/deploy/mysql-initdb.d/94-opc-notification-template-seed.sql
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/sql springboot3/deploy/mysql-initdb.d
@@ -342,7 +357,7 @@ git commit -m "feat(notification): add 4 notification tables + seed templates (T
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/domain/NotificationInbox.java`
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/domain/NotificationTemplate.java`
 
-- [ ] **Step 1: Create NotificationEmailLog.java**
+- [x] **Step 1: Create NotificationEmailLog.java**
 
 ```java
 package com.ruoyi.opc.notification.domain;
@@ -370,7 +385,7 @@ public class NotificationEmailLog {
 }
 ```
 
-- [ ] **Step 2: Create NotificationSmsLog.java**
+- [x] **Step 2: Create NotificationSmsLog.java**
 
 ```java
 package com.ruoyi.opc.notification.domain;
@@ -399,7 +414,7 @@ public class NotificationSmsLog {
 }
 ```
 
-- [ ] **Step 3: Create NotificationInbox.java**
+- [x] **Step 3: Create NotificationInbox.java**
 
 ```java
 package com.ruoyi.opc.notification.domain;
@@ -425,7 +440,7 @@ public class NotificationInbox {
 }
 ```
 
-- [ ] **Step 4: Create NotificationTemplate.java**
+- [x] **Step 4: Create NotificationTemplate.java**
 
 ```java
 package com.ruoyi.opc.notification.domain;
@@ -453,12 +468,12 @@ public class NotificationTemplate {
 }
 ```
 
-- [ ] **Step 5: Verify compile**
+- [ ] **Step 5: Verify compile**（未完成：仓库里查不到运行结果 —— 没有提交过 mvn compile 的输出）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification -am compile -DskipTests`
 Expected: BUILD SUCCESS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/domain
@@ -474,7 +489,7 @@ git commit -m "feat(notification): add 4 domain entities (Task 3)"
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/resources/mapper/NotificationEmailLogMapper.xml`
 - Create: same for `NotificationSmsLog`, `NotificationInbox`, `NotificationTemplate`
 
-- [ ] **Step 1: Create NotificationEmailLogMapper.java + .xml**
+- [x] **Step 1: Create NotificationEmailLogMapper.java + .xml**
 
 `NotificationEmailLogMapper.java`:
 ```java
@@ -509,9 +524,9 @@ public interface NotificationEmailLogMapper extends BaseMapper<NotificationEmail
 </mapper>
 ```
 
-- [ ] **Step 2: Create NotificationSmsLogMapper.java + .xml** (same pattern, fields: phone, templateCode, varsJson, content, status, retryCount, errorMsg, provider, sentAt, createdAt)
+- [x] **Step 2: Create NotificationSmsLogMapper.java + .xml** (same pattern, fields: phone, templateCode, varsJson, content, status, retryCount, errorMsg, provider, sentAt, createdAt)
 
-- [ ] **Step 3: Create NotificationInboxMapper.java + .xml** (fields: userId, type, title, body, link, readAt, createdAt). Add a custom query method:
+- [x] **Step 3: Create NotificationInboxMapper.java + .xml** (fields: userId, type, title, body, link, readAt, createdAt). Add a custom query method:
 
 Add to `NotificationInboxMapper.java`:
 ```java
@@ -538,7 +553,7 @@ Add to `NotificationInboxMapper.xml`:
 </select>
 ```
 
-- [ ] **Step 4: Create NotificationTemplateMapper.java + .xml** (fields: code, channel, subject, body, varsSchema, version, enabled, createdAt, updatedAt). Add:
+- [x] **Step 4: Create NotificationTemplateMapper.java + .xml** (fields: code, channel, subject, body, varsSchema, version, enabled, createdAt, updatedAt). Add:
 
 Add to `NotificationTemplateMapper.java`:
 ```java
@@ -563,12 +578,12 @@ Add to `NotificationTemplateMapper.xml`:
 </select>
 ```
 
-- [ ] **Step 5: Verify compile**
+- [ ] **Step 5: Verify compile**（未完成：仓库里查不到运行结果 —— 没有提交过 mvn compile 的输出）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification -am compile -DskipTests`
 Expected: BUILD SUCCESS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-notification/src/main
@@ -583,7 +598,7 @@ git commit -m "feat(notification): add 4 mappers + XML (Task 4)"
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/provider/EmailProvider.java`
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/provider/SmtpEmailProvider.java`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Create `src/test/java/com/ruoyi/opc/notification/provider/SmtpEmailProviderTest.java`:
 ```java
@@ -621,12 +636,12 @@ class SmtpEmailProviderTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [ ] **Step 2: Run test to verify failure**（未完成：仓库里查不到运行结果 —— 没有 mvn test 的输出留痕）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification test -Dtest=SmtpEmailProviderTest`
 Expected: FAIL with "SmtpEmailProvider class not found"
 
-- [ ] **Step 3: Create EmailProvider interface**
+- [x] **Step 3: Create EmailProvider interface**
 
 ```java
 package com.ruoyi.opc.notification.provider;
@@ -649,7 +664,7 @@ public class EmailSendException extends RuntimeException {
 }
 ```
 
-- [ ] **Step 4: Create SmtpEmailProvider**
+- [x] **Step 4: Create SmtpEmailProvider**
 
 ```java
 package com.ruoyi.opc.notification.provider;
@@ -685,12 +700,12 @@ public class SmtpEmailProvider implements EmailProvider {
 }
 ```
 
-- [ ] **Step 5: Run test to verify pass**
+- [ ] **Step 5: Run test to verify pass**（未完成：仓库里查不到运行结果 —— 没有 mvn test 的输出留痕）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification test -Dtest=SmtpEmailProviderTest`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-notification/src
@@ -706,7 +721,7 @@ git commit -m "feat(notification): EmailProvider abstraction + SmtpEmailProvider
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/provider/AliyunSmsProvider.java`
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/config/ProviderConfig.java`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 `SmsProvider` interface:
 ```java
@@ -776,12 +791,12 @@ class AliyunSmsProviderTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [ ] **Step 2: Run test to verify failure**（未完成：仓库里查不到运行结果 —— 没有 mvn test 的输出留痕）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification test -Dtest=AliyunSmsProviderTest`
 Expected: FAIL with "AliyunSmsProvider class not found"
 
-- [ ] **Step 3: Create AliyunSmsProvider**
+- [x] **Step 3: Create AliyunSmsProvider**
 
 ```java
 package com.ruoyi.opc.notification.provider;
@@ -830,7 +845,7 @@ public class AliyunSmsProvider implements SmsProvider {
 }
 ```
 
-- [ ] **Step 4: Create ProviderConfig**
+- [x] **Step 4: Create ProviderConfig**
 
 ```java
 package com.ruoyi.opc.notification.config;
@@ -870,12 +885,12 @@ public class ProviderConfig {
 
 Note: refactor AliyunSmsProvider to accept ObjectMapper via @RequiredArgsConstructor (already shown above). The test instantiates `new AliyunSmsProvider(mockClient, "OPCNOTIFY", mockObjectMapper)` if needed.
 
-- [ ] **Step 5: Run test to verify pass**
+- [ ] **Step 5: Run test to verify pass**（未完成：仓库里查不到运行结果 —— 没有 mvn test 的输出留痕）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification test -Dtest=AliyunSmsProviderTest`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-notification/src
@@ -891,7 +906,7 @@ git commit -m "feat(notification): SmsProvider + AliyunSmsProvider (Task 6)"
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/service/impl/EmailServiceImpl.java`
 - Create: same for `SmsService` + `SmsServiceImpl`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 `EmailServiceTest.java`:
 ```java
@@ -955,12 +970,12 @@ class EmailServiceTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [ ] **Step 2: Run test to verify failure**（未完成：仓库里查不到运行结果 —— 没有 mvn test 的输出留痕）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification test -Dtest=EmailServiceTest`
 Expected: FAIL with "EmailServiceImpl class not found"
 
-- [ ] **Step 3: Create EmailService interface**
+- [x] **Step 3: Create EmailService interface**
 
 ```java
 package com.ruoyi.opc.notification.service;
@@ -970,7 +985,7 @@ public interface EmailService {
 }
 ```
 
-- [ ] **Step 4: Create EmailServiceImpl**
+- [x] **Step 4: Create EmailServiceImpl**
 
 ```java
 package com.ruoyi.opc.notification.service.impl;
@@ -1049,14 +1064,14 @@ public class EmailServiceImpl implements EmailService {
 }
 ```
 
-- [ ] **Step 5: Run test to verify pass**
+- [ ] **Step 5: Run test to verify pass**（未完成：仓库里查不到运行结果 —— 没有 mvn test 的输出留痕）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification test -Dtest=EmailServiceTest`
 Expected: PASS (3 tests)
 
-- [ ] **Step 6: Create SmsService + SmsServiceImpl** (same pattern: send(phone, templateCode, vars) with retry, log to sms_log). Include test `SmsServiceTest.java` with 6 tests.
+- [x] **Step 6: Create SmsService + SmsServiceImpl**（注：`SmsServiceTest.java` 只有 2 个 `@Test`，不是 plan 写的 6 个） (same pattern: send(phone, templateCode, vars) with retry, log to sms_log). Include test `SmsServiceTest.java` with 6 tests.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-notification/src
@@ -1071,7 +1086,7 @@ git commit -m "feat(notification): EmailService + SmsService with retry + log (T
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/service/InboxService.java`
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/service/impl/InboxServiceImpl.java`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 `InboxServiceTest.java`:
 ```java
@@ -1153,12 +1168,12 @@ class InboxServiceTest {
 
 Note: `WsSessionRegistry` will be created in Task 9 — for now mock it.
 
-- [ ] **Step 2: Run test to verify failure**
+- [ ] **Step 2: Run test to verify failure**（未完成：仓库里查不到运行结果 —— 没有 mvn test 的输出留痕）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification test -Dtest=InboxServiceTest`
 Expected: FAIL with "InboxServiceImpl class not found"
 
-- [ ] **Step 3: Create InboxService interface**
+- [x] **Step 3: Create InboxService interface**
 
 ```java
 package com.ruoyi.opc.notification.service;
@@ -1174,7 +1189,7 @@ public interface InboxService {
 }
 ```
 
-- [ ] **Step 4: Create InboxServiceImpl**
+- [x] **Step 4: Create InboxServiceImpl**
 
 ```java
 package com.ruoyi.opc.notification.service.impl;
@@ -1257,12 +1272,12 @@ public class InboxServiceImpl implements InboxService {
 }
 ```
 
-- [ ] **Step 5: Run test to verify pass**
+- [ ] **Step 5: Run test to verify pass**（未完成：仓库里查不到运行结果 —— 没有 mvn test 的输出留痕）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification test -Dtest=InboxServiceTest`
 Expected: PASS (5 tests)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-notification/src
@@ -1278,7 +1293,7 @@ git commit -m "feat(notification): InboxService push/list/markRead/unreadCount (
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/ws/NotificationWsHandler.java`
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/config/WebSocketConfig.java`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 `NotificationWsHandlerTest.java`:
 ```java
@@ -1330,12 +1345,12 @@ class NotificationWsHandlerTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [ ] **Step 2: Run test to verify failure**（未完成：仓库里查不到运行结果 —— 没有 mvn test 的输出留痕）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification test -Dtest=NotificationWsHandlerTest`
 Expected: FAIL with "WsSessionRegistry class not found"
 
-- [ ] **Step 3: Create WsSessionRegistry**
+- [x] **Step 3: Create WsSessionRegistry**
 
 ```java
 package com.ruoyi.opc.notification.ws;
@@ -1392,7 +1407,7 @@ public class WsSessionRegistry {
 }
 ```
 
-- [ ] **Step 4: Create NotificationWsHandler**
+- [x] **Step 4: Create NotificationWsHandler**
 
 ```java
 package com.ruoyi.opc.notification.ws;
@@ -1439,7 +1454,7 @@ public class NotificationWsHandler extends TextWebSocketHandler {
 }
 ```
 
-- [ ] **Step 5: Create WebSocketConfig**
+- [x] **Step 5: Create WebSocketConfig**
 
 ```java
 package com.ruoyi.opc.notification.config;
@@ -1518,12 +1533,12 @@ public class AuthHandshakeInterceptor implements HandshakeInterceptor {
 
 Note: `SecurityUtils.parseTokenToUserId` may need to be added to ruoyi-common-security; if missing, use existing `SecurityUtils.getUserId()` after token validation in a custom util.
 
-- [ ] **Step 6: Run test to verify pass**
+- [ ] **Step 6: Run test to verify pass**（未完成：仓库里查不到运行结果 —— 没有 mvn test 的输出留痕）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification test -Dtest=NotificationWsHandlerTest`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-notification/src
@@ -1540,7 +1555,7 @@ git commit -m "feat(notification): WebSocket handler + session registry + auth (
 - Create: `springboot3/ruoyi-modules/opc-notification/src/main/java/com/ruoyi/opc/notification/dto/InboxResponse.java`
 - Create: 3 controllers
 
-- [ ] **Step 1: Create DTOs**
+- [x] **Step 1: Create DTOs**（注：只建了 plan 点名的 3 个 DTO；文件清单里另提的 `NotificationTemplateRequest.java` 没有做）
 
 `EmailSendRequest.java`:
 ```java
@@ -1602,7 +1617,7 @@ public class InboxResponse {
 }
 ```
 
-- [ ] **Step 2: Write controller tests**
+- [x] **Step 2: Write controller tests**（注：只写了 `EmailControllerTest`，plan 文件清单里点名的 `controller/SmsControllerTest.java` 不存在）
 
 `EmailControllerTest.java`:
 ```java
@@ -1651,7 +1666,7 @@ class EmailControllerTest {
 }
 ```
 
-- [ ] **Step 3: Create EmailController**
+- [x] **Step 3: Create EmailController**
 
 ```java
 package com.ruoyi.opc.notification.controller;
@@ -1678,7 +1693,7 @@ public class EmailController {
 }
 ```
 
-- [ ] **Step 4: Create SmsController**
+- [x] **Step 4: Create SmsController**
 
 ```java
 package com.ruoyi.opc.notification.controller;
@@ -1705,7 +1720,7 @@ public class SmsController {
 }
 ```
 
-- [ ] **Step 5: Create InboxController**
+- [x] **Step 5: Create InboxController**
 
 ```java
 package com.ruoyi.opc.notification.controller;
@@ -1747,12 +1762,12 @@ public class InboxController {
 }
 ```
 
-- [ ] **Step 6: Run controller tests**
+- [ ] **Step 6: Run controller tests**（未完成：仓库里查不到运行结果 —— 没有 mvn test 的输出留痕）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification test -Dtest=EmailControllerTest`
 Expected: PASS (2 tests)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-notification/src
@@ -1769,7 +1784,7 @@ git commit -m "feat(notification): 3 REST controllers + DTOs (Task 10)"
 - Create: `springboot3/deploy/nacos/opc-notification-dev.yml`
 - Create: `springboot3/deploy/nacos/opc-notification-prod.yml`
 
-- [ ] **Step 1: Create bootstrap.yml**
+- [x] **Step 1: Create bootstrap.yml**
 
 ```yaml
 server:
@@ -1801,7 +1816,7 @@ jasypt:
     password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
 ```
 
-- [ ] **Step 2: Create application.yml (shared defaults)**
+- [x] **Step 2: Create application.yml (shared defaults)**
 
 ```yaml
 mybatis-plus:
@@ -1827,7 +1842,7 @@ opc:
         sign-name: ${ALIYUN_SMS_SIGN:OPCNOTIFY}
 ```
 
-- [ ] **Step 3: Create Nacos dev yml (deploy/nacos/opc-notification-dev.yml)**
+- [x] **Step 3: Create Nacos dev yml (deploy/nacos/opc-notification-dev.yml)**
 
 ```yaml
 spring:
@@ -1853,7 +1868,7 @@ mail:
         starttls.enable: true
 ```
 
-- [ ] **Step 4: Create Nacos prod yml (deploy/nacos/opc-notification-prod.yml)**
+- [x] **Step 4: Create Nacos prod yml (deploy/nacos/opc-notification-prod.yml)**
 
 ```yaml
 spring:
@@ -1879,7 +1894,7 @@ mail:
         ssl.enable: true
 ```
 
-- [ ] **Step 5: Add JavaMailSender config bean**
+- [x] **Step 5: Add JavaMailSender config bean**
 
 Create `MailConfig.java`:
 ```java
@@ -1918,12 +1933,12 @@ public class MailConfig {
 }
 ```
 
-- [ ] **Step 6: Verify Spring Boot starts**
+- [x] **Step 6: Verify Spring Boot starts**
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification spring-boot:run -Dspring-boot.run.jvmArguments="-Dspring.profiles.active=dev -DJASYPT_PASSWORD=OpcEncrypt!2026"`
 Expected: Tomcat starts on 9310, no errors. Then Ctrl-C.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-notification/src springboot3/deploy/nacos
@@ -1938,7 +1953,7 @@ git commit -m "feat(notification): bootstrap.yml + application.yml + Nacos yml +
 - Create: `springboot3/ruoyi-modules/opc-notification/Dockerfile`
 - Modify: `springboot3/deploy/docker-compose.yml`
 
-- [ ] **Step 1: Create Dockerfile (W48.1 thin jar pattern)**
+- [x] **Step 1: Create Dockerfile (W48.1 thin jar pattern)**
 
 ```dockerfile
 # Stage 1: Build with Maven
@@ -1968,7 +1983,7 @@ CMD java $JAVA_OPTS -cp "opc-notification.jar:lib/*" \
     com.ruoyi.opc.notification.OpcNotificationApplication
 ```
 
-- [ ] **Step 2: Add aiopc-notification service to docker-compose.yml**
+- [x] **Step 2: Add aiopc-notification service to docker-compose.yml**
 
 Edit `springboot3/deploy/docker-compose.yml` and add (after `aiopc-billing`):
 ```yaml
@@ -2009,12 +2024,12 @@ Edit `springboot3/deploy/docker-compose.yml` and add (after `aiopc-billing`):
     restart: unless-stopped
 ```
 
-- [ ] **Step 3: Build image**
+- [x] **Step 3: Build image**
 
 Run: `cd springboot3/deploy && docker compose build aiopc-notification`
 Expected: Successfully built. Image `aiopc-notification:latest` exists.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-notification/Dockerfile springboot3/deploy/docker-compose.yml
@@ -2029,7 +2044,7 @@ git commit -m "feat(notification): Dockerfile + docker-compose entry (Task 12)"
 - Run: import-dev.sh to push yml
 - Run: docker compose up
 
-- [ ] **Step 1: Push Nacos yml**
+- [x] **Step 1: Push Nacos yml**
 
 Run: `cd springboot3/deploy/nacos && bash ./import-dev.sh`
 Expected: `application-dev.yml` + `opc-notification-dev.yml` both shown OK
@@ -2037,17 +2052,17 @@ Expected: `application-dev.yml` + `opc-notification-dev.yml` both shown OK
 Verify in Nacos: `curl -s "http://127.0.0.1:8848/nacos/v1/cs/configs?dataId=opc-notification-dev.yml&group=DEFAULT_GROUP&namespaceId=opc-dev" | head -20`
 Expected: returns YAML
 
-- [ ] **Step 2: Start container**
+- [x] **Step 2: Start container**
 
 Run: `cd springboot3/deploy && docker compose up -d aiopc-notification`
 Expected: Container `aiopc-notification` running within 30s.
 
-- [ ] **Step 3: Check logs for startup**
+- [x] **Step 3: Check logs for startup**
 
 Run: `docker logs aiopc-notification 2>&1 | tail -30`
 Expected: `Started OpcNotificationApplication in X.XXX seconds` and `Tomcat started on port 9310`
 
-- [ ] **Step 4: Smoke test endpoints (login + inbox)**
+- [x] **Step 4: Smoke test endpoints (login + inbox)**
 
 Run:
 ```bash
@@ -2069,7 +2084,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8080/opc/notificatio
 
 Expected: Email returns R.ok (or R.error if SMTP unavailable — log will show retry exhausted); Inbox returns `{"code":200,"data":{"items":[],"unreadCount":0,...}}`; Unread count returns `{"code":200,"data":0}`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add springboot3/deploy/nacos
@@ -2083,7 +2098,7 @@ git commit -m "feat(notification): push Nacos yml + verify container health (Tas
 **Files:**
 - Modify: `springboot3/deploy/scripts/health-check.sh`
 
-- [ ] **Step 1: Add notification endpoints to the endpoint list**
+- [x] **Step 1: Add notification endpoints to the endpoint list**
 
 Edit `springboot3/deploy/scripts/health-check.sh`, find the `endpoints=(` array, and add 6 new entries:
 ```bash
@@ -2094,12 +2109,12 @@ local endpoints=(
 )
 ```
 
-- [ ] **Step 2: Run health-check**
+- [x] **Step 2: Run health-check**
 
 Run: `cd springboot3/deploy && bash scripts/health-check.sh`
 Expected: PASS count goes from 22 to ~28 (was 22, +6 = 28)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add springboot3/deploy/scripts/health-check.sh
@@ -2113,7 +2128,7 @@ git commit -m "feat(notification): add 6 notification endpoints to health-check 
 **Files:**
 - Modify: `springboot3/deploy/RECOVERY.md`
 
-- [ ] **Step 1: Add §opc-notification section**
+- [x] **Step 1: Add §opc-notification section**
 
 Edit `springboot3/deploy/RECOVERY.md`, find the `## 1. 一键恢复` step list and add aiopc-notification to the `docker compose up -d` command. Also add a new section after the existing services:
 
@@ -2139,7 +2154,7 @@ wscat -c "ws://127.0.0.1:9310/ws/notification?token=$TOKEN"
 ```
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add springboot3/deploy/RECOVERY.md
@@ -2154,7 +2169,7 @@ git commit -m "docs(notification): RECOVERY.md add opc-notification verification
 - Modify: `springboot3/deploy/helm/opc/values.yaml`
 - Create: `springboot3/deploy/helm/opc/templates/notification.yaml`
 
-- [ ] **Step 1: Add notification to values.yaml**
+- [x] **Step 1: Add notification to values.yaml**
 
 Edit `springboot3/deploy/helm/opc/values.yaml` and add (alongside other services):
 ```yaml
@@ -2168,16 +2183,16 @@ Edit `springboot3/deploy/helm/opc/values.yaml` and add (alongside other services
         cpu: 70
 ```
 
-- [ ] **Step 2: Create notification.yaml template**
+- [x] **Step 2: Create notification.yaml template**
 
 Copy from existing `billing.yaml` template and rename; change port, name, container name to notification.
 
-- [ ] **Step 3: Verify Helm chart**
+- [x] **Step 3: Verify Helm chart**
 
 Run: `helm lint springboot3/deploy/helm/opc`
 Expected: No errors. Resources count should increase.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add springboot3/deploy/helm/opc
@@ -2195,7 +2210,7 @@ git commit -m "feat(notification): add Helm chart entry for notification (Task 1
 - Create: `vue3-typescript/src/views/opc/notification/useNotificationWs.ts`
 - Modify: `vue3-typescript/src/router/index.ts`
 
-- [ ] **Step 1: Create API module `notification.ts`**
+- [x] **Step 1: Create API module `notification.ts`**（注：前端只导出 `listInbox` / `unreadCount` / `markRead` / `markAllRead`，没有 plan 里的 `sendEmail` / `sendSms` —— 发信走后端 Feign，不给前端开）
 
 ```typescript
 import request from '@/utils/request'
@@ -2224,7 +2239,7 @@ export const unreadCount = () =>
   request.get<R<number>>('/opc/notification/inbox/unread-count')
 ```
 
-- [ ] **Step 2: Create WS composable `useNotificationWs.ts`**
+- [x] **Step 2: Create WS composable `useNotificationWs.ts`**（注：改名成 `vue3-typescript/src/composables/useNotificationSocket.ts`，不在 `views/opc/notification/` 下）
 
 ```typescript
 import { ref, onUnmounted } from 'vue'
@@ -2255,7 +2270,7 @@ export function useNotificationWs(token: string, onMessage: (msg: any) => void) 
 }
 ```
 
-- [ ] **Step 3: Create NotificationItem.vue**
+- [ ] **Step 3: Create NotificationItem.vue**（未完成：NotificationItem.vue 没做 —— `views/opc/notification/` 这个目录整个不存在，实际实现改成了单文件 `views/opc/inbox.vue` + 复用 `ResponsiveTable`）
 
 ```vue
 <template>
@@ -2299,7 +2314,7 @@ const onClick = async () => {
 </style>
 ```
 
-- [ ] **Step 4: Create Inbox.vue**
+- [x] **Step 4: Create Inbox.vue**（注：实际路径是 `vue3-typescript/src/views/opc/inbox.vue`，不是 `views/opc/notification/Inbox.vue`）
 
 ```vue
 <template>
@@ -2374,7 +2389,7 @@ onMounted(async () => {
 </style>
 ```
 
-- [ ] **Step 5: Add to router**
+- [x] **Step 5: Add to router**（注：路由现在由后端菜单注册 —— `springboot3/sql/migrations/V20261022__opc_sys_menus.sql:98` 插了「消息收件箱 → opc/inbox」；`router/index.ts` 里那条硬编码在 commit 362c308 被收敛掉了）
 
 Edit `vue3-typescript/src/router/index.ts` and add:
 ```typescript
@@ -2385,12 +2400,12 @@ Edit `vue3-typescript/src/router/index.ts` and add:
 }
 ```
 
-- [ ] **Step 6: Verify build**
+- [x] **Step 6: Verify build**
 
 Run: `cd vue3-typescript && pnpm install && pnpm build`
 Expected: Build succeeds, Inbox.vue compiled.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add vue3-typescript/src
@@ -2404,7 +2419,7 @@ git commit -m "feat(notification): frontend Inbox + WS composable (Task 17)"
 **Files:**
 - Modify: `tmp_e2e/e2e_all.py` (or create `tmp_e2e/notification_e2e.py`)
 
-- [ ] **Step 1: Create `tmp_e2e/notification_e2e.py`**
+- [x] **Step 1: Create `tmp_e2e/notification_e2e.py`**
 
 ```python
 """E2E test for opc-notification. Requires service running + admin login."""
@@ -2458,12 +2473,12 @@ if __name__ == '__main__':
     main()
 ```
 
-- [ ] **Step 2: Run E2E**
+- [x] **Step 2: Run E2E**
 
 Run: `python tmp_e2e/notification_e2e.py`
 Expected: All 5 OK, "✓ All E2E checks passed"
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tmp_e2e/notification_e2e.py
@@ -2477,7 +2492,7 @@ git commit -m "test(notification): E2E smoke test (Task 18)"
 **Files:**
 - Create: `docs/verification/week-49/OPC-W49-VERIFICATION-opc-notification.md`
 
-- [ ] **Step 1: Create verification report**
+- [x] **Step 1: Create verification report**（注：报告实际叫 `docs/verification/week-49/opc-notification-week49-verification.md`，不是 plan 写的 `OPC-W49-VERIFICATION-opc-notification.md`）
 
 ```markdown
 # W49 Task #1 opc-notification — 验证报告
@@ -2488,11 +2503,11 @@ git commit -m "test(notification): E2E smoke test (Task 18)"
 
 ## 1. AC 验收
 
-- [ ] 邮件发送成功率 ≥ 99% (含重试): ✅ EmailServiceImpl 重试 3 次,失败入 log
-- [ ] SMS 模板支持变量替换: ✅ SmsServiceImpl 渲染 Freemarker
-- [ ] 站内信分页查询 < 200ms: ✅ InboxService + DB index on (user_id, created_at)
-- [ ] WS 推送延迟 < 1s (单房间 100 并发): ✅ WsSessionRegistry + native WebSocket
-- [ ] 通知模板版本管理 (灰度): ✅ opc_notification_template has `version` + `enabled`
+- [ ] 邮件发送成功率 ≥ 99% (含重试): ✅ EmailServiceImpl 重试 3 次,失败入 log（未完成：重试 3 次确实实现了，但“成功率 ≥ 99%”需要真实 SMTP 统计，仓库里查不到运行结果）
+- [ ] SMS 模板支持变量替换: ✅ SmsServiceImpl 渲染 Freemarker（未完成：SmsServiceImpl 没有渲染模板 —— 它不查 `opc_notification_template`，也没有 Freemarker，只是把 vars 原样 JSON 化塞进 Aliyun 的 TemplateParam）
+- [ ] 站内信分页查询 < 200ms: ✅ InboxService + DB index on (user_id, created_at)（未完成：索引建了，但“分页 < 200ms”没有实测数据，仓库里查不到运行结果）
+- [ ] WS 推送延迟 < 1s (单房间 100 并发): ✅ WsSessionRegistry + native WebSocket（未完成：W49 验收报告自己写明“WebSocket 100 并发 —— 留待 Iter2 验证”，压测没做）
+- [ ] 通知模板版本管理 (灰度): ✅ opc_notification_template has `version` + `enabled`（未完成：`version` / `enabled` 字段和 `selectLatestEnabled` 有了，但“灰度”没实现 —— W49 报告遗留项 #4 明写“未实现灰度发布”）
 
 ## 2. 测试覆盖
 
@@ -2509,8 +2524,8 @@ git commit -m "test(notification): E2E smoke test (Task 18)"
 
 - [x] docker compose up -d aiopc-notification 成功
 - [x] Nacos 注册中心看到 opc-notification
-- [x] 健康检查 6 端点全 R200
-- [x] /tmp_e2e/notification_e2e.py 5/5 PASS
+- [x] 健康检查 6 端点全 R200（注：6 项里只有 3 项是 HTTP 200，另 3 项是「容器在跑 / Nacos 有注册 / 网关路由能解析」）
+- [x] /tmp_e2e/notification_e2e.py 5/5 PASS（注：实际是 11/11 PASS，不是 plan 写的 5/5）
 
 ## 4. 已知限制
 
@@ -2545,7 +2560,7 @@ git commit -m "test(notification): E2E smoke test (Task 18)"
 - 1 E2E test
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/verification/week-49/OPC-W49-VERIFICATION-opc-notification.md
@@ -2559,22 +2574,22 @@ git commit -m "docs(W49): verification report for opc-notification (Task 19)"
 **Files:**
 - Run final verification
 
-- [ ] **Step 1: Run full health-check**
+- [x] **Step 1: Run full health-check**
 
 Run: `cd springboot3/deploy && bash scripts/health-check.sh`
 Expected: PASS count ≥ 28
 
-- [ ] **Step 2: Run all unit tests**
+- [ ] **Step 2: Run all unit tests**（未完成：仓库里查不到运行结果 —— 没有 mvn test 的输出留痕；而且实际只有 23 个 `@Test`，达不到 plan 写的 32+）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-notification test`
 Expected: All tests pass (32+ tests)
 
-- [ ] **Step 3: Run E2E**
+- [x] **Step 3: Run E2E**
 
 Run: `python tmp_e2e/notification_e2e.py`
 Expected: All OK
 
-- [ ] **Step 4: Push to origin**
+- [x] **Step 4: Push to origin**
 
 ```bash
 git push origin main
@@ -2582,7 +2597,7 @@ git push origin main
 
 Expected: All commits pushed successfully.
 
-- [ ] **Step 5: Update MEMORY.md**
+- [ ] **Step 5: Update MEMORY.md**（未完成：MEMORY.md 里没有任何 W49 / opc-notification 条目）
 
 Edit `C:\Users\wma19\.claude\projects\D--work-ai-0401-lumen-opc\memory\MEMORY.md` and add:
 ```markdown
@@ -2594,7 +2609,7 @@ Edit `C:\Users\wma19\.claude\projects\D--work-ai-0401-lumen-opc\memory\MEMORY.md
 - 邮件 dev 用 smtp.dev.local:1025 占位
 ```
 
-- [ ] **Step 6: Commit memory update + push**
+- [ ] **Step 6: Commit memory update + push**（未完成：仓库里没有 `memory/` 目录，这条 `git add memory` 无从谈起）
 
 ```bash
 git add memory

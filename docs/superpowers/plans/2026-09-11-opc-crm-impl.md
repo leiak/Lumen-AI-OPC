@@ -1,5 +1,14 @@
 # opc-crm Implementation Plan
 
+> **审计说明（2026-10-29）** —— 本 plan 的 119 个 checkbox 已逐条核实：**勾了 86 个，保持未勾 33 个**。
+> **plan 目标**：建 `opc-crm` 客户关系管理服务（客户档案 + 标签 + 联系人 + 跟进 + 商机 + 合同 + 订单 + LLM 商机打分），OPC 扩展路线图第二个服务（W55-W58，4 周压成单冲刺）。
+> **判据**（见 `/tmp/opc-plan-audit-rubric.md`）：① 文件在且内容对得上 ② 代码里 grep 得到 ③ 测试文件与测试方法在 ④ 该路径在时间窗内有提交 —— 四条至少命中一条才勾。
+> **没勾的 33 个主要卡在三处**：
+> ① **运行结果查不到（24 个）** —— `mvn compile` / `mvn test` / `apply to live MySQL` / `docker build` / 容器启动 / `helm lint` / E2E 实跑 / 最终验收。仓库里没有 CI 记录、opc-crm 下没有 surefire 报告，这些一律不勾（自述 markdown 里的粘贴片段不算运行结果）。
+> ② **plan 点名的文件压根不存在（5 个）** —— `NotificationGateway.java`、`UserCenterGateway.java`、`OpportunityStateMachine.java` + 它的测试、`NotificationGatewayTest.java`，以及 Helm `values-{dev,staging,prod}.yaml` 里的 crm 段。
+> ③ **Task 21 收尾一步没做（4 个）** —— memory 文件、MEMORY.md 指针、收尾总结、最终报告。
+> 逐条理由见行尾括注；完整报告见 `docs/superpowers/plans/audit/2026-09-11-opc-crm-impl.md`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build `opc-crm` customer relationship management service (客户档案 + 标签 + 联系人 + 跟进 + 商机 + 合同 + 订单 + LLM 商机打分) as the second service in the OPC expansion roadmap (W55-W58, 4 weeks compressed into single sprint).
@@ -131,7 +140,7 @@ docs/verification/week-50/OPC-W50-VERIFICATION-opc-crm.md
 - Create: `springboot3/ruoyi-modules/opc-crm/src/main/resources/bootstrap.yml`
 - Create: `springboot3/ruoyi-modules/opc-crm/src/main/resources/application.yml`
 
-- [ ] **Step 1: Create pom.xml**
+- [x] **Step 1: Create pom.xml**
 
 Extend `ruoyi-modules` parent 3.6.8. Use vanilla MyBatis (NOT MyBatis-Plus — W48 lesson). Add `spring-boot-starter-web`, `mybatis`, `mysql-connector-j`, `opc-common` dep, `lombok`, `spring-cloud-starter-openfeign`. Thin-jar pattern: `<phase>none</phase>` on `spring-boot:repackage`.
 
@@ -181,7 +190,7 @@ Extend `ruoyi-modules` parent 3.6.8. Use vanilla MyBatis (NOT MyBatis-Plus — W
 </project>
 ```
 
-- [ ] **Step 2: Create Dockerfile (W48 thin-jar template)**
+- [x] **Step 2: Create Dockerfile (W48 thin-jar template)**
 
 ```dockerfile
 FROM eclipse-temurin:17-jre-alpine
@@ -195,7 +204,7 @@ ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -cp 'opc-crm.jar:lib/*' com.ruoyi.
 
 Replace `http` with `9312` later (use placeholder during scaffold).
 
-- [ ] **Step 3: Create OpcCrmApplication.java**
+- [x] **Step 3: Create OpcCrmApplication.java**
 
 ```java
 package com.ruoyi.opc.crm;
@@ -220,7 +229,7 @@ public class OpcCrmApplication {
 }
 ```
 
-- [ ] **Step 4: Create bootstrap.yml**
+- [x] **Step 4: Create bootstrap.yml**
 
 ```yaml
 server:
@@ -262,7 +271,7 @@ logging:
     com.alibaba.cloud.nacos: info
 ```
 
-- [ ] **Step 5: Create application.yml**
+- [x] **Step 5: Create application.yml**
 
 ```yaml
 spring:
@@ -305,7 +314,7 @@ opc:
       auto-notify-on-new-followup: true
 ```
 
-- [ ] **Step 6: Verify compile**
+- [ ] **Step 6: Verify compile**（未完成：仓库里查不到运行结果，没有 CI 记录或构建日志文件能证明这次 mvn compile 跑过）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3"
@@ -315,7 +324,7 @@ JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
 
 Expected: `BUILD SUCCESS`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -334,7 +343,7 @@ git push origin main
 - Create: `springboot3/deploy/mysql-initdb.d/09-opc-crm-schema.sql`
 - Create: `springboot3/deploy/mysql-initdb.d/95-opc-crm-seed.sql`
 
-- [ ] **Step 1: Create migration SQL**
+- [x] **Step 1: Create migration SQL**
 
 ```sql
 -- V20260918__crm_schema.sql
@@ -467,7 +476,7 @@ CREATE TABLE IF NOT EXISTS opc_crm_order (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='客户订单';
 ```
 
-- [ ] **Step 2: Create seed SQL (10 customers + 30 contacts + 50 follow-ups + 20 opps + 8 contracts + 12 orders)**
+- [x] **Step 2: Create seed SQL (10 customers + 30 contacts + 50 follow-ups + 20 opps + 8 contracts + 12 orders)**
 
 ```sql
 -- crm_seed.sql
@@ -621,14 +630,14 @@ INSERT INTO opc_crm_order (customer_id, contract_id, order_no, items_json, total
 (8, 7, 'O2026-012', '[{"sku":"QA-OUT-001","name":"外包测试","qty":1,"price":700000.00}]', 700000.00, 'CANCELLED', NULL);
 ```
 
-- [ ] **Step 3: Copy to deploy/initdb.d**
+- [x] **Step 3: Copy to deploy/initdb.d**
 
 ```bash
 cp springboot3/sql/migrations/V20260918__crm_schema.sql springboot3/deploy/mysql-initdb.d/09-opc-crm-schema.sql
 cp springboot3/sql/seed/crm_seed.sql springboot3/deploy/mysql-initdb.d/95-opc-crm-seed.sql
 ```
 
-- [ ] **Step 4: Apply to live MySQL**
+- [ ] **Step 4: Apply to live MySQL**（未完成：仓库里查不到运行结果；只有自述日志 docs/verification/week-50/opc-crm-task2-mysql-seed.md，没有 SHOW TABLES 的实际输出）
 
 ```bash
 docker exec aiopc-mysql mysql -uroot -proot ry-vue-opc < springboot3/sql/migrations/V20260918__crm_schema.sql
@@ -638,7 +647,7 @@ docker exec aiopc-mysql mysql -uroot -proot ry-vue-opc -e "SHOW TABLES LIKE 'opc
 
 Expected: 6 tables listed (`opc_crm_customer`, `opc_crm_contact`, `opc_crm_follow_up`, `opc_crm_opportunity`, `opc_crm_contract`, `opc_crm_order`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -658,7 +667,7 @@ git push origin main
 - Create: `springboot3/ruoyi-modules/opc-crm/src/main/java/com/ruoyi/opc/crm/enums/ContractStatus.java`
 - Create: `springboot3/ruoyi-modules/opc-crm/src/main/java/com/ruoyi/opc/crm/enums/OrderStatus.java`
 
-- [ ] **Step 1: Create OpportunityStage enum (with state machine)**
+- [x] **Step 1: Create OpportunityStage enum (with state machine)**
 
 ```java
 package com.ruoyi.opc.crm.enums;
@@ -701,7 +710,7 @@ public enum OpportunityStage {
 }
 ```
 
-- [ ] **Step 2: Create other enums (compact)**
+- [x] **Step 2: Create other enums (compact)**
 
 ```java
 // CustomerLevel.java
@@ -731,7 +740,7 @@ public enum OrderStatus {
 }
 ```
 
-- [ ] **Step 3: Verify compile**
+- [ ] **Step 3: Verify compile**（未完成：仓库里查不到运行结果，没有 CI 记录或构建日志文件）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3"
@@ -741,7 +750,7 @@ JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
 
 Expected: `BUILD SUCCESS`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -757,7 +766,7 @@ git push origin main
 **Files:**
 - Create: 6 domain files under `springboot3/ruoyi-modules/opc-crm/src/main/java/com/ruoyi/opc/crm/domain/`
 
-- [ ] **Step 1: Create CrmCustomer.java**
+- [x] **Step 1: Create CrmCustomer.java**
 
 ```java
 package com.ruoyi.opc.crm.domain;
@@ -790,19 +799,19 @@ public class CrmCustomer implements Serializable {
 }
 ```
 
-- [ ] **Step 2: Create CrmContact.java** (similar pattern, fields: id, customerId, name, phone, email, position, isPrimary, remark + audit cols)
+- [x] **Step 2: Create CrmContact.java** (similar pattern, fields: id, customerId, name, phone, email, position, isPrimary, remark + audit cols)
 
-- [ ] **Step 3: Create CrmFollowUp.java** (fields: id, customerId, contactId, type, content, nextAt, ownerId + audit cols)
+- [x] **Step 3: Create CrmFollowUp.java** (fields: id, customerId, contactId, type, content, nextAt, ownerId + audit cols)
 
-- [ ] **Step 4: Create CrmOpportunity.java** (fields: id, customerId, name, amount, stage, score, scoreReason, expectedClose, ownerId, lostReason + audit cols)
+- [x] **Step 4: Create CrmOpportunity.java** (fields: id, customerId, name, amount, stage, score, scoreReason, expectedClose, ownerId, lostReason + audit cols)
 
-- [ ] **Step 5: Create CrmContract.java** (fields: id, customerId, opportunityId, contractNo, title, amount, status, signedAt, expireAt, fileUrl, remark + audit cols)
+- [x] **Step 5: Create CrmContract.java** (fields: id, customerId, opportunityId, contractNo, title, amount, status, signedAt, expireAt, fileUrl, remark + audit cols)
 
-- [ ] **Step 6: Create CrmOrder.java** (fields: id, customerId, contractId, orderNo, itemsJson, total, status, paidAt, shippedAt, remark + audit cols)
+- [x] **Step 6: Create CrmOrder.java** (fields: id, customerId, contractId, orderNo, itemsJson, total, status, paidAt, shippedAt, remark + audit cols)
 
 All use `@Data` + `Serializable` + `@JsonFormat` for `LocalDateTime`. Follow the pattern from `NotificationInbox.java` (opc-notification module) exactly.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -818,7 +827,7 @@ git push origin main
 **Files:**
 - Create: 6 mapper interfaces + 6 XML files
 
-- [ ] **Step 1: Create MybatisConfig.java**
+- [x] **Step 1: Create MybatisConfig.java**
 
 ```java
 package com.ruoyi.opc.crm.config;
@@ -832,7 +841,7 @@ public class MybatisConfig {
 }
 ```
 
-- [ ] **Step 2: Create CrmCustomerMapper.java**
+- [x] **Step 2: Create CrmCustomerMapper.java**
 
 ```java
 package com.ruoyi.opc.crm.mapper;
@@ -854,7 +863,7 @@ public interface CrmCustomerMapper {
 }
 ```
 
-- [ ] **Step 3: Create CrmCustomerMapper.xml**
+- [x] **Step 3: Create CrmCustomerMapper.xml**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -927,7 +936,7 @@ public interface CrmCustomerMapper {
 </mapper>
 ```
 
-- [ ] **Step 4: Create remaining 5 mappers** (Contact, FollowUp, Opportunity, Contract, Order)
+- [x] **Step 4: Create remaining 5 mappers** (Contact, FollowUp, Opportunity, Contract, Order)
 
 Use the same pattern. Each mapper has:
 - `insert` (useGeneratedKeys)
@@ -937,7 +946,7 @@ Use the same pattern. Each mapper has:
 
 XMLs follow the pattern above. Mapper locations: `classpath*:mapper/**/*.xml`.
 
-- [ ] **Step 5: Verify compile**
+- [ ] **Step 5: Verify compile**（未完成：仓库里查不到运行结果，没有 CI 记录或构建日志文件）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3"
@@ -945,7 +954,7 @@ JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
   mvn -pl ruoyi-modules/opc-crm -am compile -Dmaven.test.skip=true 2>&1 | tail -3
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -963,7 +972,7 @@ git push origin main
 - Create: `springboot3/ruoyi-modules/opc-crm/src/main/java/com/ruoyi/opc/crm/service/impl/CustomerServiceImpl.java`
 - Create: `springboot3/ruoyi-modules/opc-crm/src/test/java/com/ruoyi/opc/crm/service/CustomerServiceTest.java`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 ```java
 package com.ruoyi.opc.crm.service;
@@ -1071,7 +1080,7 @@ class CustomerServiceTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify fail**
+- [ ] **Step 2: Run test to verify fail**（未完成：仓库里查不到运行结果，opc-crm 下没有 surefire 报告文件）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3"
@@ -1081,7 +1090,7 @@ JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
 
 Expected: Compilation error (CustomerServiceImpl doesn't exist).
 
-- [ ] **Step 3: Implement CustomerService interface**
+- [x] **Step 3: Implement CustomerService interface**
 
 ```java
 package com.ruoyi.opc.crm.service;
@@ -1099,7 +1108,7 @@ public interface CustomerService {
 }
 ```
 
-- [ ] **Step 4: Implement CustomerServiceImpl**
+- [x] **Step 4: Implement CustomerServiceImpl**
 
 ```java
 package com.ruoyi.opc.crm.service.impl;
@@ -1191,7 +1200,7 @@ public class CustomerServiceImpl implements CustomerService {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify pass**
+- [ ] **Step 5: Run tests to verify pass**（未完成：仓库里查不到运行结果，opc-crm 下没有 surefire 报告文件）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3"
@@ -1201,7 +1210,7 @@ JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
 
 Expected: `Tests run: 8, Failures: 0`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -1217,7 +1226,7 @@ git push origin main
 **Files:**
 - Create: `ContactService.java` + `ContactServiceImpl.java` + `ContactServiceTest.java`
 
-- [ ] **Step 1: Test** — covers `create`, `listByCustomer`, `setPrimary` (only 1 primary per customer), `delete`
+- [x] **Step 1: Test** — covers `create`, `listByCustomer`, `setPrimary` (only 1 primary per customer), `delete`
 
 ```java
 @Test void should_create_contact_for_customer() { ... }
@@ -1226,11 +1235,11 @@ git push origin main
 @Test void should_throw_when_delete_nonexistent() { ... }
 ```
 
-- [ ] **Step 2: Implement ContactService** with `@Transactional` for setPrimary (3-step: unset all → set new).
+- [x] **Step 2: Implement ContactService** with `@Transactional` for setPrimary (3-step: unset all → set new).
 
-- [ ] **Step 3: Run + verify 4/4 PASS**
+- [ ] **Step 3: Run + verify 4/4 PASS**（未完成：仓库里查不到运行结果，opc-crm 下没有 surefire 报告文件）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -1246,9 +1255,9 @@ git push origin main
 **Files:**
 - Create: `FollowUpService.java` + `FollowUpServiceImpl.java` + `FollowUpServiceTest.java`
 
-- [ ] **Step 1: Test** — covers `create`, `listByCustomer` (timeline), `listByOwner`, `upcoming` (next_at > now), `markDone`, `delete`
+- [x] **Step 1: Test** — covers `create`, `listByCustomer` (timeline), `listByOwner`, `upcoming` (next_at > now), `markDone`, `delete`
 
-- [ ] **Step 2: Implement FollowUpService** with optional OpenFeign call to NotificationGateway (auto-notify on new follow-up)
+- [x] **Step 2: Implement FollowUpService** with optional OpenFeign call to NotificationGateway (auto-notify on new follow-up)
 
 ```java
 @Service
@@ -1282,9 +1291,9 @@ public class FollowUpServiceImpl implements FollowUpService {
 }
 ```
 
-- [ ] **Step 3: Run + verify 6/6 PASS**
+- [ ] **Step 3: Run + verify 6/6 PASS**（未完成：仓库里查不到运行结果，opc-crm 下没有 surefire 报告文件）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -1300,7 +1309,7 @@ git push origin main
 **Files:**
 - Create: `OpportunityService.java` + `OpportunityServiceImpl.java` + `OpportunityServiceTest.java`
 
-- [ ] **Step 1: Test** — covers:
+- [x] **Step 1: Test** — covers:
 - `create`
 - `update`
 - `changeStage` (state machine validation)
@@ -1312,7 +1321,7 @@ git push origin main
 - `listByCustomer`
 - `listByStage`
 
-- [ ] **Step 2: Implement with state machine**
+- [x] **Step 2: Implement with state machine**
 
 ```java
 @Override
@@ -1357,9 +1366,9 @@ public OpportunityScoreResponse score(Long id, Long operatorId) {
 }
 ```
 
-- [ ] **Step 3: Run + verify 10/10 PASS**
+- [ ] **Step 3: Run + verify 10/10 PASS**（未完成：仓库里查不到运行结果，opc-crm 下没有 surefire 报告文件）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -1375,9 +1384,9 @@ git push origin main
 **Files:**
 - Create: `ContractService.java` + `ContractServiceImpl.java` + `ContractServiceTest.java`
 
-- [ ] **Step 1: Test** — covers `create` (unique contract_no validation), `update`, `activate` (DRAFT→ACTIVE), `expire`, `terminate`, `listByCustomer`
+- [x] **Step 1: Test** — covers `create` (unique contract_no validation), `update`, `activate` (DRAFT→ACTIVE), `expire`, `terminate`, `listByCustomer`
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 ```java
 @Override
@@ -1398,9 +1407,9 @@ public CrmContract create(CrmContract contract, Long operatorId) {
 }
 ```
 
-- [ ] **Step 3: Run + verify 6/6 PASS**
+- [ ] **Step 3: Run + verify 6/6 PASS**（未完成：仓库里查不到运行结果，opc-crm 下没有 surefire 报告文件）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -1416,9 +1425,9 @@ git push origin main
 **Files:**
 - Create: `OrderService.java` + `OrderServiceImpl.java` + `OrderServiceTest.java`
 
-- [ ] **Step 1: Test** — covers `create` (items_json validation + total calculation), `update`, `pay` (PENDING→PAID), `ship`, `complete`, `cancel`
+- [x] **Step 1: Test** — covers `create` (items_json validation + total calculation), `update`, `pay` (PENDING→PAID), `ship`, `complete`, `cancel`
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 ```java
 @Override
@@ -1461,9 +1470,9 @@ public CrmOrder pay(Long id, Long operatorId) {
 }
 ```
 
-- [ ] **Step 3: Run + verify 6/6 PASS**
+- [ ] **Step 3: Run + verify 6/6 PASS**（未完成：仓库里查不到运行结果，opc-crm 下没有 surefire 报告文件）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -1479,9 +1488,9 @@ git push origin main
 **Files:**
 - Create: `DashboardService.java` + `DashboardServiceImpl.java` + `DashboardServiceTest.java`
 
-- [ ] **Step 1: Test** — covers funnel aggregation by stage, count by level, top customers by opportunity amount, recent follow-ups
+- [x] **Step 1: Test** — covers funnel aggregation by stage, count by level, top customers by opportunity amount, recent follow-ups
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 ```java
 @Override
@@ -1517,9 +1526,9 @@ public DashboardFunnelResponse getFunnel(Long ownerId) {
 }
 ```
 
-- [ ] **Step 3: Run + verify 4/4 PASS**
+- [ ] **Step 3: Run + verify 4/4 PASS**（未完成：仓库里查不到运行结果，opc-crm 下没有 surefire 报告文件）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -1541,7 +1550,7 @@ git push origin main
 - Create: `statemachine/OpportunityStateMachine.java` (extracted for testing)
 - Create: `statemachine/OpportunityStateMachineTest.java` (8 @Test)
 
-- [ ] **Step 1: Create FeignConfig**
+- [x] **Step 1: Create FeignConfig**
 
 ```java
 package com.ruoyi.opc.crm.config;
@@ -1559,7 +1568,7 @@ public class FeignConfig {
 }
 ```
 
-- [ ] **Step 2: Create NotificationGateway**
+- [ ] **Step 2: Create NotificationGateway**（未完成：gateway/NotificationGateway.java 在仓库里不存在——b29ec10 建过，后来被删（对端 /opc/notification/inbox/push 根本不存在），全模块 grep 不到 notification）
 
 ```java
 package com.ruoyi.opc.crm.gateway;
@@ -1579,7 +1588,7 @@ public interface NotificationGateway {
 }
 ```
 
-- [ ] **Step 3: Create AiCoreGateway** (calls opc-ai-core for LLM scoring)
+- [x] **Step 3: Create AiCoreGateway** (calls opc-ai-core for LLM scoring)
 
 ```java
 @FeignClient(name = "opc-ai-core", url = "${opc.crm.ai-core.base-url}")
@@ -1590,7 +1599,7 @@ public interface AiCoreGateway {
 }
 ```
 
-- [ ] **Step 4: Create OpportunityScoreResponse DTO**
+- [x] **Step 4: Create OpportunityScoreResponse DTO**
 
 ```java
 @Data
@@ -1601,7 +1610,7 @@ public class OpportunityScoreResponse {
 }
 ```
 
-- [ ] **Step 5: Create UserCenterGateway** (get owner info)
+- [ ] **Step 5: Create UserCenterGateway** (get owner info)（未完成：gateway/UserCenterGateway.java 在仓库里不存在）
 
 ```java
 @FeignClient(name = "opc-user-center", url = "${opc.crm.user-center.base-url}")
@@ -1612,7 +1621,7 @@ public interface UserCenterGateway {
 }
 ```
 
-- [ ] **Step 6: Create OpportunityStateMachine + 8 @Test** (extracted from enum for testability)
+- [ ] **Step 6: Create OpportunityStateMachine + 8 @Test** (extracted from enum for testability)（未完成：statemachine/OpportunityStateMachine.java 和 statemachine/OpportunityStateMachineTest.java 都不存在；状态机仍写在 OpportunityStage 枚举里，只有 OpportunityServiceTest 的 4 个 transition 用例覆盖）
 
 ```java
 package com.ruoyi.opc.crm.statemachine;
@@ -1665,7 +1674,7 @@ public final class OpportunityStateMachine {
 @Test void LOST_to_QUALIFIED_not_allowed() { assertFalse(canTransition(LOST, QUALIFIED)); }
 ```
 
-- [ ] **Step 7: Create NotificationGatewayTest (4 @Test with MockedStatic or Mock Feign)**
+- [ ] **Step 7: Create NotificationGatewayTest (4 @Test with MockedStatic or Mock Feign)**（未完成：src/test/java/com/ruoyi/opc/crm/gateway/NotificationGatewayTest.java 不存在；该目录下只有 AiCoreGatewayFallbackTest.java）
 
 For simplicity, use `Mockito.mock(NotificationGateway.class)` and verify calls.
 
@@ -1684,7 +1693,7 @@ class NotificationGatewayTest {
 }
 ```
 
-- [ ] **Step 8: Run all gateway + state machine tests**
+- [ ] **Step 8: Run all gateway + state machine tests**（未完成：仓库里查不到运行结果，而且被它测的 OpportunityStateMachineTest 本身不存在）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3"
@@ -1694,7 +1703,7 @@ JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
 
 Expected: 12 tests, 0 failures.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -1710,7 +1719,7 @@ git push origin main
 **Files:**
 - Create: 7 controller classes + DTO classes
 
-- [ ] **Step 1: Create CustomerController**
+- [x] **Step 1: Create CustomerController**
 
 ```java
 package com.ruoyi.opc.crm.controller;
@@ -1763,11 +1772,11 @@ public class CustomerController {
 }
 ```
 
-- [ ] **Step 2: Create ContactController** (CRUD + list by customer)
+- [x] **Step 2: Create ContactController** (CRUD + list by customer)
 
-- [ ] **Step 3: Create FollowUpController** (create + listByCustomer + upcoming)
+- [x] **Step 3: Create FollowUpController** (create + listByCustomer + upcoming)
 
-- [ ] **Step 4: Create OpportunityController** (CRUD + `/score` + `/stage`)
+- [x] **Step 4: Create OpportunityController** (CRUD + `/score` + `/stage`)
 
 ```java
 @PostMapping("/{id}/score")
@@ -1782,11 +1791,11 @@ public R<CrmOpportunity> changeStage(@PathVariable Long id, @RequestBody StageCh
 }
 ```
 
-- [ ] **Step 5: Create ContractController** (CRUD + `/activate` + `/terminate`)
+- [x] **Step 5: Create ContractController** (CRUD + `/activate` + `/terminate`)
 
-- [ ] **Step 6: Create OrderController** (CRUD + `/pay` + `/ship` + `/complete` + `/cancel`)
+- [x] **Step 6: Create OrderController** (CRUD + `/pay` + `/ship` + `/complete` + `/cancel`)
 
-- [ ] **Step 7: Create DashboardController**
+- [x] **Step 7: Create DashboardController**
 
 ```java
 @RestController
@@ -1803,7 +1812,7 @@ public class DashboardController {
 }
 ```
 
-- [ ] **Step 8: Verify all compile**
+- [ ] **Step 8: Verify all compile**（未完成：仓库里查不到运行结果，没有 CI 记录或构建日志文件）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3"
@@ -1813,7 +1822,7 @@ JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
 
 Expected: `BUILD SUCCESS`.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -1833,7 +1842,7 @@ git push origin main
 - Modify: `springboot3/ruoyi-gateway/src/main/resources/application.yml` (add route)
 - Create: `springboot3/ruoyi-modules/opc-crm/Dockerfile` (replace port placeholder)
 
-- [ ] **Step 1: Create opc-crm-dev.yml**
+- [x] **Step 1: Create opc-crm-dev.yml**
 
 ```yaml
 spring:
@@ -1857,9 +1866,9 @@ logging:
     com.ruoyi.opc.crm: debug
 ```
 
-- [ ] **Step 2: Create opc-crm-prod.yml** (same but with prod-grade settings)
+- [x] **Step 2: Create opc-crm-prod.yml** (same but with prod-grade settings)
 
-- [ ] **Step 3: Add aiopc-crm to docker-compose.yml**
+- [x] **Step 3: Add aiopc-crm to docker-compose.yml**
 
 Find where aiopc-notification is defined and add aiopc-crm right after:
 
@@ -1892,7 +1901,7 @@ Find where aiopc-notification is defined and add aiopc-crm right after:
       - "9312:9312"
 ```
 
-- [ ] **Step 4: Add route to gateway application.yml**
+- [x] **Step 4: Add route to gateway application.yml**
 
 Find the opc-notification route block and add:
 
@@ -1903,11 +1912,11 @@ Find the opc-notification route block and add:
     - Path=/opc/crm/**
 ```
 
-- [ ] **Step 5: Replace port placeholder in Dockerfile**
+- [x] **Step 5: Replace port placeholder in Dockerfile**
 
 Edit `opc-crm/Dockerfile`: replace `EXPOSE http` → `EXPOSE 9312` and `ENTRYPOINT` → use `9312` instead of `http`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -1922,7 +1931,7 @@ git push origin main
 
 **Files:** None new (deployment task)
 
-- [ ] **Step 1: Build thin jar**
+- [x] **Step 1: Build thin jar**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3"
@@ -1935,7 +1944,7 @@ JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
 
 Expected: `target/opc-crm.jar` and `target/dependency/` exist.
 
-- [ ] **Step 2: Push Nacos config**
+- [ ] **Step 2: Push Nacos config**（未完成：Nacos 推送是运行时动作，仓库里查不到；按 opc-nacos-config-namespace 的记录，opc-dev 配置中心本来就是空的）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3/deploy/nacos"
@@ -1944,7 +1953,7 @@ bash ./import-dev.sh
 
 Expected: `opc-crm-dev.yml` pushed.
 
-- [ ] **Step 3: Rebuild gateway (gateway uses fat-jar, NOT thin-jar)**
+- [ ] **Step 3: Rebuild gateway (gateway uses fat-jar, NOT thin-jar)**（未完成：仓库里查不到运行结果，没有 CI 记录或构建日志文件）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3"
@@ -1952,20 +1961,20 @@ JAVA_HOME="C:/Program Files/Java/jdk-17.0.17.10-hotspot" \
   mvn -pl ruoyi-gateway clean package -Dmaven.test.skip=true 2>&1 | tail -3
 ```
 
-- [ ] **Step 4: Build Docker images**
+- [ ] **Step 4: Build Docker images**（未完成：仓库里查不到运行结果，没有镜像构建记录）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3/deploy"
 docker compose build aiopc-crm aiopc-gateway 2>&1 | tail -5
 ```
 
-- [ ] **Step 5: Restart containers**
+- [ ] **Step 5: Restart containers**（未完成：仓库里查不到运行结果，容器运行态不属于仓库内容）
 
 ```bash
 docker compose up -d aiopc-crm aiopc-gateway 2>&1 | tail -5
 ```
 
-- [ ] **Step 6: Wait for startup (60s) and verify**
+- [ ] **Step 6: Wait for startup (60s) and verify**（未完成：仓库里查不到运行结果）
 
 ```bash
 sleep 60
@@ -1975,7 +1984,7 @@ docker logs aiopc-crm 2>&1 | grep -E "Started OpcCrmApplication|ERROR" | tail -3
 
 Expected: aiopc-crm Up, "Started OpcCrmApplication in X.XXX seconds".
 
-- [ ] **Step 7: Smoke test**
+- [ ] **Step 7: Smoke test**（未完成：仓库里查不到运行结果）
 
 ```bash
 TOKEN=$(curl -s -X POST -H "Content-Type: application/json" -d '{"username":"admin","password":"admin123"}' http://127.0.0.1:8080/login | python -c "import sys,json;print(json.load(sys.stdin)['data']['access_token'])")
@@ -1984,7 +1993,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8080/opc/crm/custome
 
 Expected: `{"code":200, "data":[{...}]}` returning at least 1 customer from seed data.
 
-- [ ] **Step 8: Commit (any config changes)**
+- [x] **Step 8: Commit (any config changes)**
 
 If no changes, skip commit.
 
@@ -2000,7 +2009,7 @@ If no changes, skip commit.
 - Create: `springboot3/deploy/helm/opc/templates/deployment-crm.yaml`
 - Create: `springboot3/deploy/helm/opc/templates/service-crm.yaml`
 
-- [ ] **Step 1: Add 8 health checks to health-check.sh**
+- [x] **Step 1: Add 8 health checks to health-check.sh**
 
 Add a new section:
 - Container up: `aiopc-crm`
@@ -2014,11 +2023,11 @@ Add a new section:
 
 Match existing pattern (28 → 36 checks).
 
-- [ ] **Step 2: Add §opc-crm to RECOVERY.md**
+- [x] **Step 2: Add §opc-crm to RECOVERY.md**
 
 Pattern: purpose, port, 6 tables, Nacos DataIDs, build/start commands, caveats (LLM dependency), verification.
 
-- [ ] **Step 3: Add crm to Helm values.yaml**
+- [x] **Step 3: Add crm to Helm values.yaml**
 
 ```yaml
 crm:
@@ -2052,13 +2061,13 @@ crm:
 
 Add to values-dev.yaml / values-staging.yaml / values-prod.yaml similarly.
 
-- [ ] **Step 4: Add to values-{env}.yaml** for all 3 envs
+- [ ] **Step 4: Add to values-{env}.yaml** for all 3 envs（未完成：values-dev.yaml / values-staging.yaml / values-prod.yaml 三个文件里都没有 crm 段）
 
-- [ ] **Step 5: Create deployment-crm.yaml and service-crm.yaml** (mirror insight pattern)
+- [x] **Step 5: Create deployment-crm.yaml and service-crm.yaml** (mirror insight pattern)
 
-- [ ] **Step 6: Add opc-crm-dev.yml to import-dev.sh NAMES**
+- [x] **Step 6: Add opc-crm-dev.yml to import-dev.sh NAMES**
 
-- [ ] **Step 7: Verify**
+- [ ] **Step 7: Verify**（未完成：仓库里查不到运行结果）
 
 ```bash
 bash "D:/work-ai/0401-lumen-opc/springboot3/deploy/scripts/health-check.sh" 2>&1 | tail -3
@@ -2068,7 +2077,7 @@ python "D:/work-ai/0401-lumen-opc/springboot3/deploy/helm/opc/ci/diff-envs.py" 2
 
 Expected: 36/36 PASS, helm lint pass, diff-envs pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -2090,7 +2099,7 @@ git push origin main
 - Modify: `vue3-typescript/src/router/index.ts` (add 4 routes)
 - Modify: `vue3-typescript/src/layout/index.vue` (sidebar menu)
 
-- [ ] **Step 1: Create crm.ts API module**
+- [x] **Step 1: Create crm.ts API module**
 
 ```typescript
 import request from '@/utils/request'
@@ -2131,17 +2140,17 @@ export function payOrder(id) { ... }
 export function getDashboard() { ... }
 ```
 
-- [ ] **Step 2: Create CustomerList.vue** — `el-table` with columns name/level/source/tags/owner, action buttons, filter drawer
+- [x] **Step 2: Create CustomerList.vue** — `el-table` with columns name/level/source/tags/owner, action buttons, filter drawer
 
-- [ ] **Step 3: Create CustomerDetail.vue** — tabs: 基本信息 / 联系人 / 跟进 / 商机 / 合同 / 订单
+- [x] **Step 3: Create CustomerDetail.vue** — tabs: 基本信息 / 联系人 / 跟进 / 商机 / 合同 / 订单
 
-- [ ] **Step 4: Create OpportunityKanban.vue** — drag-and-drop kanban with columns by stage (LEAD/QUALIFIED/PROPOSAL/NEGOTIATION/WON/LOST), each card shows amount + score
+- [x] **Step 4: Create OpportunityKanban.vue** — drag-and-drop kanban with columns by stage (LEAD/QUALIFIED/PROPOSAL/NEGOTIATION/WON/LOST), each card shows amount + score
 
 Use `vuedraggable@4.1.0` (already in package.json likely) or use native HTML5 drag-and-drop.
 
-- [ ] **Step 5: Create FollowUpTimeline.vue** — `el-timeline` component showing follow-ups in chronological order
+- [x] **Step 5: Create FollowUpTimeline.vue** — `el-timeline` component showing follow-ups in chronological order
 
-- [ ] **Step 6: Register 4 routes**
+- [x] **Step 6: Register 4 routes**
 
 ```typescript
 {
@@ -2166,9 +2175,9 @@ Use `vuedraggable@4.1.0` (already in package.json likely) or use native HTML5 dr
 }
 ```
 
-- [ ] **Step 7: Add to sidebar menu**
+- [x] **Step 7: Add to sidebar menu**
 
-- [ ] **Step 8: Build + type-check**
+- [ ] **Step 8: Build + type-check**（未完成：仓库里查不到运行结果，没有 CI 记录或构建日志文件）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/vue3-typescript"
@@ -2177,7 +2186,7 @@ npm run build:prod 2>&1 | tail -5
 
 Expected: Build success.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -2193,7 +2202,7 @@ git push origin main
 **Files:**
 - Create: `tmp_e2e/crm_e2e.py`
 
-- [ ] **Step 1: Write E2E test**
+- [x] **Step 1: Write E2E test**
 
 Covers 8 scenarios:
 1. Admin login
@@ -2209,7 +2218,7 @@ Covers 8 scenarios:
 
 Use `urllib.request` (no `requests` dep) per existing e2e pattern. Match `notification_e2e.py` style.
 
-- [ ] **Step 2: Run + verify pass**
+- [ ] **Step 2: Run + verify pass**（未完成：仓库里查不到运行结果，tmp_e2e/crm_e2e.py 没有对应的执行报告）
 
 ```bash
 python "D:/work-ai/0401-lumen-opc/tmp_e2e/crm_e2e.py"
@@ -2217,7 +2226,7 @@ python "D:/work-ai/0401-lumen-opc/tmp_e2e/crm_e2e.py"
 
 Expected: ~11 tests pass.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -2233,7 +2242,7 @@ git push origin main
 **Files:**
 - Create: `docs/verification/week-50/OPC-W55-VERIFICATION-opc-crm.md`
 
-- [ ] **Step 1: Write report**
+- [x] **Step 1: Write report**
 
 Match W49 verification report format:
 - 19-task summary table
@@ -2243,9 +2252,9 @@ Match W49 verification report format:
 - File list
 - Next steps (W56-W57 for opc-hr / opc-ecommerce preparation)
 
-- [ ] **Step 2: Update docs/verification/README.md** if it has week index
+- [x] **Step 2: Update docs/verification/README.md** if it has week index
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc"
@@ -2262,7 +2271,7 @@ git push origin main
 - Modify: `~/.claude/projects/D--work-ai-0401-lumen-opc/memory/MEMORY.md` (add pointer)
 - Create: `~/.claude/projects/D--work-ai-0401-lumen-opc/memory/opc-crm-w55.md`
 
-- [ ] **Step 1: Final verification**
+- [ ] **Step 1: Final verification**（未完成：仓库里查不到运行结果）
 
 ```bash
 docker ps | grep -E "aiopc-crm|aiopc-notification|aiopc-gateway"
@@ -2272,22 +2281,22 @@ cd "D:/work-ai/0401-lumen-opc/springboot3/deploy/helm/opc" && helm lint . | tail
 cd "D:/work-ai/0401-lumen-opc" && git log --oneline -25
 ```
 
-- [ ] **Step 2: Capture summary**
+- [ ] **Step 2: Capture summary**（未完成：Task 21 在仓库里没有任何产出物，git log 里也没有对应提交）
 
-- [ ] **Step 3: Write memory file**
+- [ ] **Step 3: Write memory file**（未完成：memory 目录里没有 opc-crm-w55.md 这个文件）
 
 Content:
 - Service metadata (port 9312, 6 tables, 7 controllers, 8 endpoints)
 - Lessons learned (e.g., state machine extracted for testability, OpenFeign best-effort pattern)
 - W49 → W55 dependencies
 
-- [ ] **Step 4: Add pointer to MEMORY.md**
+- [ ] **Step 4: Add pointer to MEMORY.md**（未完成：MEMORY.md 里没有 CRM 指针）
 
 ```markdown
 - [opc-crm W55](opc-crm-w55.md) — 9312 port, 6 tables, state machine + LLM opportunity scorer, dependency for opc-community/ecommerce
 ```
 
-- [ ] **Step 5: Final report**
+- [ ] **Step 5: Final report**（未完成：仓库里没有 Task 21 的最终报告产物，git log 里也没有对应提交）
 
 ## Spec Coverage Check
 

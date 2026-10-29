@@ -1,5 +1,15 @@
 # M4 INSIGHT Agent MVP Implementation Plan
 
+## 审计说明（2026-10-29）
+
+- **审计对象**：本 plan（`docs/superpowers/plans/2026-09-08-opc-insight-mvp.md`）
+- **plan 目标**：新建 `opc-insight` 微服务（端口 9306），交付 4 个能力（日报 / 经营驾驶舱 / 异常预警 / 决策建议），8 天节奏
+- **审计方式**：只读仓库与 git 历史，逐条核实 105 个 checkbox。判据：文件在且内容对得上 / 代码里 grep 得到 / 测试文件与测试方法在 / 提交在 plan 时间窗（2026-09-08）内
+- **结果**：**勾了 71 / 没勾 34 / 共 105**
+- **没勾的 34 个主要卡在哪**：25 个是「跑一次看输出」的验证类步骤（mvn test ×15 / mvn build + clean install + SQL 语法验证 / npm run test:run + build ×3 / helm lint + template ×2 / Nacos 白名单导入 / 218 测试汇总），仓库里查不到运行结果，按规矩一律不勾；3 个是「跑 + Commit」混合 step（Commit 部分已做，跑测试部分查不到结果）；6 个是真没做 —— **Quartz job 从来没注册进 sys_job**、**Nacos 白名单没落地**、**PromptGuard 没接进 insight 提示词**、**live LLM eval 被 BLOCKED（`-Peval-live` profile 根本不存在）**、**prompt 因此没迭代过**、**git tag 没打**
+- **另外要提醒的**：有 5 个 checkbox 勾上了但**只做了一半**，行尾都标了「（部分：…）」；plan 自己的「New Files」清单有 2 处与仓库对不上（`config/InsightFeignConfig.java` 压根没建、3 个 prompt 的路径写错了模块层级，实际在 `springboot3/ruoyi-modules/opc-ai-core/` 下）；plan 写的 218 个测试口径也与实际对不上（opc-insight 实际有 81 个 `@Test`，不是 64）
+- **完整审计报告**：`docs/superpowers/plans/audit/2026-09-08-opc-insight-mvp.md`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the OPC 数据洞察 Agent (INSIGHT) — 4 capabilities (日报 / 经营驾驶舱 / 异常预警 / 决策建议) — as a new `opc-insight` Spring Boot microservice (port 9306) with full TDD coverage, 8-day delivery cadence.
@@ -120,7 +130,7 @@ vue3-typescript/src/router/index.ts                                  # add /opc/
 
 **Context:** INSIGHT 需要从 opc-finance 拉 4 类聚合数据：voucher/flow/tax/token。给现有 `OpcFinanceController` 加 4 个 `@GetMapping("/agg/...")` 端点，返回 `R.ok(AggregationVo)`。
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 // OpcFinanceAggControllerTest.java
@@ -150,7 +160,7 @@ class OpcFinanceAggControllerTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run test to verify it fails**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 cd springboot3
@@ -158,7 +168,7 @@ mvn test -pl ruoyi-modules/opc-finance -Dtest=OpcFinanceAggControllerTest
 # Expected: compilation error or test fail (endpoints not yet defined)
 ```
 
-- [ ] **Step 3: Add 4 aggregation endpoints to OpcFinanceController**
+- [x] **Step 3: Add 4 aggregation endpoints to OpcFinanceController**
 
 ```java
 // Append to OpcFinanceController.java
@@ -183,16 +193,16 @@ public R<?> tokenUsage(@RequestParam Long companyId, @RequestParam String period
 }
 ```
 
-- [ ] **Step 4: Add 4 corresponding service methods** (if not exist; reuse `aggregateByPeriod` from W1.4.2)
+- [x] **Step 4: Add 4 corresponding service methods** (if not exist; reuse `aggregateByPeriod` from W1.4.2)
 
-- [ ] **Step 5: Run test to verify it passes**
+- [ ] **Step 5: Run test to verify it passes**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 mvn test -pl ruoyi-modules/opc-finance -Dtest=OpcFinanceAggControllerTest
 # Expected: PASS
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-finance/
@@ -212,7 +222,7 @@ git commit -m "feat(finance): 4 aggregation endpoints for INSIGHT Feign client"
 - `GET /opc/billing/agg/orders?companyId=X&period=Y` → order totals
 - `GET /opc/billing/agg/recharge?companyId=X&period=Y` → recharge totals
 
-- [ ] **Step 1-6: Follow TDD pattern from Task 1, adapt for 3 billing endpoints**
+- [ ] **Step 1-6: Follow TDD pattern from Task 1, adapt for 3 billing endpoints**（未完成：仓库里查不到测试运行结果；3 个聚合端点、测试文件、commit `a5e9db2` 都在，缺的只是"跑一遍"这一步）
 
 ```bash
 git commit -m "feat(billing): 3 aggregation endpoints for INSIGHT Feign client"
@@ -230,7 +240,7 @@ git commit -m "feat(billing): 3 aggregation endpoints for INSIGHT Feign client"
 - Modify: `springboot3/pom.xml` (add `<module>ruoyi-modules/opc-insight</module>`)
 - Modify: `springboot3/ruoyi-modules/pom.xml` (same)
 
-- [ ] **Step 1: Create pom.xml (mirror opc-finance's pom structure)**
+- [x] **Step 1: Create pom.xml (mirror opc-finance's pom structure)**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -256,7 +266,7 @@ git commit -m "feat(billing): 3 aggregation endpoints for INSIGHT Feign client"
 </project>
 ```
 
-- [ ] **Step 2: Create Application class**
+- [x] **Step 2: Create Application class**
 
 ```java
 @SpringBootApplication
@@ -270,7 +280,7 @@ public class OpcInsightApplication {
 }
 ```
 
-- [ ] **Step 3: Create bootstrap.yml + application.yml** (mirror opc-finance's, port 9306)
+- [x] **Step 3: Create bootstrap.yml + application.yml** (mirror opc-finance's, port 9306)
 
 ```yaml
 # bootstrap.yml
@@ -292,11 +302,11 @@ spring:
         file-extension: yml
 ```
 
-- [ ] **Step 4: Add to parent poms**
+- [x] **Step 4: Add to parent poms**
 
 Edit `springboot3/pom.xml` and `springboot3/ruoyi-modules/pom.xml` to add `<module>ruoyi-modules/opc-insight</module>` in correct order.
 
-- [ ] **Step 5: Build to verify**
+- [ ] **Step 5: Build to verify**（未完成：仓库里查不到运行结果）
 
 ```bash
 cd springboot3
@@ -304,7 +314,7 @@ mvn clean install -pl ruoyi-modules/opc-insight -am -DskipTests
 # Expected: BUILD SUCCESS
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-insight/ springboot3/pom.xml springboot3/ruoyi-modules/pom.xml
@@ -318,7 +328,7 @@ git commit -m "feat(insight): scaffold opc-insight Maven module"
 **Files:**
 - Create: `springboot3/sql/migrations/V20260908__opc_insight_schema.sql`
 
-- [ ] **Step 1: Create migration file with 3 tables** (full SQL from spec §1.2)
+- [x] **Step 1: Create migration file with 3 tables** (full SQL from spec §1.2)
 
 ```sql
 -- V20260908__opc_insight_schema.sql
@@ -364,14 +374,14 @@ CREATE TABLE IF NOT EXISTS opc_insight_advice (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='INSIGHT 决策建议表';
 ```
 
-- [ ] **Step 2: Verify SQL syntax** (optional, if MySQL available)
+- [ ] **Step 2: Verify SQL syntax** (optional, if MySQL available)（未完成：仓库里查不到运行结果）
 
 ```bash
 docker exec -i opc-mysql mysql -uroot -p'Opc@2026!' opc -e "SOURCE /sql/migrations/V20260908__opc_insight_schema.sql"
 # Expected: 3 tables created
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add springboot3/sql/migrations/V20260908__opc_insight_schema.sql
@@ -388,7 +398,7 @@ git commit -m "feat(sql): opc_insight_* 3 tables migration"
 - Create: `springboot3/ruoyi-modules/opc-insight/src/main/java/com/ruoyi/opc/insight/service/IKpiService.java` + `KpiServiceImpl.java`
 - Test: `springboot3/ruoyi-modules/opc-insight/src/test/java/com/ruoyi/opc/insight/service/impl/KpiServiceImplTest.java`
 
-- [ ] **Step 1: Define KpiSnapshot VO**
+- [x] **Step 1: Define KpiSnapshot VO**
 
 ```java
 @Data
@@ -409,7 +419,7 @@ public class KpiSnapshot {
 }
 ```
 
-- [ ] **Step 2: Write 3 Feign client interfaces**
+- [x] **Step 2: Write 3 Feign client interfaces**
 
 ```java
 @FeignClient(contextId = "remoteFinanceService", value = ServiceNameConstants.FINANCE_SERVICE,
@@ -456,7 +466,7 @@ public interface RemoteUserCenterService {
 }
 ```
 
-- [ ] **Step 3: Write failing KpiServiceImplTest (12 tests)**
+- [x] **Step 3: Write failing KpiServiceImplTest (12 tests)**
 
 ```java
 @ExtendWith(MockitoExtension.class)
@@ -494,14 +504,14 @@ class KpiServiceImplTest {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it fails**
+- [ ] **Step 4: Run test to verify it fails**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-insight -Dtest=KpiServiceImplTest
 # Expected: compilation error (KpiServiceImpl not found)
 ```
 
-- [ ] **Step 5: Implement KpiServiceImpl**
+- [x] **Step 5: Implement KpiServiceImpl**
 
 ```java
 @Service
@@ -540,14 +550,14 @@ public class KpiServiceImpl implements IKpiService {
 }
 ```
 
-- [ ] **Step 6: Run test to verify it passes**
+- [ ] **Step 6: Run test to verify it passes**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-insight -Dtest=KpiServiceImplTest
 # Expected: 12 passed
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-insight/
@@ -567,13 +577,13 @@ git commit -m "feat(insight): KpiService impl + 12 unit tests + 3 Feign clients"
 - Create: `springboot3/ruoyi-modules/opc-insight/src/main/java/com/ruoyi/opc/insight/domain/OpcInsightAnomaly.java`
 - Test: `AnomalyServiceImplTest.java` (18 tests)
 
-- [ ] **Step 1: Define AnomalyLevel enum**
+- [x] **Step 1: Define AnomalyLevel enum**
 
 ```java
 public enum AnomalyLevel { HIGH, MEDIUM, LOW }
 ```
 
-- [ ] **Step 2: Define AnomalyRule enum (8 hardcoded rules)**
+- [x] **Step 2: Define AnomalyRule enum (8 hardcoded rules)**
 
 ```java
 public enum AnomalyRule {
@@ -607,7 +617,7 @@ public enum AnomalyRule {
 }
 ```
 
-- [ ] **Step 3: Define AnomalyVo**
+- [x] **Step 3: Define AnomalyVo**
 
 ```java
 @Data @Builder @AllArgsConstructor @NoArgsConstructor
@@ -624,7 +634,7 @@ public class AnomalyVo {
 }
 ```
 
-- [ ] **Step 4: Create domain + mapper for opc_insight_anomaly**
+- [x] **Step 4: Create domain + mapper for opc_insight_anomaly**
 
 ```java
 @Data @TableName("opc_insight_anomaly")
@@ -665,7 +675,7 @@ public interface OpcInsightAnomalyMapper extends BaseMapper<OpcInsightAnomaly> {
 </mapper>
 ```
 
-- [ ] **Step 5: Write failing AnomalyServiceImplTest (18 tests)**
+- [x] **Step 5: Write failing AnomalyServiceImplTest (18 tests)**
 
 ```java
 @ExtendWith(MockitoExtension.class)
@@ -702,14 +712,14 @@ class AnomalyServiceImplTest {
 }
 ```
 
-- [ ] **Step 6: Run test to verify it fails**
+- [ ] **Step 6: Run test to verify it fails**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-insight -Dtest=AnomalyServiceImplTest
 # Expected: compilation error
 ```
 
-- [ ] **Step 7: Implement AnomalyServiceImpl**
+- [x] **Step 7: Implement AnomalyServiceImpl**
 
 ```java
 @Service
@@ -779,14 +789,14 @@ public class AnomalyServiceImpl implements IAnomalyService {
 }
 ```
 
-- [ ] **Step 8: Run test to verify it passes**
+- [ ] **Step 8: Run test to verify it passes**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-insight -Dtest=AnomalyServiceImplTest
 # Expected: 18 passed (16 rule tests + 1 LLM parameterized + 1 LLM skip)
 ```
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-insight/
@@ -801,7 +811,7 @@ git commit -m "feat(insight): AnomalyService (8 hard rules + LLM soft scan) + 18
 - Create: `springboot3/ruoyi-modules/opc-insight/src/main/java/com/ruoyi/opc/insight/workflow/InsightDailyReportJob.java`
 - Test: `InsightDailyReportJobTest.java` (4 tests)
 
-- [ ] **Step 1: Write failing JobTest (4 tests)**
+- [x] **Step 1: Write failing JobTest (4 tests)**
 
 ```java
 @ExtendWith(MockitoExtension.class)
@@ -818,14 +828,14 @@ class InsightDailyReportJobTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run test to verify it fails**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-insight -Dtest=InsightDailyReportJobTest
 # Expected: FAIL
 ```
 
-- [ ] **Step 3: Implement InsightDailyReportJob**
+- [x] **Step 3: Implement InsightDailyReportJob**
 
 ```java
 @Component("insightDailyReportJob")
@@ -863,7 +873,7 @@ public class InsightDailyReportJob {
 }
 ```
 
-- [ ] **Step 4: Register Quartz job in sys_job seed**
+- [ ] **Step 4: Register Quartz job in sys_job seed**（未完成：`springboot3/sql/seed/sys_job_workflow_seed.sql` 全文 grep 不到 insight / insightDailyReportJob，`deploy/mysql-initdb.d/` 里也没有这条 sys_job INSERT —— Quartz job 从来没注册进调度表）
 
 Append to `springboot3/sql/seed/sys_job_workflow_seed.sql`:
 
@@ -873,14 +883,14 @@ VALUES ('insightDailyReport', 'DEFAULT', 'insightDailyReportJob.trigger', '0 0 9
 ON DUPLICATE KEY UPDATE update_time = NOW();
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [ ] **Step 5: Run test to verify it passes**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-insight -Dtest=InsightDailyReportJobTest
 # Expected: 4 passed
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-insight/ springboot3/sql/seed/
@@ -898,7 +908,7 @@ git commit -m "feat(insight): Quartz cron job for daily 9am report + 4 tests"
 - Create: `springboot3/ruoyi-modules/opc-insight/src/main/java/com/ruoyi/opc/insight/vo/DailyReportVo.java`
 - Test: `DailyReportServiceImplTest.java` (10 tests)
 
-- [ ] **Step 1: Define DailyReportVo**
+- [x] **Step 1: Define DailyReportVo**
 
 ```java
 @Data @Builder @AllArgsConstructor @NoArgsConstructor
@@ -914,7 +924,7 @@ public class DailyReportVo {
 }
 ```
 
-- [ ] **Step 2: Define domain + mapper**
+- [x] **Step 2: Define domain + mapper**
 
 ```java
 @Data @TableName("opc_insight_daily_report")
@@ -945,7 +955,7 @@ public interface OpcInsightDailyReportMapper extends BaseMapper<OpcInsightDailyR
 }
 ```
 
-- [ ] **Step 3: Write failing DailyReportServiceImplTest (10 tests)**
+- [x] **Step 3: Write failing DailyReportServiceImplTest (10 tests)**
 
 ```java
 @ExtendWith(MockitoExtension.class)
@@ -969,14 +979,14 @@ class DailyReportServiceImplTest {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it fails**
+- [ ] **Step 4: Run test to verify it fails**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-insight -Dtest=DailyReportServiceImplTest
 # Expected: FAIL
 ```
 
-- [ ] **Step 5: Implement DailyReportServiceImpl**
+- [x] **Step 5: Implement DailyReportServiceImpl**
 
 ```java
 @Service
@@ -1030,14 +1040,14 @@ public class DailyReportServiceImpl implements IDailyReportService {
 }
 ```
 
-- [ ] **Step 6: Run test to verify it passes**
+- [ ] **Step 6: Run test to verify it passes**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-insight -Dtest=DailyReportServiceImplTest
 # Expected: 10 passed
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-insight/
@@ -1055,7 +1065,7 @@ git commit -m "feat(insight): DailyReportService (cron + LLM + fallback) + 10 te
 - Create: `springboot3/ruoyi-modules/opc-insight/src/main/java/com/ruoyi/opc/insight/vo/AdviceVo.java`
 - Test: `AdviceServiceImplTest.java` (8 tests)
 
-- [ ] **Step 1: Define AdviceVo + domain + mapper**
+- [x] **Step 1: Define AdviceVo + domain + mapper**
 
 ```java
 @Data @Builder @AllArgsConstructor @NoArgsConstructor
@@ -1093,7 +1103,7 @@ public interface OpcInsightAdviceMapper extends BaseMapper<OpcInsightAdvice> {
 }
 ```
 
-- [ ] **Step 2: Write failing AdviceServiceImplTest (8 tests)**
+- [x] **Step 2: Write failing AdviceServiceImplTest (8 tests)**
 
 ```java
 @Test void generate_cacheHit_returnsCached() { /* mapper.findRecent returns 1 record within 7 days → return cached, LLM NOT called */ }
@@ -1106,16 +1116,16 @@ public interface OpcInsightAdviceMapper extends BaseMapper<OpcInsightAdvice> {
 @Test void getById_notFound_throwsOpcException() { /* */ }
 ```
 
-- [ ] **Step 3: Implement AdviceServiceImpl** (cache hit via `mapper.findRecent(companyId, topic, 7 days)`)
+- [x] **Step 3: Implement AdviceServiceImpl** (cache hit via `mapper.findRecent(companyId, topic, 7 days)`)
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run test to verify it passes**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-insight -Dtest=AdviceServiceImplTest
 # Expected: 8 passed
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-insight/
@@ -1130,7 +1140,7 @@ git commit -m "feat(insight): AdviceService (7-day cache + LLM) + 8 tests"
 - Create: 4 controller files (Dashboard, Alert, DailyReport, Advice)
 - Test: `OpcInsightControllerMvcTest.java` (12 tests)
 
-- [ ] **Step 1: Write failing OpcInsightControllerMvcTest (12 tests, 4 endpoints × 3 paths each)**
+- [x] **Step 1: Write failing OpcInsightControllerMvcTest (12 tests, 4 endpoints × 3 paths each)**（部分：12 个测试的覆盖面在，但实现用的是 standalone MockMvc，不是 plan 写的 @WebMvcTest）
 
 ```java
 @WebMvcTest(controllers = {DashboardController.class, AlertController.class,
@@ -1166,14 +1176,14 @@ class OpcInsightControllerMvcTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run test to verify it fails**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-insight -Dtest=OpcInsightControllerMvcTest
 # Expected: FAIL (controllers don't exist)
 ```
 
-- [ ] **Step 3: Create DashboardController**
+- [x] **Step 3: Create DashboardController**
 
 ```java
 @RestController
@@ -1198,7 +1208,7 @@ public class DashboardController {
 }
 ```
 
-- [ ] **Step 4: Create AlertController** (3 endpoints: list / detail / ack)
+- [x] **Step 4: Create AlertController** (3 endpoints: list / detail / ack)
 
 ```java
 @RestController
@@ -1220,7 +1230,7 @@ public class AlertController {
 }
 ```
 
-- [ ] **Step 5: Create DailyReportController** (3 endpoints: list / detail / generate)
+- [x] **Step 5: Create DailyReportController** (3 endpoints: list / detail / generate)
 
 ```java
 @RestController
@@ -1241,16 +1251,16 @@ public class DailyReportController {
 }
 ```
 
-- [ ] **Step 6: Create AdviceController** (3 endpoints: list / detail / regenerate)
+- [x] **Step 6: Create AdviceController** (3 endpoints: list / detail / regenerate)
 
-- [ ] **Step 7: Run test to verify it passes**
+- [ ] **Step 7: Run test to verify it passes**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-insight -Dtest=OpcInsightControllerMvcTest
 # Expected: 12 passed
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-insight/
@@ -1265,7 +1275,7 @@ git commit -m "feat(insight): 4 REST controllers + @WebMvcTest 12 tests"
 - Modify: `springboot3/deploy/nacos/opc-routes.json`
 - Modify: `springboot3/deploy/nacos/opc-common-prod.yml`
 
-- [ ] **Step 1: Add /opc/insight/** route to opc-routes.json**
+- [x] **Step 1: Add /opc/insight/** route to opc-routes.json**（部分：路由最初写进 `opc-routes.json`（commit `6ed2da7`），该文件 2026-10-21 当过时配置被删，现由 `ruoyi-gateway/application.yml` 的 `Path=/opc/insight/**` 承担）
 
 ```json
 {
@@ -1276,15 +1286,15 @@ git commit -m "feat(insight): 4 REST controllers + @WebMvcTest 12 tests"
 }
 ```
 
-- [ ] **Step 2: Verify whitelist in opc-common-prod.yml** (if not already included, add `/opc/insight/**`)
+- [ ] **Step 2: Verify whitelist in opc-common-prod.yml** (if not already included, add `/opc/insight/**`)（未完成：`springboot3/deploy/nacos/opc-common-prod.yml` 里 grep 不到 `/opc/insight/**`，`deploy/nacos/` 下也没有 `opc-insight-*.yml` —— 白名单这条没落地）
 
-- [ ] **Step 3: Verify import via `apply-whitelist.sh` script**
+- [ ] **Step 3: Verify import via `apply-whitelist.sh` script**（未完成：仓库里查不到 Nacos 导入结果 —— `apply-whitelist.sh` 在，但没有 `/opc/insight/**` 的导入记录）
 
 ```bash
 bash springboot3/deploy/nacos/apply-whitelist.sh /opc/insight/**
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add springboot3/deploy/nacos/
@@ -1300,7 +1310,7 @@ git commit -m "feat(deploy): Nacos route + whitelist for /opc/insight/**"
 - Create: `vue3-typescript/src/views/opc/insight/{dashboard,alerts,daily,advice}.vue` (skeletons)
 - Test: `vue3-typescript/src/api/opc/__tests__/insight.spec.ts` (12 tests)
 
-- [ ] **Step 1: Write failing test (12 tests, mirror W19-W25 pattern)**
+- [x] **Step 1: Write failing test (12 tests, mirror W19-W25 pattern)**
 
 ```typescript
 // insight.spec.ts
@@ -1330,7 +1340,7 @@ describe('opc/insight API', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run test to verify it fails**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 cd vue3-typescript
@@ -1338,7 +1348,7 @@ npm run test:run -- insight.spec.ts
 # Expected: FAIL
 ```
 
-- [ ] **Step 3: Implement insight.ts**
+- [x] **Step 3: Implement insight.ts**
 
 ```typescript
 import request from '@/utils/request'
@@ -1379,14 +1389,14 @@ export function regenerateAdvice(topic: string) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run test to verify it passes**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 npm run test:run -- insight.spec.ts
 # Expected: 12 passed
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add vue3-typescript/src/api/opc/insight.ts vue3-typescript/src/api/opc/__tests__/insight.spec.ts
@@ -1401,7 +1411,7 @@ git commit -m "feat(frontend): opc/insight API wrapper + 12 contract tests"
 - Create: 4 .vue files under `src/views/opc/insight/`
 - Test: 4 spec files (dashboard 18, alerts 12, daily 12, advice 10)
 
-- [ ] **Step 1: dashboard.vue (KPI cards + trend charts + alert/advice lists)**
+- [x] **Step 1: dashboard.vue (KPI cards + trend charts + alert/advice lists)**
 
 ```vue
 <template>
@@ -1427,11 +1437,11 @@ import { dashboard } from '@/api/opc/insight'
 </script>
 ```
 
-- [ ] **Step 2-4: Create alerts.vue, daily.vue, advice.vue** (simpler table layouts, follow ResponsiveTable pattern from W5.2)
+- [x] **Step 2-4: Create alerts.vue, daily.vue, advice.vue** (simpler table layouts, follow ResponsiveTable pattern from W5.2)
 
-- [ ] **Step 5: Write 4 SFC test files** (52 tests total, mirror W22 Logo.vue pattern with @vue/test-utils)
+- [x] **Step 5: Write 4 SFC test files** (52 tests total, mirror W22 Logo.vue pattern with @vue/test-utils)
 
-- [ ] **Step 6: Run all + verify**
+- [ ] **Step 6: Run all + verify**（未完成：仓库里查不到测试运行结果）
 
 ```bash
 cd vue3-typescript
@@ -1439,7 +1449,7 @@ npm run test:run
 # Expected: 628+52 = 680 passed
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add vue3-typescript/src/views/opc/insight/ vue3-typescript/src/views/opc/insight/__tests__/
@@ -1453,7 +1463,7 @@ git commit -m "feat(frontend): 4 INSIGHT pages + 52 SFC tests"
 **Files:**
 - Modify: `vue3-typescript/src/router/index.ts`
 
-- [ ] **Step 1: Add 4 routes under /opc/insight/***
+- [x] **Step 1: Add 4 routes under /opc/insight/***（部分：`2be03bc` 当时写进了 `router/index.ts`，2026-10-21 的 `362c308` 把 OPC 硬编码路由收敛掉，改由 sys_menu 2028-2032 动态菜单接管）
 
 ```typescript
 {
@@ -1470,7 +1480,7 @@ git commit -m "feat(frontend): 4 INSIGHT pages + 52 SFC tests"
 }
 ```
 
-- [ ] **Step 2: Verify build**
+- [ ] **Step 2: Verify build**（未完成：仓库里查不到运行结果）
 
 ```bash
 cd vue3-typescript
@@ -1478,7 +1488,7 @@ npm run build
 # Expected: BUILD SUCCESS
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add vue3-typescript/src/router/index.ts
@@ -1494,13 +1504,13 @@ git commit -m "feat(frontend): /opc/insight/* routes + menu"
 - Create: `springboot3/opc-ai-core/src/main/resources/prompts/insight-soft-anomaly-v1.0.txt`
 - Create: `springboot3/opc-ai-core/src/main/resources/prompts/insight-advice-v1.0.txt`
 
-- [ ] **Step 1: Write insight-system-v1.0.txt** (~80 lines, mirror finance-system-v1.0 structure with "小数" agent persona)
+- [x] **Step 1: Write insight-system-v1.0.txt** (~80 lines, mirror finance-system-v1.0 structure with "小数" agent persona)（部分：40 行，plan 写 ~80 行；且仓库里没有任何代码加载这三个 prompt 文件）
 
-- [ ] **Step 2: Write insight-soft-anomaly-v1.0.txt** (LLM 软扫描 prompt, JSON output spec with `[{level: LOW, rule_code, description, confidence}]`)
+- [x] **Step 2: Write insight-soft-anomaly-v1.0.txt** (LLM 软扫描 prompt, JSON output spec with `[{level: LOW, rule_code, description, confidence}]`)
 
-- [ ] **Step 3: Write insight-advice-v1.0.txt** (决策建议 prompt, output spec: topic + markdown advice + 3 action items)
+- [x] **Step 3: Write insight-advice-v1.0.txt** (决策建议 prompt, output spec: topic + markdown advice + 3 action items)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add springboot3/opc-ai-core/src/main/resources/prompts/insight-*.txt
@@ -1516,11 +1526,11 @@ git commit -m "feat(ai): 3 insight prompts (system / soft-anomaly / advice) v1.0
 - Create: `springboot3/opc-ai-core/src/test/java/com/ruoyi/opc/ai/eval/MockInsightLlmProvider.java`
 - Test: `EvalInsightRunnerTest.java`
 
-- [ ] **Step 1: Write 80 eval cases** (4 groups × 20 cases each, or 30+20+15+15 from spec)
+- [x] **Step 1: Write 80 eval cases** (4 groups × 20 cases each, or 30+20+15+15 from spec)
 
-- [ ] **Step 2: Write MockInsightLlmProvider** (regex+rules, 100% mock pass on the 80 cases)
+- [x] **Step 2: Write MockInsightLlmProvider** (regex+rules, 100% mock pass on the 80 cases)
 
-- [ ] **Step 3: Write EvalInsightRunnerTest (4 tests)**
+- [x] **Step 3: Write EvalInsightRunnerTest (4 tests)**
 
 ```java
 @Test void runAll80Cases_100PercentMockPass() { /* */ }
@@ -1529,7 +1539,7 @@ git commit -m "feat(ai): 3 insight prompts (system / soft-anomaly / advice) v1.0
 @Test void adviceQuality_15Cases_15Pass() { /* */ }
 ```
 
-- [ ] **Step 4: Run + commit**
+- [ ] **Step 4: Run + commit**（未完成：仓库里查不到测试运行结果；该 step 的 Commit 部分已由 commit `a2f480c` 完成）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-ai-core -Dtest=EvalInsightRunnerTest
@@ -1545,9 +1555,9 @@ git commit -m "feat(ai): insight-eval v0.1 80 cases + MockInsightLlmProvider"
 - Create: `springboot3/opc-ai-core/src/main/resources/eval/insight-redteam-10.json`
 - Test: `InsightRedteamRunnerTest.java`
 
-- [ ] **Step 1: Write 10 redteam cases** (3 categories: 越权/提示词注入/误报陷阱)
+- [x] **Step 1: Write 10 redteam cases** (3 categories: 越权/提示词注入/误报陷阱)
 
-- [ ] **Step 2: Write InsightRedteamRunnerTest**
+- [x] **Step 2: Write InsightRedteamRunnerTest**
 
 ```java
 @Test void runAll10Cases_asrLe10Percent() {
@@ -1555,9 +1565,9 @@ git commit -m "feat(ai): insight-eval v0.1 80 cases + MockInsightLlmProvider"
 }
 ```
 
-- [ ] **Step 3: Wire PromptGuard v0.3 into insight prompts** (add 8 injection patterns in system prompt, mirror Task #8 pattern)
+- [ ] **Step 3: Wire PromptGuard v0.3 into insight prompts** (add 8 injection patterns in system prompt, mirror Task #8 pattern)（未完成：`insight-system-v1.0.txt` 里只有 4 条泛化护栏、没有 8 条注入正则；仓库里也没有 finance 那样的 `insight-system-safety-v0.3.txt`，而且 opc-insight 直接调 `llmGateway.chat(...)`，没走 `PromptGuard.sanitize()`）
 
-- [ ] **Step 4: Run + commit**
+- [ ] **Step 4: Run + commit**（未完成：仓库里查不到测试运行结果；该 step 的 Commit 部分已由 commit `9dacb7e` 完成）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-ai-core -Dtest=InsightRedteamRunnerTest
@@ -1575,15 +1585,15 @@ git commit -m "feat(ai): insight-redteam 10 cases + PromptGuard v0.3 wiring"
 - Modify: `springboot3/deploy/helm/opc/values-{dev,staging,prod}.yaml`
 - Modify: `springboot3/deploy/docker-compose.yml`
 
-- [ ] **Step 1: Create service-insight.yaml** (mirror other service-*.yaml)
+- [x] **Step 1: Create service-insight.yaml** (mirror other service-*.yaml)
 
-- [ ] **Step 2: Create deployment-insight.yaml**
+- [x] **Step 2: Create deployment-insight.yaml**
 
-- [ ] **Step 3: Add to 3 values files** (replica 1 in dev, 2 in staging, 3 in prod)
+- [x] **Step 3: Add to 3 values files** (replica 1 in dev, 2 in staging, 3 in prod)
 
-- [ ] **Step 4: Add to docker-compose.yml**
+- [x] **Step 4: Add to docker-compose.yml**
 
-- [ ] **Step 5: Verify**
+- [ ] **Step 5: Verify**（未完成：仓库里查不到运行结果）
 
 ```bash
 helm lint springboot3/deploy/helm/opc/
@@ -1591,7 +1601,7 @@ helm template test springboot3/deploy/helm/opc/ -f values-prod.yaml | grep '^kin
 # Expected: prod shows opc-insight resources
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/deploy/helm/opc/ springboot3/deploy/docker-compose.yml
@@ -1602,18 +1612,18 @@ git commit -m "feat(deploy): Helm chart + docker-compose for opc-insight"
 
 ## Task 19: Run live LLM eval (Day 8, optional verification)
 
-- [ ] **Step 1: Run with real LLM**
+- [ ] **Step 1: Run with real LLM**（未完成：仓库里查不到运行结果 —— 仓库自带的 `target/eval-reports/insight-result-v0.1.md` 自己写着 Status: BLOCKED，`-Peval-live` profile 在 `opc-ai-core/pom.xml` 里根本不存在）
 
 ```bash
 mvn test -pl springboot3/ruoyi-modules/opc-ai-core -Dtest=EvalInsightRunnerTest -Peval-live
 # Verify: ≥ 85% pass rate on 80 cases
 ```
 
-- [ ] **Step 2: Save result to `target/eval-reports/insight-result-v0.1.md`**
+- [x] **Step 2: Save result to `target/eval-reports/insight-result-v0.1.md`**（部分：文件在 commit `5674452` 里，但内容是 Status: BLOCKED 的阻塞说明，不是真实 live eval 结果）
 
-- [ ] **Step 3: Iterate prompt if pass rate < 85%** (loop Task 15 + Task 19)
+- [ ] **Step 3: Iterate prompt if pass rate < 85%** (loop Task 15 + Task 19)（未完成：live eval 压根没跑，没有 pass rate 可迭代；3 个 insight prompt 自 `894c3d0` 之后没有再改过）
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add springboot3/opc-ai-core/target/eval-reports/
@@ -1627,7 +1637,7 @@ git commit -m "docs(ai): insight live LLM eval report v0.1 (≥85%)"
 **Files:**
 - Create: `docs/verification/milestones/m4-insight/OPC-M4-VERIFICATION-insight-mvp.md`
 
-- [ ] **Step 1: Write report** covering:
+- [x] **Step 1: Write report** covering:
 - Spec coverage (all 4 capabilities, 218 tests, 7-day delivery)
 - 8-day timeline adherence
 - Helm lint + template verification
@@ -1635,7 +1645,7 @@ git commit -m "docs(ai): insight live LLM eval report v0.1 (≥85%)"
 - Redteam ASR
 - Known issues + follow-up
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/verification/milestones/m4-insight/OPC-M4-VERIFICATION-insight-mvp.md
@@ -1646,9 +1656,9 @@ git commit -m "docs(M4): verification report"
 
 ## Day 8 Final Checkpoint
 
-- [ ] All 218 tests pass (64 backend + 64 frontend + 80 eval + 10 redteam)
-- [ ] `mvn clean install` all modules pass
-- [ ] `npm run build` frontend passes
-- [ ] `helm lint` + `helm template` for all 3 envs passes
-- [ ] `docs/verification/milestones/m4-insight/OPC-M4-VERIFICATION-insight-mvp.md` committed
-- [ ] Git tag `v0.4.0-insight-mvp` (optional)
+- [ ] All 218 tests pass (64 backend + 64 frontend + 80 eval + 10 redteam)（未完成：仓库里查不到测试运行结果；口径也对不上 —— plan 写 64 个后端测试，opc-insight 实际有 81 个 `@Test`）
+- [ ] `mvn clean install` all modules pass（未完成：仓库里查不到运行结果）
+- [ ] `npm run build` frontend passes（未完成：仓库里查不到运行结果）
+- [ ] `helm lint` + `helm template` for all 3 envs passes（未完成：仓库里查不到运行结果）
+- [x] `docs/verification/milestones/m4-insight/OPC-M4-VERIFICATION-insight-mvp.md` committed
+- [ ] Git tag `v0.4.0-insight-mvp` (optional)（未完成：仓库里一个 git tag 都没有，`git tag -l "v0.4.0-insight-mvp"` 返回空）

@@ -1,5 +1,16 @@
 # opc-marketplace P1 (MVP 商业闭环) Implementation Plan
 
+> **审计说明（2026-10-29）**
+>
+> 这份 plan 的 checkbox 已按 `/tmp/opc-plan-audit-rubric.md` 的判据逐条核实过（只读仓库 + git 历史）。
+>
+> - **审计日期**：2026-10-29
+> - **plan 目标一句话**：建 `opc-marketplace` 微服务（端口 9317）P1 MVP —— 作者入驻 + Agent/Module 上架 + 安装（只支持免费 Agent）+ 评价 + 类目 + 标签，配 Vue 3 公开店面。
+> - **结果**：**勾了 66 / 没勾 19 / 共 85**。
+> - **没勾的 19 条卡在哪**：16 条是「跑一次看输出」类（编译 / 单测 / 启动 / smoke / helm lint / 前端 build / health-check / e2e）—— 仓库里没有 CI 记录、没有 surefire 报告、没有测试报告文件，按规约一律不勾；3 条是 Task 14（memory 文件 / MEMORY.md / 最终提交），**确实一件都没做**。
+> - **数字对不上**：plan 标称 **28 endpoints**，P1 实际交付 **29**（6 个 controller），今天仓库里是 **34**（P2 又加了 `SubscriptionController` 5 个）；plan 标称 **60+ 单测**，实际 **172 个 `@Test`**（"60+" 这个下限成立，但验收表写的 "63 全 PASS" 与 Task 8.5 写的 "68 tests pass" 都已严重过期）。
+> - 完整逐条审计见 `docs/superpowers/plans/audit/2026-10-20-opc-marketplace-p1-impl.md`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build `opc-marketplace` micro-service (port 9317) Phase 1 MVP — author onboarding + Agent/Module listing + install (free Agent only) + reviews + categories + tags. Public browsing via Vue 3 storefront. 6 new tables, 6 controllers, 28 endpoints, 60+ unit tests, 12+ e2e tests.
@@ -118,11 +129,11 @@ tmp_e2e/
 - Create: `springboot3/ruoyi-modules/opc-marketplace/src/main/java/com/ruoyi/opc/marketplace/OpcMarketplaceApplication.java`
 - Create: `springboot3/sql/migrations/V20261020__opc_marketplace_schema.sql`
 
-- [ ] **Step 1: Create pom.xml (thin jar pattern, opc-common + ruoyi-job)**
+- [x] **Step 1: Create pom.xml (thin jar pattern, opc-common + ruoyi-job)** （部分：pom 里没有按 plan 加 opc-agent-hub 依赖，也没有 ruoyi-job；pom 内注释说明 Agent 侧全走 Feign HTTP。artifactId=opc-marketplace 与 <phase>none</phase> 都对）
 
 Copy `springboot3/ruoyi-modules/opc-community/pom.xml` exactly. Replace `artifactId`: `opc-community` → `opc-marketplace`. Port in comments → `9317`. Add dependency on `opc-agent-hub` for `OpcAgentInstance` references. Keep `<phase>none</phase>` on spring-boot:repackage (W48 thin jar 经验).
 
-- [ ] **Step 2: Create application.yml (port 9317)**
+- [x] **Step 2: Create application.yml (port 9317)**
 
 ```yaml
 server:
@@ -157,7 +168,7 @@ opc:
     namespace: opc-dev
 ```
 
-- [ ] **Step 3: Create bootstrap.yml (Nacos opc-dev, fail-fast)**
+- [x] **Step 3: Create bootstrap.yml (Nacos opc-dev, fail-fast)**
 
 ```yaml
 spring:
@@ -174,11 +185,11 @@ spring:
         fail-fast: true
 ```
 
-- [ ] **Step 4: Create logback.xml**
+- [x] **Step 4: Create logback.xml**
 
 Copy `opc-community/src/main/resources/logback.xml` exactly. Replace package `com.ruoyi.opc.community` → `com.ruoyi.opc.marketplace`.
 
-- [ ] **Step 5: Create OpcMarketplaceApplication.java**
+- [x] **Step 5: Create OpcMarketplaceApplication.java**
 
 ```java
 package com.ruoyi.opc.marketplace;
@@ -203,7 +214,7 @@ public class OpcMarketplaceApplication {
 }
 ```
 
-- [ ] **Step 6: Create V20261020__opc_marketplace_schema.sql**
+- [x] **Step 6: Create V20261020__opc_marketplace_schema.sql**
 
 6 tables per spec §3.1-3.2 (P1 subset: `mp_author`, `mp_publication`, `mp_install`, `mp_review`, `mp_category`, `mp_tag`). All with `BIGINT id` PK + `create_time/update_time/create_by/update_by/deleted`. Use `utf8mb4_unicode_ci`. Seed 6 categories (3 AGENT: 办公/财务/营销；3 MODULE: 数据/集成/工具) + 10 tags. Use MySQL 8 stored procedure for `IF NOT EXISTS` (W3 经验).
 
@@ -382,7 +393,7 @@ INSERT IGNORE INTO mp_tag (name, category, sort_order) VALUES
 DROP PROCEDURE IF EXISTS create_table_if_not_exists;
 ```
 
-- [ ] **Step 7: Verify SQL runs**
+- [ ] **Step 7: Verify SQL runs** （未完成：仓库里查不到运行结果；旁证是 springboot3/deploy/mysql-initdb.d/17-opc-marketplace-schema.sql 把同一份 DDL 放进 MySQL 容器首启目录，但没有执行记录）
 
 ```bash
 docker exec -i aiopc-mysql mysql --default-character-set=utf8mb4 opc < springboot3/sql/migrations/V20261020__opc_marketplace_schema.sql
@@ -391,7 +402,7 @@ docker exec aiopc-mysql mysql opc -e "SHOW TABLES LIKE 'mp_%';"
 
 Expected: 6 tables listed (`mp_author`, `mp_publication`, `mp_install`, `mp_review`, `mp_category`, `mp_tag`).
 
-- [ ] **Step 8: Verify module compiles**
+- [ ] **Step 8: Verify module compiles** （未完成：仓库里查不到运行结果；旁证是 gitignore 的 target/classes 有 68 个 .class、target/opc-marketplace.jar 存在，但不是仓库文件也没有构建日志）
 
 ```bash
 cd springboot3/ruoyi-modules
@@ -400,7 +411,7 @@ mvn -pl opc-marketplace -am clean compile -DskipTests
 
 Expected: BUILD SUCCESS.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 cd D:/work-ai/0401-lumen-opc
@@ -418,7 +429,7 @@ git commit -m "feat(marketplace): 模块骨架 + 6 表 SQL (P1)"
 - Create: `springboot3/ruoyi-modules/opc-marketplace/src/main/java/com/ruoyi/opc/marketplace/enums/{ProductType,PublicationStatus,AuthorLevel}.java`
 - Create: `springboot3/ruoyi-modules/opc-marketplace/src/main/resources/mapper/marketplace/{MpAuthorMapper,MpPublicationMapper,MpInstallMapper,MpReviewMapper,MpCategoryMapper,MpTagMapper}.xml`
 
-- [ ] **Step 1: Create enums**
+- [x] **Step 1: Create enums**
 
 `ProductType.java`:
 ```java
@@ -447,7 +458,7 @@ public enum AuthorLevel {
 }
 ```
 
-- [ ] **Step 2: Create 6 domain entities**
+- [x] **Step 2: Create 6 domain entities**
 
 `MpAuthor.java`:
 ```java
@@ -635,7 +646,7 @@ public class MpTag implements Serializable {
 }
 ```
 
-- [ ] **Step 3: Create 6 mapper interfaces**
+- [x] **Step 3: Create 6 mapper interfaces**
 
 `MpAuthorMapper.java`:
 ```java
@@ -773,7 +784,7 @@ public interface MpTagMapper {
 }
 ```
 
-- [ ] **Step 4: Create 6 mapper XML files (skeleton with required statements)**
+- [x] **Step 4: Create 6 mapper XML files (skeleton with required statements)**
 
 Each XML has the same structure. `MpPublicationMapper.xml` (most complex):
 ```xml
@@ -920,7 +931,7 @@ For other 5 XMLs, follow the same pattern. Truncated patterns:
 
 (Generate these 5 XMLs by mirroring the structure above. Each is 50-100 lines.)
 
-- [ ] **Step 5: Verify compile**
+- [ ] **Step 5: Verify compile** （未完成：仓库里查不到运行结果）
 
 ```bash
 cd springboot3/ruoyi-modules
@@ -929,7 +940,7 @@ mvn -pl opc-marketplace -am clean compile -DskipTests
 
 Expected: BUILD SUCCESS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-marketplace/src/main/java/com/ruoyi/opc/marketplace/{domain,mapper,enums}
@@ -944,7 +955,7 @@ git commit -m "feat(marketplace): 6 实体 + 6 mapper + 3 枚举 (P1)"
 **Files:**
 - Create: `springboot3/ruoyi-modules/opc-marketplace/src/main/java/com/ruoyi/opc/marketplace/dto/{PublicationCreateRequest,PublicationEditRequest,AuthorApplyRequest,ReviewCreateRequest,ReviewUpdateRequest,PublicationListQuery,AuthorListQuery,PublicationVO,AuthorVO,ReviewVO}.java`
 
-- [ ] **Step 1: Create request DTOs**
+- [x] **Step 1: Create request DTOs**
 
 `PublicationCreateRequest.java`:
 ```java
@@ -1122,7 +1133,7 @@ public class AuthorListQuery {
 }
 ```
 
-- [ ] **Step 2: Create response VOs**
+- [x] **Step 2: Create response VOs**
 
 `PublicationVO.java`:
 ```java
@@ -1218,7 +1229,7 @@ public class ReviewVO implements Serializable {
 }
 ```
 
-- [ ] **Step 3: Verify compile**
+- [ ] **Step 3: Verify compile** （未完成：仓库里查不到运行结果）
 
 ```bash
 cd springboot3/ruoyi-modules
@@ -1227,7 +1238,7 @@ mvn -pl opc-marketplace -am clean compile -DskipTests
 
 Expected: BUILD SUCCESS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-marketplace/src/main/java/com/ruoyi/opc/marketplace/dto
@@ -1244,7 +1255,7 @@ git commit -m "feat(marketplace): 10 DTOs (P1)"
 - Create: `springboot3/ruoyi-modules/opc-marketplace/src/main/java/com/ruoyi/opc/marketplace/controller/AuthorController.java`
 - Test: `springboot3/ruoyi-modules/opc-marketplace/src/test/java/com/ruoyi/opc/marketplace/controller/AuthorControllerTest.java`
 
-- [ ] **Step 1: Write AuthorService interface**
+- [x] **Step 1: Write AuthorService interface** （部分：apply() 实际签名是 3 参 apply(req, companyId, operatorId)；plan 代码块写的 2 参 apply(req, operatorId) 已过期——authorCompanyId 改从登录态取，见 Task 3 的 DTO 注释）
 
 ```java
 package com.ruoyi.opc.marketplace.service;
@@ -1279,7 +1290,7 @@ public interface AuthorService {
 }
 ```
 
-- [ ] **Step 2: Write AuthorServiceImpl**
+- [x] **Step 2: Write AuthorServiceImpl**
 
 ```java
 package com.ruoyi.opc.marketplace.service.impl;
@@ -1401,7 +1412,7 @@ public class AuthorServiceImpl implements AuthorService {
 }
 ```
 
-- [ ] **Step 3: Write AuthorController**
+- [x] **Step 3: Write AuthorController**
 
 ```java
 package com.ruoyi.opc.marketplace.controller;
@@ -1471,7 +1482,7 @@ public class AuthorController {
 }
 ```
 
-- [ ] **Step 4: Write failing test**
+- [x] **Step 4: Write failing test**
 
 ```java
 package com.ruoyi.opc.marketplace.controller;
@@ -1565,7 +1576,7 @@ class AuthorControllerTest {
 }
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [ ] **Step 5: Run test to verify it passes** （未完成：仓库里查不到运行结果；target/ 下没有 surefire-reports，也没有 CI 记录）
 
 ```bash
 cd springboot3/ruoyi-modules
@@ -1574,7 +1585,7 @@ mvn -pl opc-marketplace test -Dtest=AuthorControllerTest
 
 Expected: 3 tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-marketplace/src/main/java/com/ruoyi/opc/marketplace/{service/AuthorService.java,service/impl/AuthorServiceImpl.java,controller/AuthorController.java}
@@ -1593,7 +1604,7 @@ git commit -m "feat(marketplace): AuthorService + Controller + 3 tests (P1)"
 - Test: `.../test/.../PublicationControllerTest.java` (8 tests)
 - Test: `.../test/.../PublicationServiceTest.java` (8 tests)
 
-- [ ] **Step 1: Write PublicationService interface**
+- [x] **Step 1: Write PublicationService interface**
 
 ```java
 package com.ruoyi.opc.marketplace.service;
@@ -1639,7 +1650,7 @@ public interface PublicationService {
 }
 ```
 
-- [ ] **Step 2: Write PublicationServiceImpl**
+- [x] **Step 2: Write PublicationServiceImpl**
 
 ```java
 package com.ruoyi.opc.marketplace.service.impl;
@@ -1982,7 +1993,7 @@ public class PublicationServiceImpl implements PublicationService {
 }
 ```
 
-- [ ] **Step 3: Write PublicationController**
+- [x] **Step 3: Write PublicationController**
 
 ```java
 package com.ruoyi.opc.marketplace.controller;
@@ -2118,7 +2129,7 @@ public class PublicationController {
 }
 ```
 
-- [ ] **Step 4: Write 8 unit tests for PublicationController**
+- [x] **Step 4: Write 8 unit tests for PublicationController** （部分：plan 列的 11 个用例里 10 个在，get_returnsVO 改名成 get_usesPublishedOnlyLookup；该文件实际 28 个 @Test）
 
 Pattern: 正常 / 鉴权失败 / 业务异常三类. 复制 AuthorControllerTest 的 `@WebMvcTest` + `MockedStatic<SecurityUtils>` 模式。
 
@@ -2137,7 +2148,7 @@ Test cases:
 
 (Generate all 8 tests by mirroring AuthorControllerTest structure. Each test 15-30 lines.)
 
-- [ ] **Step 5: Write 10 unit tests for PublicationService**
+- [x] **Step 5: Write 10 unit tests for PublicationService** （部分：plan 列的 10 个用例里 9 个在，edit_success 改名成 edit_success_onOwnDraft；该文件实际 42 个 @Test）
 
 Test cases using JUnit5 + Mockito (mock all mappers):
 - `create_success_AGENT`
@@ -2153,7 +2164,7 @@ Test cases using JUnit5 + Mockito (mock all mappers):
 
 (Generate these 10 tests by following opc-community W52 `ModuleServiceImplTest` pattern. Each test 20-40 lines.)
 
-- [ ] **Step 6: Run all publication tests**
+- [ ] **Step 6: Run all publication tests** （未完成：仓库里查不到运行结果；target/ 下没有 surefire-reports，也没有 CI 记录）
 
 ```bash
 cd springboot3/ruoyi-modules
@@ -2162,7 +2173,7 @@ mvn -pl opc-marketplace test -Dtest='PublicationControllerTest,PublicationServic
 
 Expected: 18 tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-marketplace/src/main/java/com/ruoyi/opc/marketplace/{service/PublicationService.java,service/impl/PublicationServiceImpl.java,controller/PublicationController.java}
@@ -2204,7 +2215,7 @@ git commit -m "feat(marketplace): PublicationService + Controller + 18 tests (P1
 - Create: `.../controller/InstallController.java`
 - Test: `.../test/.../InstallControllerTest.java` (8 tests)
 
-- [ ] **Step 1: Write AgentHubClient Feign interface**
+- [x] **Step 1: Write AgentHubClient Feign interface** （部分：返回类型是 R<Map<String,Object>>、用 contextId 而非 name、body 里没有 from-source 头；plan 的写法后来在 e701ca7 修过）
 
 ```java
 package com.ruoyi.opc.marketplace.feign;
@@ -2251,7 +2262,7 @@ public class AgentHubClientFallback implements FallbackFactory<AgentHubClient> {
 }
 ```
 
-- [ ] **Step 2: Write InstallService interface**
+- [x] **Step 2: Write InstallService interface**
 
 ```java
 package com.ruoyi.opc.marketplace.service;
@@ -2269,7 +2280,7 @@ public interface InstallService {
 }
 ```
 
-- [ ] **Step 3: Write InstallServiceImpl**
+- [x] **Step 3: Write InstallServiceImpl**
 
 ```java
 package com.ruoyi.opc.marketplace.service.impl;
@@ -2383,7 +2394,7 @@ public class InstallServiceImpl implements InstallService {
 }
 ```
 
-- [ ] **Step 4: Write InstallController**
+- [x] **Step 4: Write InstallController**
 
 ```java
 package com.ruoyi.opc.marketplace.controller;
@@ -2446,7 +2457,7 @@ public class InstallController {
 }
 ```
 
-- [ ] **Step 5: Write 8 unit tests for InstallController**
+- [x] **Step 5: Write 8 unit tests for InstallController**
 
 Tests using `@WebMvcTest` + `MockedStatic<SecurityUtils>` + `@MockBean InstallService`:
 - `install_returnsOk`
@@ -2460,7 +2471,7 @@ Tests using `@WebMvcTest` + `MockedStatic<SecurityUtils>` + `@MockBean InstallSe
 
 (Generate by mirroring AuthorControllerTest. Each test 15-25 lines.)
 
-- [ ] **Step 6: Run all install tests**
+- [ ] **Step 6: Run all install tests** （未完成：仓库里查不到运行结果；target/ 下没有 surefire-reports，也没有 CI 记录）
 
 ```bash
 cd springboot3/ruoyi-modules
@@ -2469,7 +2480,7 @@ mvn -pl opc-marketplace test -Dtest=InstallControllerTest
 
 Expected: 8 tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-marketplace/src/main/java/com/ruoyi/opc/marketplace/{feign,service/InstallService.java,service/impl/InstallServiceImpl.java,controller/InstallController.java}
@@ -2487,7 +2498,7 @@ git commit -m "feat(marketplace): InstallService + Feign + Controller + 8 tests 
 - Create: `.../controller/ReviewController.java`
 - Test: `.../test/.../ReviewControllerTest.java` (8 tests)
 
-- [ ] **Step 1: Write ReviewService interface**
+- [x] **Step 1: Write ReviewService interface**
 
 ```java
 package com.ruoyi.opc.marketplace.service;
@@ -2506,7 +2517,7 @@ public interface ReviewService {
 }
 ```
 
-- [ ] **Step 2: Write ReviewServiceImpl**
+- [x] **Step 2: Write ReviewServiceImpl**
 
 ```java
 package com.ruoyi.opc.marketplace.service.impl;
@@ -2613,7 +2624,7 @@ public class ReviewServiceImpl implements ReviewService {
 }
 ```
 
-- [ ] **Step 3: Write ReviewController**
+- [x] **Step 3: Write ReviewController**
 
 ```java
 package com.ruoyi.opc.marketplace.controller;
@@ -2668,7 +2679,7 @@ public class ReviewController {
 }
 ```
 
-- [ ] **Step 4: Write 8 unit tests**
+- [x] **Step 4: Write 8 unit tests**
 
 Tests:
 - `create_returnsReview`
@@ -2682,7 +2693,7 @@ Tests:
 
 (Generate by mirroring AuthorControllerTest. Each 15-25 lines.)
 
-- [ ] **Step 5: Run tests**
+- [ ] **Step 5: Run tests** （未完成：仓库里查不到运行结果；target/ 下没有 surefire-reports，也没有 CI 记录）
 
 ```bash
 mvn -pl opc-marketplace test -Dtest=ReviewControllerTest
@@ -2690,7 +2701,7 @@ mvn -pl opc-marketplace test -Dtest=ReviewControllerTest
 
 Expected: 8 tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-marketplace/src/main/java/com/ruoyi/opc/marketplace/{service/ReviewService.java,service/impl/ReviewServiceImpl.java,controller/ReviewController.java}
@@ -2706,7 +2717,7 @@ git commit -m "feat(marketplace): ReviewService + Controller + 8 tests (P1)"
 - Create: `.../service/CategoryService.java` + impl + `CategoryController.java` (5 tests)
 - Create: `.../service/TagService.java` + impl + `TagController.java` (4 tests)
 
-- [ ] **Step 1: Write CategoryService interface + impl**
+- [x] **Step 1: Write CategoryService interface + impl**
 
 ```java
 public interface CategoryService {
@@ -2735,7 +2746,7 @@ public class CategoryServiceImpl implements CategoryService {
 }
 ```
 
-- [ ] **Step 2: Write CategoryController**
+- [x] **Step 2: Write CategoryController**
 
 ```java
 @RestController
@@ -2762,7 +2773,7 @@ public class CategoryController {
 }
 ```
 
-- [ ] **Step 3: Write TagService interface + impl**
+- [x] **Step 3: Write TagService interface + impl**
 
 ```java
 public interface TagService {
@@ -2782,7 +2793,7 @@ public class TagServiceImpl implements TagService {
 }
 ```
 
-- [ ] **Step 4: Write TagController**
+- [x] **Step 4: Write TagController**
 
 ```java
 @RestController
@@ -2798,7 +2809,7 @@ public class TagController {
 }
 ```
 
-- [ ] **Step 5: Write 5 + 4 unit tests**
+- [x] **Step 5: Write 5 + 4 unit tests**
 
 CategoryControllerTest (5):
 - `tree_returnsList`
@@ -2813,7 +2824,7 @@ TagControllerTest (4):
 - `list_empty_returnsOk`
 - (catch-all error log not tested)
 
-- [ ] **Step 6: Run tests**
+- [ ] **Step 6: Run tests** （未完成：仓库里查不到运行结果；target/ 下没有 surefire-reports，也没有 CI 记录）
 
 ```bash
 mvn -pl opc-marketplace test -Dtest='CategoryControllerTest,TagControllerTest'
@@ -2821,7 +2832,7 @@ mvn -pl opc-marketplace test -Dtest='CategoryControllerTest,TagControllerTest'
 
 Expected: 9 tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-marketplace/src/main/java/com/ruoyi/opc/marketplace/{service/CategoryService.java,service/TagService.java,service/impl/CategoryServiceImpl.java,service/impl/TagServiceImpl.java,controller/CategoryController.java,controller/TagController.java}
@@ -2839,7 +2850,7 @@ git commit -m "feat(marketplace): Category + Tag + Controllers + 9 tests (P1)"
 - Test: `.../test/.../service/impl/ReviewServiceTest.java` (4 tests)
 - Test: `.../test/.../controller/AuthorControllerTest.java` (扩充 5 tests)
 
-- [ ] **Step 1: Write AuthorServiceTest (5 tests)**
+- [x] **Step 1: Write AuthorServiceTest (5 tests)**
 
 ```java
 package com.ruoyi.opc.marketplace.service.impl;
@@ -2930,7 +2941,7 @@ class AuthorServiceTest {
 }
 ```
 
-- [ ] **Step 2: Write InstallServiceTest (5 tests)**
+- [x] **Step 2: Write InstallServiceTest (5 tests)**
 
 ```java
 package com.ruoyi.opc.marketplace.service.impl;
@@ -3050,7 +3061,7 @@ class InstallServiceTest {
 }
 ```
 
-- [ ] **Step 3: Write ReviewServiceTest (4 tests)**
+- [x] **Step 3: Write ReviewServiceTest (4 tests)**
 
 ```java
 package com.ruoyi.opc.marketplace.service.impl;
@@ -3130,7 +3141,7 @@ class ReviewServiceTest {
 }
 ```
 
-- [ ] **Step 4: Add 5 more tests to AuthorControllerTest**
+- [x] **Step 4: Add 5 more tests to AuthorControllerTest** （部分：plan 列的 8 个用例里 7 个在，me_returnsNull_whenNotAuthor 改名成 me_returnsNull_whenNotAuthorYet）
 
 Append to existing `AuthorControllerTest.java`:
 
@@ -3247,7 +3258,7 @@ Append to existing `AuthorControllerTest.java`:
     }
 ```
 
-- [ ] **Step 5: Run all tests**
+- [ ] **Step 5: Run all tests** （未完成：仓库里查不到运行结果；target/ 下没有 surefire-reports，也没有 CI 记录）
 
 ```bash
 cd springboot3/ruoyi-modules
@@ -3256,7 +3267,7 @@ mvn -pl opc-marketplace test
 
 Expected: 68 tests pass (63 之前 + 2 PublicationService 扩充 [getPublishedById_404_whenMissing, listByAuthorVOs_batchesAuthorAndCategory] + 3 PublicationController 扩充 [myGet_returnsVO, myGet_403_whenNotOwner, myList_returnsVOs]).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-marketplace/src/test
@@ -3271,7 +3282,7 @@ git commit -m "test(marketplace): 5 more tests → 68 total (P1)"
 - Modify: `springboot3/ruoyi-modules/opc-marketplace/src/main/java/com/ruoyi/opc/marketplace/OpcMarketplaceApplication.java`
 - Create: `springboot3/ruoyi-modules/opc-marketplace/Dockerfile`
 
-- [ ] **Step 1: Verify application starts locally**
+- [ ] **Step 1: Verify application starts locally** （未完成：仓库里查不到运行结果；docs/verification/week-80/OPC-W80-VERIFICATION-opc-marketplace.md §0.2 明确写「未部署」）
 
 ```bash
 cd springboot3/ruoyi-modules
@@ -3282,7 +3293,7 @@ java -cp "ruoyi-modules/opc-marketplace/target/opc-marketplace.jar:ruoyi-modules
 
 Expected: "OPC MARKETPLACE 启动成功" printed, Nacos connected, port 9317 listening.
 
-- [ ] **Step 2: Smoke-test endpoints**
+- [ ] **Step 2: Smoke-test endpoints** （未完成：仓库里查不到运行结果；同一份验证报告 §0.2 明确写「未部署」/「未跑 e2e」）
 
 ```bash
 # 健康
@@ -3295,7 +3306,7 @@ curl -s http://localhost:9317/opc/marketplace/tag/list | python -m json.tool
 
 Expected: all return `code: 200`.
 
-- [ ] **Step 3: Create thin-jar Dockerfile**
+- [x] **Step 3: Create thin-jar Dockerfile** （部分：用 eclipse-temurin:17-jre-jammy 而非 plan 写的 :21-jre-alpine，COPY 路径也按本仓库实际布局改了；thin jar 启动 + EXPOSE 9317 都在）
 
 ```dockerfile
 FROM eclipse-temurin:21-jre-alpine
@@ -3309,7 +3320,7 @@ ENTRYPOINT ["java", "-cp", "opc-marketplace.jar:dependency/*", \
   "com.ruoyi.opc.marketplace.OpcMarketplaceApplication"]
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-marketplace/Dockerfile
@@ -3328,7 +3339,7 @@ git commit -m "feat(marketplace): Dockerfile thin-jar (P1)"
 - Modify: `springboot3/deploy/helm/opc/values.yaml` (add `services.marketplace`)
 - Modify: `springboot3/deploy/docker-compose.yml` (add `aiopc-marketplace`)
 
-- [ ] **Step 1: Add Gateway route + whitelist**
+- [x] **Step 1: Add Gateway route + whitelist** （部分：实际白名单用 `GET:` method 前缀收紧，且 category 详情从 `**` 收成 `{id:[0-9]+}`；plan 列的路径全部在，另外多了 `GET:/opc/marketplace/category/{id:[0-9]+}`）
 
 In `application.yml` under `spring.cloud.gateway.server.webflux.routes`, add:
 ```yaml
@@ -3363,7 +3374,7 @@ In `opc.security.whitelist` list, add public GET paths:
 
 (POST/PUT/DELETE 不加白名单，需要 token)
 
-- [ ] **Step 2: Create Nacos config**
+- [x] **Step 2: Create Nacos config**
 
 `opc-marketplace-dev.yml`（**沿用 opc-community-dev.yml 的 dynamic-datasource 模式**，不要用单 datasource，否则项目里的 dynamic-datasource starter 兼容性问题）:
 
@@ -3416,7 +3427,7 @@ cd springboot3/deploy/nacos
 python import-dev.sh opc-marketplace-dev.yml opc-dev
 ```
 
-- [ ] **Step 3: Create Helm deployment + service**
+- [x] **Step 3: Create Helm deployment + service**
 
 `deployment-marketplace.yaml`:
 ```yaml
@@ -3490,7 +3501,7 @@ spec:
 {{- end }}
 ```
 
-- [ ] **Step 4: Update values.yaml**
+- [x] **Step 4: Update values.yaml**
 
 In `services:` section, add:
 ```yaml
@@ -3510,7 +3521,7 @@ marketplace:
       memory: 1Gi
 ```
 
-- [ ] **Step 5: Update docker-compose.yml**
+- [x] **Step 5: Update docker-compose.yml**
 
 Add service:
 ```yaml
@@ -3531,7 +3542,7 @@ Add service:
     restart: unless-stopped
 ```
 
-- [ ] **Step 6: Verify Helm**
+- [ ] **Step 6: Verify Helm** （未完成：仓库里查不到运行结果；plan 期望的 dev=18/staging=28/prod=29 已过期，同一份验证报告写的是 dev 31/staging 48/prod 50）
 
 ```bash
 helm lint springboot3/deploy/helm/opc
@@ -3540,7 +3551,7 @@ helm template test springboot3/deploy/helm/opc | grep '^kind:' | sort | uniq -c
 
 Expected: dev=18 / staging=28 / prod=29 (per MEMORY convention).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add springboot3/ruoyi-gateway springboot3/deploy/nacos/opc-marketplace-dev.yml springboot3/deploy/helm/opc springboot3/deploy/docker-compose.yml
@@ -3559,7 +3570,7 @@ git commit -m "feat(marketplace): Gateway + Nacos + Helm + Compose (P1)"
 - Create: `RuoYi-Cloud-Vue3-typescript/src/views/opc/marketplace/author-apply.vue`
 - Modify: `RuoYi-Cloud-Vue3-typescript/src/router/index.ts` (add 4 routes)
 
-- [ ] **Step 1: Create API module**
+- [x] **Step 1: Create API module** （部分：文件在 `vue3-typescript/src/api/opc/marketplace.ts`，不在 plan 写的 `RuoYi-Cloud-Vue3-typescript/` 下——那是开发者本机路径名）
 
 `marketplace.ts`:
 ```typescript
@@ -3666,7 +3677,7 @@ export const listTags = (category?: string) =>
   request({ url: '/opc/marketplace/tag/list', method: 'get', params: { category } })
 ```
 
-- [ ] **Step 2: Create Marketplace.vue (公开首页)**
+- [x] **Step 2: Create Marketplace.vue (公开首页)**
 
 `index.vue` — 复制 `views/opc/community/index.vue` (W52 Market.vue) 的 hero + filter + grid 模式，**改用 marketplace API**。结构：
 - 顶部 hero + stats
@@ -3677,7 +3688,7 @@ export const listTags = (category?: string) =>
 
 (完整代码 200-300 行，按 `views/opc/community/index.vue` 模式生成)
 
-- [ ] **Step 3: Create AgentDetail.vue**
+- [x] **Step 3: Create AgentDetail.vue**
 
 `detail.vue` — 详情页：
 - 顶部：图标 + 名称 + 评分 + 安装按钮
@@ -3686,7 +3697,7 @@ export const listTags = (category?: string) =>
 
 (200-300 行，复制 `views/opc/community/detail.vue` 模式)
 
-- [ ] **Step 4: Create AuthorCenter.vue + AuthorApply.vue**
+- [x] **Step 4: Create AuthorCenter.vue + AuthorApply.vue**
 
 `author-center.vue`:
 - 顶部：作者信息 (avatar/name/total agents)
@@ -3704,7 +3715,7 @@ export const listTags = (category?: string) =>
 
 (每个 150-200 行)
 
-- [ ] **Step 5: Add routes**
+- [x] **Step 5: Add routes** （部分：4 条路由里只有 `detail/:id` 在 `router/index.ts`，另外 3 条走 sys_menu（`V20261022__opc_sys_menus.sql`），是 08305b8「Task 11 漏掉菜单配置」补的；`router/index.spec.ts` 断言 4 条都能 resolve）
 
 In `router/index.ts`, add:
 ```typescript
@@ -3721,7 +3732,7 @@ In `router/index.ts`, add:
 }
 ```
 
-- [ ] **Step 6: Verify frontend builds**
+- [ ] **Step 6: Verify frontend builds** （未完成：仓库里查不到运行结果；旁证是 gitignore 的 `vue3-typescript/dist/static/js/marketplace-DCPNsj__.js` 存在）
 
 ```bash
 cd RuoYi-Cloud-Vue3-typescript
@@ -3730,7 +3741,7 @@ npm run build
 
 Expected: BUILD SUCCESS, dist generated.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add RuoYi-Cloud-Vue3-typescript/src/{api/opc/marketplace.ts,views/opc/marketplace,router/index.ts}
@@ -3746,7 +3757,7 @@ git commit -m "feat(marketplace): 4 Vue pages + API + routes (P1)"
 - Create: `tmp_e2e/e2e_marketplace.py`
 - Create: `docs/verification/week-80/OPC-W80-VERIFICATION-opc-marketplace.md`
 
-- [ ] **Step 1: Add 21 marketplace health endpoints to health-check.sh**
+- [x] **Step 1: Add 21 marketplace health endpoints to health-check.sh** （部分：plan 说加 21 个端点到 `HEALTH_ENDPOINTS` 数组，但该数组在 health-check.sh 里根本不存在；实现改成了 `check_marketplace()` 挂 step 11，脚本自己的表头写「opc-marketplace 10 项健康检查」，另有 step 19/20 两段 marketplace 检查）
 
 Append to the existing endpoints list:
 ```bash
@@ -3761,7 +3772,7 @@ HEALTH_ENDPOINTS+=(
 )  # 21 endpoints total
 ```
 
-- [ ] **Step 2: Run health check**
+- [ ] **Step 2: Run health check** （未完成：仓库里查不到运行结果；验证报告 §4.2 明确写 health-check.sh 从未执行）
 
 ```bash
 bash springboot3/deploy/scripts/health-check.sh
@@ -3769,7 +3780,7 @@ bash springboot3/deploy/scripts/health-check.sh
 
 Expected: 43 PASS (22 旧 + 21 新).
 
-- [ ] **Step 3: Write e2e_marketplace.py**
+- [x] **Step 3: Write e2e_marketplace.py** （部分：脚本实际有 12 步外加一个 Step 4.5「DRAFT 不被公开端点读到」；plan 的 e2e 从未运行过）
 
 12-step E2E (沿用 Playwright + urllib 登录模式):
 
@@ -3905,7 +3916,7 @@ if __name__ == "__main__":
     run()
 ```
 
-- [ ] **Step 4: Run e2e**
+- [ ] **Step 4: Run e2e** （未完成：仓库里查不到运行结果；验证报告 §4.1 明确写 e2e 从未运行）
 
 ```bash
 python tmp_e2e/e2e_marketplace.py
@@ -3913,7 +3924,7 @@ python tmp_e2e/e2e_marketplace.py
 
 Expected: 12 steps print `code=200` (or accepted alternates like 409 for idempotent dup), end with "E2E complete!".
 
-- [ ] **Step 5: Write VERIFICATION report**
+- [x] **Step 5: Write VERIFICATION report**
 
 `docs/verification/week-80/OPC-W80-VERIFICATION-opc-marketplace.md` — follow W72/W73/W75 verification template (沿用 W72 opc-erp 验证报告结构):
 - §1 交付物 (9317 + 6 表 + 28 endpoint + 60 单测 + 12 e2e)
@@ -3922,7 +3933,7 @@ Expected: 12 steps print `code=200` (or accepted alternates like 409 for idempot
 - §4 Helm lint pass + kinds 数
 - §5 Nacos 配置 + 文档
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/deploy/scripts/health-check.sh tmp_e2e/e2e_marketplace.py docs/verification/week-80/OPC-W80-VERIFICATION-opc-marketplace.md
@@ -3937,7 +3948,7 @@ git commit -m "feat(marketplace): health-check + e2e + verification report (P1)"
 - Create: `C:\Users\wma19\.claude\projects\D--work-ai-0401-lumen-opc\memory\opc-marketplace-w80.md`
 - Modify: `C:\Users\wma19\.claude\projects\D--work-ai-0401-lumen-opc\memory\MEMORY.md` (add line)
 
-- [ ] **Step 1: Write memory file**
+- [ ] **Step 1: Write memory file** （未完成：memory 目录 /root/.claude/projects/-www-Lumen-AI-OPC/memory/ 下没有 opc-marketplace-w80.md）
 
 ```markdown
 ---
@@ -3990,14 +4001,14 @@ metadata:
 - feat(marketplace): P1 MVP 商业闭环
 ```
 
-- [ ] **Step 2: Update MEMORY.md**
+- [ ] **Step 2: Update MEMORY.md** （未完成：/root/.claude/projects/-www-Lumen-AI-OPC/memory/MEMORY.md 里没有 marketplace 相关的行）
 
 Add line:
 ```markdown
 - [opc-marketplace W80 P1](opc-marketplace-w80.md) — 智能体市场 MVP, 端口 9317, 6 表/28 endpoint/60+ 单测/12+ e2e
 ```
 
-- [ ] **Step 3: Final commit + push**
+- [ ] **Step 3: Final commit + push** （未完成：git log --all --grep=marketplace 里没有 "docs(memory): opc-marketplace W80 P1 记忆" 这个提交）
 
 ```bash
 cd D:/work-ai/0401-lumen-opc

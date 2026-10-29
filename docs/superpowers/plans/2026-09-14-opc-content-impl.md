@@ -1,5 +1,21 @@
 # opc-content (端口 9325) 实施计划
 
+## 审计说明（2026-10-29）
+
+- **审计对象**：本 plan（`docs/superpowers/plans/2026-09-14-opc-content-impl.md`）
+- **plan 目标**：交付 opc-content 微服务（端口 9325），含 4 个 LLM scene 接入 opc-ai-core + 抖音 sandbox OAuth/上传/发布，4 张表 + 22 REST 端点 + 6 Vue 页面 + Helm + docker-compose
+- **审计方式**：只读仓库与 git 历史，逐条核实 78 个 checkbox。判据：文件在且内容对得上 / 代码里 grep 得到 / 测试文件与测试方法在 / 提交在 plan 时间窗（2026-09-14 前后）内
+- **结果**：**勾了 61 / 没勾 17 / 共 78**
+- **没勾的 17 个主要卡在哪**：13 个是「跑一次看输出」的验证类步骤（mvn compile ×7 / 启动器 smoke / mvn test / tsc --noEmit / vite build / helm lint / health-check），仓库里查不到运行结果，按规矩一律不勾；4 个是东西真的没做（① `DouyinClientTest.java` + `MockPlatformClientTest.java` 两个测试文件从没写 ② `generate.vue` 生成页没做 ③ router 里 plan 写的 6 条子路由没加 ④ 抖音 secret 从未加密 —— nacos 里躺的是明文占位符 `dev_client_secret_placeholder`）
+- **声称做了但其实没有的（重点）**：
+  - **「22 REST 端点」是虚的 —— 实际 20 个**。后端 3 个 controller 一共 20 个 `@*Mapping`（Script 11 + Platform 5 + Publish 4），前端 `content.ts` 20 个 API 函数，文件头注释自己写的是「11 + 5 + 4 = 20 endpoints」，仓库自带的 `docs/verification/week-74/OPC-W74-VERIFICATION-opc-content.md` §3 也只列了 20 条。plan 里连自己的加法都对不上（11+5+4+1=21≠22）
+  - **「抖音 sandbox 真实 OAuth/上传/发布」没真打通**。`DouyinClient` 写了真的 HTTP 调用（`/oauth/access_token/`、`/oauth/refresh_token/`、`/video/upload/`、`/video/create/`），但 client_key/client_secret 是占位符 `dev_client_key_placeholder`，且 4 个方法每个 catch 住异常就降级到 `MockPlatformClient`；`application.yml` 与 nacos 里都是 `platform.mock: true`。也就是说这套代码**在没有任何真实凭据的情况下不可能成功过一次**
+  - **health-check 里有条恒失败的检查**：`check_content()` 的 10.6 查 `/opc/content/script/recent`，这个 handler 从来没存在过（git 历史里 opc-content 的 java 侧从未出现过 `/recent` 映射），而 `nok` 会让 `health-check.sh` 整体 `exit 1`
+  - **Task 11 的「6 条路由」没做**：router/index.ts 只加了 2 条隐藏详情路由，4 个菜单页是后来（2026-10-21，commit 08305b8）用 sys_menu 数据库菜单补的
+  - **publish() 的第 5 步「发通知」没做**：`PublishServiceImpl` 没有注入 NotificationGateway，只留了一行 `// 7) TODO Task 8`
+- **其他偏差（不影响勾否，但别被 plan 骗了）**：前端目录实际叫 `vue3-typescript/`（不是 plan 写的 `RuoYi-Cloud-Vue3-typescript/`）；schema 文件叫 `16-opc-content-schema.sql`（不是 `11-`）；Dockerfile 叫 `Dockerfile`（不是 `Dockerfile.opc-content`）；6 个 Vue 页的实际构成是 dashboard / script/{list,detail,adapt} / platform-account / publish（plan 写的 `generate.vue` 换成了 `script/adapt.vue`，生成功能做成了脚本列表页里的弹窗）；seed 数据是 3 脚本 + 1 账号 + 1 发布 + 1 适配（plan 写 7+2+2）
+- **真做了的部分**：4 Domain + 4 Enum + 7 DTO + 4 Mapper + 4 XML、4 个 Service impl、3 个 Controller、4 个 LLM 场景（`content_short_drama` / `content_video_script` / `content_article` / `content_platform_adapter`，走 Feign → opc-ai-core `POST /opc/llm/chat`）、3 个 Feign 网关 + 3 个 FallbackFactory、平台客户端抽象 + Douyin + Mock、前端 API 模块 + 6 页、4 张表 DDL、Nacos 配置、Dockerfile + compose、Helm chart、health-check 函数、e2e 脚本 + VERIFICATION 报告
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 交付 opc-content 微服务 (AI 内容创作中心),含 4 个 LLM scene 真实接入 opc-ai-core + 抖音 sandbox 真实 OAuth/上传/发布集成,4 张表 + 22 REST 端点 + 6 Vue 页面 + Helm + docker-compose。
@@ -133,7 +149,7 @@ RuoYi-Cloud-Vue3-typescript/src/layout/index.vue           (Task 11: 菜单)
 - Create: `springboot3/ruoyi-modules/opc-content/src/main/resources/bootstrap.yml`
 - Modify: `springboot3/ruoyi-modules/pom.xml`
 
-- [ ] **Step 1: 复制 opc-erp/pom.xml 改 artifactId + mainClass**
+- [x] **Step 1: 复制 opc-erp/pom.xml 改 artifactId + mainClass**
 
 ```xml
 <!-- springboot3/ruoyi-modules/opc-content/pom.xml -->
@@ -147,7 +163,7 @@ RuoYi-Cloud-Vue3-typescript/src/layout/index.vue           (Task 11: 菜单)
 
 依赖:同 opc-erp/pom.xml(opc-common + web + actuator + spring-cloud + openfeign + nacos-config/discovery + ruoyi-common-security + ruoyi-api-system + jasypt + lombok + mybatis + mysql-connector-j + test)。
 
-- [ ] **Step 2: 启动类**
+- [x] **Step 2: 启动类**
 
 ```java
 // OpcContentApplication.java
@@ -170,7 +186,7 @@ public class OpcContentApplication {
 }
 ```
 
-- [ ] **Step 3: application.yml + bootstrap.yml (同 opc-hr)**
+- [x] **Step 3: application.yml + bootstrap.yml (同 opc-hr)**
 
 复制 `springboot3/ruoyi-modules/opc-hr/src/main/resources/application.yml` + `bootstrap.yml`,改:
 - `spring.application.name: opc-content`
@@ -180,18 +196,18 @@ public class OpcContentApplication {
 - `opc.content.notification.base-url: http://opc-notification:9310`
 - `opc.content.user-center.base-url: http://opc-user-center:9302`
 
-- [ ] **Step 4: 修改父 pom.xml**
+- [x] **Step 4: 修改父 pom.xml**
 
 ```xml
 <!-- springboot3/ruoyi-modules/pom.xml: <modules> 加 <module>opc-content</module> -->
 ```
 
-- [ ] **Step 5: 编译验证**
+- [ ] **Step 5: 编译验证** （未完成：仓库里查不到编译运行结果）
 
 Run: `cd /d/work-ai/0401-lumen-opc/springboot3/ruoyi-modules/opc-content && mvn compile -DskipTests -o`
 Expected: BUILD SUCCESS(此时 domain/dto/mapper 都还没建,只是骨架)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/pom.xml springboot3/ruoyi-modules/opc-content/
@@ -206,7 +222,7 @@ git commit -m "feat(content): Task 1 - 项目骨架 (pom + 启动类 + bootstrap
 - Create: `domain/OpcContentScript.java` + 3 个 (PlatformAccount / Publish / Adapt)
 - Create: `enums/ContentScriptType.java` + 3 个
 
-- [ ] **Step 1: 写 Domain (4 个实体,字段同设计 §3)**
+- [x] **Step 1: 写 Domain (4 个实体,字段同设计 §3)**
 
 ```java
 // OpcContentScript.java
@@ -231,7 +247,7 @@ modified: 2026-09-14T15:00:00Z
 ---
 ```
 
-- [ ] **Step 2: 写 4 个 Enum**
+- [x] **Step 2: 写 4 个 Enum**
 
 ```java
 // ContentScriptType.java
@@ -265,12 +281,12 @@ public enum ContentScriptType {
 `ContentPublishStatus` (PENDING/SUCCESS/FAILED)。
 `ContentPlatform` (DOUYIN)。
 
-- [ ] **Step 3: 编译**
+- [ ] **Step 3: 编译** （未完成：仓库里查不到编译运行结果）
 
 Run: `cd /d/work-ai/0401-lumen-opc/springboot3/ruoyi-modules/opc-content && mvn compile -DskipTests -o`
 Expected: BUILD SUCCESS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -am "feat(content): Task 2 - Domain 4 实体 + Enum 4 枚举"
@@ -285,7 +301,7 @@ git commit -am "feat(content): Task 2 - Domain 4 实体 + Enum 4 枚举"
 - Create: `mapper/` ×4 interface
 - Create: `resources/mapper/content/*.xml` ×4
 
-- [ ] **Step 1: 写 DTO (Lombok + snake_case @JsonProperty)**
+- [x] **Step 1: 写 DTO (Lombok + snake_case @JsonProperty)** （实际 snake_case 兼容用 @JsonAlias/@JsonProperty 混用，字段名本身保持 camelCase）
 
 模式同 opc-hr/dto/HrScoreResult.java,7 个 DTO:
 - `OpcContentScriptDto` (返回)
@@ -296,7 +312,7 @@ git commit -am "feat(content): Task 2 - Domain 4 实体 + Enum 4 枚举"
 - `OpcContentListResponse<T>` (rows + total)
 - `OpcContentDashboardDto` (todayGenerate/pendingPublish/published/failedRate/sevenDayTrend)
 
-- [ ] **Step 2: 写 Mapper interface (4 个)**
+- [x] **Step 2: 写 Mapper interface (4 个)**
 
 ```java
 // OpcContentScriptMapper.java
@@ -331,7 +347,7 @@ public interface OpcContentScriptMapper {
 
 其他 3 个 mapper 类似 (PlatformAccountMapper / PublishMapper / AdaptMapper)。
 
-- [ ] **Step 3: 写 mapper XML (4 个文件,放在 `resources/mapper/content/`)**
+- [x] **Step 3: 写 mapper XML (4 个文件,放在 `resources/mapper/content/`)**
 
 `OpcContentScriptMapper.xml` — 仿 `opc-hr/src/main/resources/mapper/hr/OpcHrJobMapper.xml`:
 - `<insert id="insert" useGeneratedKeys="false">` (雪花 ID 应用层生成)
@@ -341,16 +357,16 @@ public interface OpcContentScriptMapper {
 - `<select id="selectList">` — 动态 WHERE companyId/type/status
 - `<select id="countList">` + 4 个统计查询
 
-- [ ] **Step 4: mybatis 配置 (application.yml 已含,确认)**
+- [x] **Step 4: mybatis 配置 (application.yml 已含,确认)**
 
 `mybatis.mapper-locations: classpath*:mapper/**/*.xml`
 
-- [ ] **Step 5: 编译**
+- [ ] **Step 5: 编译** （未完成：仓库里查不到编译运行结果）
 
 Run: `cd /d/work-ai/0401-lumen-opc/springboot3/ruoyi-modules/opc-content && mvn compile -DskipTests -o`
 Expected: BUILD SUCCESS (mapper XML 加载不验证 SQL 正确性,要等 Task 4 service 测试)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -am "feat(content): Task 3 - DTO 7 个 + Mapper 4 个 + XML 4 个"
@@ -364,7 +380,7 @@ git commit -am "feat(content): Task 3 - DTO 7 个 + Mapper 4 个 + XML 4 个"
 - Create: `service/IOpcContentScriptService.java` + 3 个 (PlatformAccount / Publish / Adapt)
 - Create: `service/impl/OpcContentScriptServiceImpl.java` + 3 个
 
-- [ ] **Step 1: 写 ScriptService (核心,最复杂)**
+- [x] **Step 1: 写 ScriptService (核心,最复杂)**
 
 ```java
 // IOpcContentScriptService.java
@@ -554,11 +570,11 @@ public class OpcContentScriptServiceImpl implements IOpcContentScriptService {
 }
 ```
 
-- [ ] **Step 2: 写 PlatformAccountService**
+- [x] **Step 2: 写 PlatformAccountService**
 
 CRUD + 抖音 OAuth state 生成/校验 + token 刷新。`bindDouyinCallback(code, state, companyId)` 调 `DouyinClient.exchangeCode()`。
 
-- [ ] **Step 3: 写 PublishService**
+- [x] **Step 3: 写 PublishService** （部分：第 5 步「发通知」没做 —— PublishServiceImpl 没有注入 NotificationGateway，只留了一行 `// 7) TODO Task 8` 注释）
 
 ```java
 // IOpcContentPublishService.publish()
@@ -572,16 +588,16 @@ public Long publish(OpcContentPublishRequest req) {
 }
 ```
 
-- [ ] **Step 4: 写 AdaptService**
+- [x] **Step 4: 写 AdaptService**
 
 `adapt(req)` 调 `ContentLlmClient.adapt()` + 在 `opc_content_adapt` 写关系 + 同公司创建新 script (type=ADAPTER)。
 
-- [ ] **Step 5: 编译**
+- [ ] **Step 5: 编译** （未完成：仓库里查不到编译运行结果）
 
 Run: `mvn compile -DskipTests -o`
 Expected: BUILD SUCCESS (ContentLlmClient 还没写,会编译失败 → 先写 Task 6)
 
-- [ ] **Step 6: Commit (Task 4 + Task 6 一起)**
+- [x] **Step 6: Commit (Task 4 + Task 6 一起)**
 
 ---
 
@@ -592,7 +608,7 @@ Expected: BUILD SUCCESS (ContentLlmClient 还没写,会编译失败 → 先写 T
 - Create: `controller/OpcContentPlatformController.java`
 - Create: `controller/OpcContentPublishController.java`
 
-- [ ] **Step 1: ScriptController (11 端点)**
+- [x] **Step 1: ScriptController (11 端点)**
 
 ```java
 // OpcContentScriptController.java
@@ -704,7 +720,7 @@ public class OpcContentScriptController {
 }
 ```
 
-- [ ] **Step 2: PlatformController (5 端点)**
+- [x] **Step 2: PlatformController (5 端点)**
 
 ```java
 @Tag(name = "OPC 内容平台账号")
@@ -735,11 +751,11 @@ public class OpcContentPlatformController {
 }
 ```
 
-- [ ] **Step 3: PublishController (4 端点)**
+- [x] **Step 3: PublishController (4 端点)**
 
 `POST /` `GET /list` `POST /{id}/retry` `GET /{id}`
 
-- [ ] **Step 4: DashboardController (1 端点)**
+- [x] **Step 4: DashboardController (1 端点)** （没有独立的 DashboardController 类；dashboard 端点做成了 ScriptController 里的 `GET /opc/content/script/dashboard`）
 
 ```java
 @GetMapping("/")
@@ -750,12 +766,12 @@ public R<OpcContentDashboardDto> dashboard(@RequestParam Long companyId) {
 
 `OpcContentScriptServiceImpl.dashboard()` 调 4 个 mapper count 方法拼装。
 
-- [ ] **Step 5: 编译 + 启动器 smoke test**
+- [ ] **Step 5: 编译 + 启动器 smoke test** （未完成：仓库里查不到编译运行结果，也没有启动器 smoke 的运行记录）
 
 Run: `mvn compile -DskipTests -o` + `mvn spring-boot:run` (不需要,等 Task 6/7 完成后 smoke)
 Expected: BUILD SUCCESS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit** （commit 4532347 的说明写「22 端点」，但 controller 里实际只有 20 个端点 —— 端点数这个说法从一开始就虚高了 2 个）
 
 ```bash
 git commit -am "feat(content): Task 5 - Controller 3 个 + 22 端点 (含 Dashboard)"
@@ -769,7 +785,7 @@ git commit -am "feat(content): Task 5 - Controller 3 个 + 22 端点 (含 Dashbo
 - Create: `service/llm/ContentLlmPrompts.java`
 - Create: `service/llm/ContentLlmClient.java`
 
-- [ ] **Step 1: 写 ContentLlmPrompts (4 system prompts)**
+- [x] **Step 1: 写 ContentLlmPrompts (4 system prompts)**
 
 仿 `opc-hr/src/main/java/com/ruoyi/opc/hr/service/llm/HrLlmPrompts.java` 结构:
 
@@ -815,7 +831,7 @@ public final class ContentLlmPrompts {
 
 4 个 prompt 完整内容放文件里(参考 opc-hr HrLlmPrompts 风格,各 ~30 行)。
 
-- [ ] **Step 2: 写 ContentLlmClient**
+- [x] **Step 2: 写 ContentLlmClient**
 
 仿 `opc-hr/src/main/java/com/ruoyi/opc/hr/service/llm/HrLlmClient.java`:
 
@@ -884,12 +900,12 @@ public class ContentLlmClient {
 }
 ```
 
-- [ ] **Step 3: 编译**
+- [ ] **Step 3: 编译** （未完成：仓库里查不到编译运行结果）
 
 Run: `mvn compile -DskipTests -o`
 Expected: BUILD SUCCESS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -am "feat(content): Task 6 - ContentLlmPrompts + ContentLlmClient (4 scenes)"
@@ -907,7 +923,7 @@ git commit -am "feat(content): Task 6 - ContentLlmPrompts + ContentLlmClient (4 
 - Create: `config/PlatformConfig.java`
 - Create: `util/ContentTokenEncryptor.java`
 
-- [ ] **Step 1: 写 PlatformClient 抽象**
+- [x] **Step 1: 写 PlatformClient 抽象**
 
 ```java
 public interface PlatformClient {
@@ -922,7 +938,7 @@ public interface PlatformClient {
 }
 ```
 
-- [ ] **Step 2: 写 DouyinProperties + TokenEncryptor**
+- [x] **Step 2: 写 DouyinProperties + TokenEncryptor**
 
 ```java
 // DouyinProperties.java
@@ -963,7 +979,7 @@ public class ContentTokenEncryptor {
 }
 ```
 
-- [ ] **Step 3: 写 DouyinClient (sandbox)**
+- [x] **Step 3: 写 DouyinClient (sandbox)** （代码是真的 HTTP 实现：`/oauth/access_token/`、`/oauth/refresh_token/`、`/video/upload/`、`/video/create/` 四个路径都写了；但凭据是占位符 `dev_client_key_placeholder`，且每条异常路径都 catch 住降级到 mock —— 真实抖音 sandbox 从未打通）
 
 ```java
 @Slf4j
@@ -1006,7 +1022,7 @@ public class DouyinClient implements PlatformClient {
 }
 ```
 
-- [ ] **Step 4: 写 MockPlatformClient**
+- [x] **Step 4: 写 MockPlatformClient**
 
 ```java
 public class MockPlatformClient implements PlatformClient {
@@ -1027,12 +1043,12 @@ public class MockPlatformClient implements PlatformClient {
 }
 ```
 
-- [ ] **Step 5: 编译**
+- [ ] **Step 5: 编译** （未完成：仓库里查不到编译运行结果）
 
 Run: `mvn compile -DskipTests -o`
 Expected: BUILD SUCCESS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -am "feat(content): Task 7 - PlatformClient + DouyinClient + Mock + ENC"
@@ -1046,7 +1062,7 @@ git commit -am "feat(content): Task 7 - PlatformClient + DouyinClient + Mock + E
 - Create: `feign/OpcContentAiCoreGateway.java` + 2 others
 - Create: `feign/factory/` ×3 FallbackFactory
 
-- [ ] **Step 1: 写 3 个 Feign interface (仿 opc-hr/OpcHrAiCoreGateway.java)**
+- [x] **Step 1: 写 3 个 Feign interface (仿 opc-hr/OpcHrAiCoreGateway.java)**
 
 ```java
 @FeignClient(contextId = "opcContentAiCore", name = "opc-ai-core",
@@ -1071,16 +1087,16 @@ public interface OpcContentUserCenterGateway {
 }
 ```
 
-- [ ] **Step 2: 写 3 个 FallbackFactory (仿 opc-hr)**
+- [x] **Step 2: 写 3 个 FallbackFactory (仿 opc-hr)**
 
 每个 factory 返回 `R.fail("服务暂时不可用")`,不静默吞错。
 
-- [ ] **Step 3: 编译**
+- [ ] **Step 3: 编译** （未完成：仓库里查不到编译运行结果）
 
 Run: `mvn compile -DskipTests -o`
 Expected: BUILD SUCCESS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -am "feat(content): Task 8 - Feign 3 网关 + FallbackFactory"
@@ -1098,7 +1114,7 @@ git commit -am "feat(content): Task 8 - Feign 3 网关 + FallbackFactory"
 - Create: `src/test/service/llm/ContentLlmClientTest.java` (~6 cases)
 - Create: `src/test/service/platform/DouyinClientTest.java` + `MockPlatformClientTest.java` (~8 cases)
 
-- [ ] **Step 1: ContentLlmClientTest (6 cases,仿 HrLlmClientTest)**
+- [x] **Step 1: ContentLlmClientTest (6 cases,仿 HrLlmClientTest)** （方法名与 plan 草稿不同：实际 generateDrama_success / generateVideo_success / generateArticle_success / adapt_success / generateDrama_gatewayFails_throws / generateVideo_blankPrompt_throws；共 12 个用例，比 plan 的 6 个多）
 
 ```java
 // ContentLlmClientTest.java — 测 generateDrama/Video/Article/adapt 各自 + 失败降级 + 入参校验
@@ -1120,7 +1136,7 @@ class ContentLlmClientTest {
 }
 ```
 
-- [ ] **Step 2: 4 个 service impl test**
+- [x] **Step 2: 4 个 service impl test** （4 个测试类都在，合计 44 个用例）
 
 每个 service test 覆盖:
 - CRUD 正常路径
@@ -1130,17 +1146,17 @@ class ContentLlmClientTest {
 
 模式参考 `OpcHrJobServiceImplTest` (仿写)。
 
-- [ ] **Step 3: DouyinClientTest + MockPlatformClientTest**
+- [ ] **Step 3: DouyinClientTest + MockPlatformClientTest** （未完成：`DouyinClientTest.java` 和 `MockPlatformClientTest.java` 在仓库里都不存在；平台层的测试实际落在 `OAuthStateCodecTest` / `ContentTokenEncryptorTest` 上）
 
 `MockPlatformClientTest`: 验 OAuthToken/exchangeCode/uploadVideo/createVideo 都返回非 null。
 `DouyinClientTest`: 用 `WireMock` 或 Mockito mock HttpClient 测正常 + sandbox 不可达降级。
 
-- [ ] **Step 4: 运行所有测试**
+- [ ] **Step 4: 运行所有测试** （未完成：仓库里查不到测试运行结果）
 
 Run: `cd /d/work-ai/0401-lumen-opc/springboot3/ruoyi-modules/opc-content && mvn test -o 2>&1 | tail -10`
 Expected: `Tests run: 60, Failures: 0, Errors: 0, Skipped: 0`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** （commit 8ccaf1b 当时 @Test 正好 60 个，与 plan 一致；此后又补到 72 个，多出 OAuthStateCodecTest 等）
 
 ```bash
 git commit -am "test(content): Task 9 - 60+ 单测 (4 service + llm + platform)"
@@ -1153,7 +1169,7 @@ git commit -am "test(content): Task 9 - 60+ 单测 (4 service + llm + platform)"
 **Files:**
 - Create: `RuoYi-Cloud-Vue3-typescript/src/api/opc/content.ts`
 
-- [ ] **Step 1: 写 content.ts (22 endpoint 一一对应)**
+- [x] **Step 1: 写 content.ts (22 endpoint 一一对应)** （实际 20 个 API 函数，文件头注释自己写的是「11 + 5 + 4 = 20 endpoints」；plan 标的 22 与后端实际端点数对不上）
 
 ```typescript
 // RuoYi-Cloud-Vue3-typescript/src/api/opc/content.ts
@@ -1193,12 +1209,12 @@ export interface Script { id: number; company_id: number; type: string; title: s
 // ... 共 ~12 个 type interface
 ```
 
-- [ ] **Step 2: TypeScript 编译验证**
+- [ ] **Step 2: TypeScript 编译验证** （未完成：仓库里查不到 TypeScript 编译运行结果）
 
 Run: `cd /d/work-ai/0401-lumen-opc/RuoYi-Cloud-Vue3-typescript && npx tsc --noEmit -p tsconfig.json 2>&1 | grep -E "content.ts" || echo OK`
 Expected: OK (无报错)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -am "feat(frontend): Task 10 - content.ts API 模块 + 22 端点类型"
@@ -1214,7 +1230,7 @@ git commit -am "feat(frontend): Task 10 - content.ts API 模块 + 22 端点类�
 - Modify: `router/index.ts` (加 6 路由)
 - Modify: `layout/index.vue` (自动从 router meta.icon 生成菜单,只改 router 即可)
 
-- [ ] **Step 1: Dashboard 页 (`/opc/content/index`)**
+- [x] **Step 1: Dashboard 页 (`/opc/content/index`)** （文件是 `views/opc/content/dashboard.vue`，不是 plan 写的 index.vue；4 个统计卡 + 7 天趋势都在）
 
 ```vue
 <!-- 4 个 StatCard + 趋势图 (echarts) + 最近脚本列表 -->
@@ -1232,27 +1248,27 @@ git commit -am "feat(frontend): Task 10 - content.ts API 模块 + 22 端点类�
 </template>
 ```
 
-- [ ] **Step 2: 脚本列表 (`/opc/content/script/index`)**
+- [x] **Step 2: 脚本列表 (`/opc/content/script/index`)**
 
 FilterBar + ResponsiveTable (复用) + TypeTag (DRAMA/VIDEO/ARTICLE/ADAPTER)。
 
-- [ ] **Step 3: 脚本详情 (`/opc/content/script/:id`)**
+- [x] **Step 3: 脚本详情 (`/opc/content/script/:id`)**
 
 ScriptViewer (Markdown 渲染) + RefinePanel + AdaptDialog + PublishButton。
 
-- [ ] **Step 4: 生成页 (`/opc/content/generate`)**
+- [ ] **Step 4: 生成页 (`/opc/content/generate`)** （未完成：`views/opc/content/generate.vue` 不存在 —— 生成功能做成了 `script/index.vue` 里的「AI 生成」弹窗，没有独立的生成页/路由）
 
 TypeTabs + PromptForm + LivePreview (调 LLM 后实时显示 content)。
 
-- [ ] **Step 5: 平台账号 (`/opc/content/platform-account`)**
+- [x] **Step 5: 平台账号 (`/opc/content/platform-account`)** （文件是 `platform-account/index.vue`，不是 plan 写的 platform-account.vue）
 
 AccountTable + "绑定抖音" 按钮 → `bindDouyin()` 跳转 + QrcodePanel (oauth 流程展示)。
 
-- [ ] **Step 6: 发布记录 (`/opc/content/publish`)**
+- [x] **Step 6: 发布记录 (`/opc/content/publish`)** （文件是 `publish/index.vue`，不是 plan 写的 publish.vue）
 
 FilterBar + PublishTable + RetryDialog。
 
-- [ ] **Step 7: 路由**
+- [ ] **Step 7: 路由** （未完成：`router/index.ts` 里只有 2 条 `/opc/content` 隐藏详情路由（`script/:id` 与 `script/:id/adapt`），plan 写的 6 条子路由从未加进去；4 个菜单页改由 sys_menu 数据库菜单承载，见 `springboot3/sql/migrations/V20261022__opc_sys_menus.sql`，commit 08305b8 自己也写着「Task 11 漏掉菜单配置」）
 
 ```typescript
 // router/index.ts
@@ -1272,12 +1288,12 @@ FilterBar + PublishTable + RetryDialog。
 }
 ```
 
-- [ ] **Step 8: Vite build smoke**
+- [ ] **Step 8: Vite build smoke** （未完成：仓库里查不到构建运行结果；工作区里只有 gitignore 的 `dist/` 产物可作旁证，没有日志）
 
 Run: `npx vite build 2>&1 | tail -20`
 Expected: 6 个 chunk 输出,无 error。
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git commit -am "feat(frontend): Task 11 - 6 Vue 页 + 路由 + 菜单"
@@ -1290,7 +1306,7 @@ git commit -am "feat(frontend): Task 11 - 6 Vue 页 + 路由 + 菜单"
 **Files:**
 - Create: `springboot3/deploy/nacos/opc-content-dev.yml`
 
-- [ ] **Step 1: 仿 opc-hr-dev.yml 写 opc-content-dev.yml**
+- [x] **Step 1: 仿 opc-hr-dev.yml 写 opc-content-dev.yml**
 
 ```yaml
 server:
@@ -1326,7 +1342,7 @@ jasypt:
     algorithm: PBEWithMD5AndDES
 ```
 
-- [ ] **Step 2: 加密 secret**
+- [ ] **Step 2: 加密 secret** （未完成：`opc-content-dev.yml` 里 `douyin.client-secret` 是明文占位符 `dev_client_secret_placeholder`，不是 `ENC(...)` —— 真实 client_secret 从来没被加密写进去）
 
 Run:
 ```bash
@@ -1336,11 +1352,11 @@ sh scripts/encrypt-secret.sh "真实 client_secret" "OpcEncrypt!2026"
 ```
 替换到上面的 `client-secret` 字段。
 
-- [ ] **Step 3: 导入 Nacos**
+- [x] **Step 3: 导入 Nacos** （`import-dev.sh` 的清单里已列入 opc-content-dev.yml；实际推送发生在 2026-10-28 的 48abbee「9 份 dev 配置进了 opc-dev」）
 
 Run: `sh nacos/import-dev.sh opc-content` (复用 opc-hr 的 import 脚本,新增 opc-content 配置)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -am "feat(deploy): Task 12 - Nacos opc-content-dev.yml + ENC secret"
@@ -1354,7 +1370,7 @@ git commit -am "feat(deploy): Task 12 - Nacos opc-content-dev.yml + ENC secret"
 - Modify: `springboot3/deploy/docker-compose.yml`
 - Create: `springboot3/ruoyi-modules/opc-content/Dockerfile.opc-content`
 
-- [ ] **Step 1: Dockerfile (thin jar)**
+- [x] **Step 1: Dockerfile (thin jar)** （文件叫 `Dockerfile` 不是 `Dockerfile.opc-content`；thin jar 启动方式与 plan 一致）
 
 ```dockerfile
 # Dockerfile.opc-content
@@ -1367,7 +1383,7 @@ ENV JAVA_OPTS=""
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -cp '/app/opc-content.jar:/app/dependency/*' com.ruoyi.opc.content.OpcContentApplication"]
 ```
 
-- [ ] **Step 2: docker-compose.yml 加 aiopc-content 服务**
+- [x] **Step 2: docker-compose.yml 加 aiopc-content 服务**
 
 ```yaml
 aiopc-content:
@@ -1396,12 +1412,12 @@ aiopc-content:
   networks: [aiopc]
 ```
 
-- [ ] **Step 3: initdb SQL (Task 1 延迟到本 Task 创建)**
+- [x] **Step 3: initdb SQL (Task 1 延迟到本 Task 创建)** （4 张表齐；种子数据是 3 脚本 + 1 平台账号 + 1 发布 + 1 适配，比 plan 写的 7 脚本 + 2 账号 + 2 发布少；schema 文件叫 `16-opc-content-schema.sql` 不是 `11-`）
 
 - `11-opc-content-schema.sql`: 4 表 `CREATE TABLE IF NOT EXISTS` (utf8mb4_unicode_ci)
 - `98-opc-content-seed.sql`: 2 DRAMA + 2 VIDEO + 2 ARTICLE + 1 适配 + 2 抖音账号 (mock token) + 2 publish
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -am "feat(deploy): Task 13 - Dockerfile + docker-compose + initdb"
@@ -1415,7 +1431,7 @@ git commit -am "feat(deploy): Task 13 - Dockerfile + docker-compose + initdb"
 - Create: `springboot3/deploy/helm/opc/templates/deployment-content.yaml`
 - Create: `springboot3/deploy/helm/opc/templates/service-content.yaml`
 
-- [ ] **Step 1: 仿 deployment-erp.yaml + service-erp.yaml 改 opc-content**
+- [x] **Step 1: 仿 deployment-erp.yaml + service-erp.yaml 改 opc-content**
 
 ```yaml
 # deployment-content.yaml
@@ -1454,7 +1470,7 @@ spec:
 
 类似 service + ServiceMonitor + (可选 HPA)。
 
-- [ ] **Step 2: 修改 values.yaml 加 content service 配置**
+- [x] **Step 2: 修改 values.yaml 加 content service 配置**
 
 ```yaml
 # values.yaml
@@ -1466,7 +1482,7 @@ services:
       limits:   { cpu: 500m, memory: 512Mi }
 ```
 
-- [ ] **Step 3: helm lint + template verify**
+- [ ] **Step 3: helm lint + template verify** （未完成：仓库里查不到 `helm lint` / `helm template` 的运行结果）
 
 Run:
 ```bash
@@ -1475,7 +1491,7 @@ helm template test springboot3/deploy/helm/opc -f springboot3/deploy/helm/opc/va
 ```
 Expected: 18 (dev) / 28 (staging) / 29 (prod) — content 加 2 (Deployment + Service)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -am "feat(helm): Task 14 - deployment-content + service-content + values"
@@ -1488,7 +1504,7 @@ git commit -am "feat(helm): Task 14 - deployment-content + service-content + val
 **Files:**
 - Modify: `springboot3/deploy/scripts/health-check.sh`
 
-- [ ] **Step 1: 加 check_content() 函数**
+- [x] **Step 1: 加 check_content() 函数** （函数在，但 10.6 检查的 `/opc/content/script/recent` 从来没有对应 handler —— git 历史里 opc-content 的 java 侧从未出现过 `/recent` 映射，这条检查恒定失败）
 
 ```bash
 check_content() {
@@ -1527,18 +1543,18 @@ check_content() {
 }
 ```
 
-- [ ] **Step 2: 加到 health-check.sh 主循环**
+- [x] **Step 2: 加到 health-check.sh 主循环**
 
 ```bash
 check_content
 ```
 
-- [ ] **Step 3: 本地验证(可选,需要容器)**
+- [ ] **Step 3: 本地验证(可选,需要容器)** （未完成：仓库里查不到 health-check 的运行结果；VERIFICATION 报告自称 10/10 PASS，但那是自己写的 markdown，不是 CI 记录）
 
 Run: `bash springboot3/deploy/scripts/health-check.sh 2>&1 | tail -30`
 Expected: opc-content PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -am "feat(deploy): Task 15 - health-check.sh 加 check_content() 10 端点"
@@ -1552,7 +1568,7 @@ git commit -am "feat(deploy): Task 15 - health-check.sh 加 check_content() 10 �
 - Create: `docs/verification/week-74/OPC-W74-VERIFICATION-opc-content.md`
 - Create: `tmp_e2e/e2e_content.py`
 
-- [ ] **Step 1: e2e_content.py (10+ 步骤)**
+- [x] **Step 1: e2e_content.py (10+ 步骤)** （脚本 328 行 10 步，但打的是网关 8079 而不是 plan 写的 9325）
 
 ```python
 #!/usr/bin/env python3
@@ -1606,7 +1622,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2: VERIFICATION 报告**
+- [x] **Step 2: VERIFICATION 报告** （报告自己写的是 20 端点 / 60 单测 / e2e 8-10 PASS，与 plan 里的 22 端点对不上）
 
 ```markdown
 # OPC-W74 VERIFICATION — opc-content
@@ -1642,7 +1658,7 @@ if __name__ == "__main__":
 - W78 评估套件加 80 content eval case + 25 红队 case
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -am "docs(verify): Task 16 - VERIFICATION 报告 + e2e_content.py 10 步"

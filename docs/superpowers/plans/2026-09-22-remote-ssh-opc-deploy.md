@@ -1,5 +1,15 @@
 # W79 Remote SSH OPC Deploy — Implementation Plan
 
+> **审计说明 (2026-10-29)**
+>
+> 本 plan 的 checkbox 已按 `/tmp/opc-plan-audit-rubric.md` 逐条核对。
+>
+> - **目标**：把 OPC 全栈 22 容器（6 基建 + 3 平台 + 13 业务）通过一键 `bootstrap-remote.sh` 部署到 Rocky Linux 8.10 云 VM，并把本机 `backup-mysql-local.sh` 导出的 MySQL dump 迁过去。
+> - **结果**：**勾了 42 / 没勾 18 / 共 60**。
+> - **原先已勾上的 6 个 `[x]` 全部退回 `[ ]`**：它们在 Task 11 的模板代码块里，写的是「21 个容器 Up / smoke 全绿 / 数据迁移成功」这类**云 VM 实跑结论**，而 W79 从来没在云 VM 上真跑过 —— 仓库自带的 `docs/verification/late/W79-REMOTE-SSH-DEPLOY-VERIFICATION.md` 第 4 行自己写着「VM 实跑需用户 SSH 验证」。
+> - **没勾的 18 条卡在哪**：12 条卡在「仓库里查不到运行结果」（9 条 `bash -n` 语法校验 + 1 条 shellcheck + 1 条 dry-run `--help` + 1 条 Self-Review 复合项；仓库里没有 CI、没有测试报告、没有任何产物文件），另 6 条即上面那批模板里的云 VM 实跑结论。
+> - **实质产出都是真做了的**：`bootstrap-remote.sh`（552 行，6 个 stage 全部是真实现）+ `backup-mysql-local.sh`（113 行）+ RECOVERY.md §15 + .env.example W79 块 + VERIFICATION 报告，共 17 个 commit 落在 2026-09-22 并已 push。没勾的没有一条是「东西没做出来」，全是「验证动作查不到结果」或「VM 根本没跑过」。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把 OPC 全栈 (22 容器: 6 基建 + 3 平台 + 13 业务) 通过一键 `bootstrap-remote.sh` 部署到 Rocky Linux 8.10 云 VM,从用户本机 `backup-mysql-local.sh` 导出 MySQL dump 迁移过去。
@@ -34,7 +44,7 @@
 **Files:**
 - Create: `springboot3/deploy/scripts/backup-mysql-local.sh`
 
-- [ ] **Step 1: 写脚本骨架 (前置 + 变量)**
+- [x] **Step 1: 写脚本骨架 (前置 + 变量)**
 
 ```bash
 #!/usr/bin/env bash
@@ -67,7 +77,7 @@ STAGE_DIR="$(mktemp -d)"
 trap 'rm -rf "${STAGE_DIR}"' EXIT
 ```
 
-- [ ] **Step 2: 加前置检查函数**
+- [x] **Step 2: 加前置检查函数**
 
 ```bash
 log()  { echo "[INFO]  $*"; }
@@ -96,7 +106,7 @@ require_nacos_dir() {
 }
 ```
 
-- [ ] **Step 3: 加导出函数**
+- [x] **Step 3: 加导出函数**
 
 ```bash
 export_mysql_dump() {
@@ -132,7 +142,7 @@ build_migrate_tar() {
 }
 ```
 
-- [ ] **Step 4: 加 main 函数**
+- [x] **Step 4: 加 main 函数**
 
 ```bash
 main() {
@@ -161,7 +171,7 @@ NEXT
 main "$@"
 ```
 
-- [ ] **Step 5: 加执行权限 + bash 语法校验**
+- [ ] **Step 5: 加执行权限 + bash 语法校验**（未完成：git 里 backup-mysql-local.sh 仍是 100644，chmod +x 没做；bash -n 的运行结果仓库里查不到）
 
 Run:
 ```bash
@@ -171,7 +181,7 @@ bash -n D:/work-ai/0401-lumen-opc/springboot3/deploy/scripts/backup-mysql-local.
 
 Expected: `SYNTAX OK`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/deploy/scripts/backup-mysql-local.sh
@@ -185,7 +195,7 @@ git commit -m "feat(deploy): W79 backup-mysql-local.sh — 本机导出 MySQL + 
 **Files:**
 - Create: `springboot3/deploy/scripts/bootstrap-remote.sh`
 
-- [ ] **Step 1: 写脚本头 + 变量**
+- [x] **Step 1: 写脚本头 + 变量**（已实现：COMPOSE_MYSQL_PWD 解析与 mkdir 后续被 ed2cedf 挪进 preflight_init()）
 
 ```bash
 #!/usr/bin/env bash
@@ -236,7 +246,7 @@ if [[ -z "${COMPOSE_MYSQL_PWD}" ]]; then
 fi
 ```
 
-- [ ] **Step 2: 加 log + fail + require 函数**
+- [x] **Step 2: 加 log + fail + require 函数**
 
 ```bash
 log()  { echo "[INFO]  $*" | tee -a "${LOG_FILE}"; }
@@ -270,7 +280,7 @@ require_disk() {
 }
 ```
 
-- [ ] **Step 3: 加 arg 解析 + 帮助**
+- [x] **Step 3: 加 arg 解析 + 帮助**
 
 ```bash
 CMD="up"
@@ -296,7 +306,7 @@ cmd_help() {
 if [[ "${CMD}" == "help" ]]; then cmd_help; fi
 ```
 
-- [ ] **Step 4: 加 stage 调度骨架**
+- [x] **Step 4: 加 stage 调度骨架**
 
 ```bash
 STAGES_OK_FILE="${DATA_ROOT}/.bootstrap-stages-ok"
@@ -366,7 +376,7 @@ log "  日志:${LOG_FILE}"
 log "============================================================"
 ```
 
-- [ ] **Step 5: 加 main 调度循环 + 阶段函数占位**
+- [x] **Step 5: 加 main 调度循环 + 阶段函数占位**
 
 ```bash
 run_stage() {
@@ -404,7 +414,7 @@ main() {
 main "$@"
 ```
 
-- [ ] **Step 6: bash 语法校验**
+- [ ] **Step 6: bash 语法校验**（未完成：仓库里查不到运行结果）
 
 Run:
 ```bash
@@ -416,7 +426,7 @@ Expected:
 - `SYNTAX OK`
 - `--help` 输出脚本头部注释
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add springboot3/deploy/scripts/bootstrap-remote.sh
@@ -430,7 +440,7 @@ git commit -m "feat(deploy): W79 bootstrap-remote.sh skeleton — arg 解析 + 5
 **Files:**
 - Modify: `springboot3/deploy/scripts/bootstrap-remote.sh`
 
-- [ ] **Step 1: 把 stage_0 替换为真实实现**
+- [x] **Step 1: 把 stage_0 替换为真实实现**
 
 替换 `stage_0() { : "placeholder"; }` 为:
 
@@ -477,7 +487,7 @@ stage_0() {
 }
 ```
 
-- [ ] **Step 2: bash 语法校验**
+- [ ] **Step 2: bash 语法校验**（未完成：仓库里查不到运行结果）
 
 Run:
 ```bash
@@ -486,7 +496,7 @@ bash -n D:/work-ai/0401-lumen-opc/springboot3/deploy/scripts/bootstrap-remote.sh
 
 Expected: `SYNTAX OK`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add springboot3/deploy/scripts/bootstrap-remote.sh
@@ -500,7 +510,7 @@ git commit -m "feat(deploy): W79 bootstrap Stage 0 — Rocky 8 / 磁盘 / .env /
 **Files:**
 - Modify: `springboot3/deploy/scripts/bootstrap-remote.sh`
 
-- [ ] **Step 1: 把 stage_1 替换为真实实现**
+- [x] **Step 1: 把 stage_1 替换为真实实现**
 
 替换 `stage_1() { : "placeholder"; }` 为:
 
@@ -536,7 +546,7 @@ stage_1() {
 }
 ```
 
-- [ ] **Step 2: bash 语法校验**
+- [ ] **Step 2: bash 语法校验**（未完成：仓库里查不到运行结果）
 
 Run:
 ```bash
@@ -545,7 +555,7 @@ bash -n D:/work-ai/0401-lumen-opc/springboot3/deploy/scripts/bootstrap-remote.sh
 
 Expected: `SYNTAX OK`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add springboot3/deploy/scripts/bootstrap-remote.sh
@@ -559,7 +569,7 @@ git commit -m "feat(deploy): W79 bootstrap Stage 1 — Install Docker CE on Rock
 **Files:**
 - Modify: `springboot3/deploy/scripts/bootstrap-remote.sh`
 
-- [ ] **Step 1: 把 stage_2 替换为真实实现**
+- [x] **Step 1: 把 stage_2 替换为真实实现**
 
 替换 `stage_2() { : "placeholder"; }` 为:
 
@@ -615,7 +625,7 @@ stage_2() {
 }
 ```
 
-- [ ] **Step 2: bash 语法校验**
+- [ ] **Step 2: bash 语法校验**（未完成：仓库里查不到运行结果）
 
 Run:
 ```bash
@@ -624,7 +634,7 @@ bash -n D:/work-ai/0401-lumen-opc/springboot3/deploy/scripts/bootstrap-remote.sh
 
 Expected: `SYNTAX OK`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add springboot3/deploy/scripts/bootstrap-remote.sh
@@ -638,7 +648,7 @@ git commit -m "feat(deploy): W79 bootstrap Stage 2 — git/python3 装 + 关 SEL
 **Files:**
 - Modify: `springboot3/deploy/scripts/bootstrap-remote.sh`
 
-- [ ] **Step 1: 把 stage_3 替换为真实实现**
+- [x] **Step 1: 把 stage_3 替换为真实实现**
 
 替换 `stage_3() { : "placeholder"; }` 为:
 
@@ -697,7 +707,7 @@ stage_3() {
 }
 ```
 
-- [ ] **Step 2: bash 语法校验**
+- [ ] **Step 2: bash 语法校验**（未完成：仓库里查不到运行结果）
 
 Run:
 ```bash
@@ -706,7 +716,7 @@ bash -n D:/work-ai/0401-lumen-opc/springboot3/deploy/scripts/bootstrap-remote.sh
 
 Expected: `SYNTAX OK`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add springboot3/deploy/scripts/bootstrap-remote.sh
@@ -720,7 +730,7 @@ git commit -m "feat(deploy): W79 bootstrap Stage 3 — 起 6 基建 + 等 MySQL/
 **Files:**
 - Modify: `springboot3/deploy/scripts/bootstrap-remote.sh`
 
-- [ ] **Step 1: 把 stage_4 替换为真实实现**
+- [x] **Step 1: 把 stage_4 替换为真实实现**
 
 替换 `stage_4() { : "placeholder"; }` 为:
 
@@ -791,7 +801,7 @@ stage_4() {
 }
 ```
 
-- [ ] **Step 2: 把 stage_4 失败 exit code 改回 exit 3 (而非 fail)**
+- [x] **Step 2: 把 stage_4 失败 exit code 改回 exit 3 (而非 fail)**
 
 注意上面失败 exit 用了 `exit 2` (回滚) 或 `fail "..."` (fail 函数 exit 1)。`docker compose up -d` 失败期望 exit 3。修改 line:
 
@@ -799,7 +809,7 @@ stage_4() {
 docker compose up -d || { warn "docker compose up 业务容器失败"; exit 3; }
 ```
 
-- [ ] **Step 3: bash 语法校验**
+- [ ] **Step 3: bash 语法校验**（未完成：仓库里查不到运行结果）
 
 Run:
 ```bash
@@ -808,7 +818,7 @@ bash -n D:/work-ai/0401-lumen-opc/springboot3/deploy/scripts/bootstrap-remote.sh
 
 Expected: `SYNTAX OK`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add springboot3/deploy/scripts/bootstrap-remote.sh
@@ -822,7 +832,7 @@ git commit -m "feat(deploy): W79 bootstrap Stage 4 — restore + 推 Nacos + 起
 **Files:**
 - Modify: `springboot3/deploy/scripts/bootstrap-remote.sh`
 
-- [ ] **Step 1: 把 stage_5 替换为真实实现**
+- [x] **Step 1: 把 stage_5 替换为真实实现**（已实现：stage_5 是真实实现；5 项 smoke 改成了网关登录/Nacos/MySQL 表数/前端探针，plan 里的 5 条业务路径 /opc/erp/product/list 等未采纳）
 
 替换 `stage_5() { : "placeholder"; }` 为:
 
@@ -885,7 +895,7 @@ stage_5() {
 }
 ```
 
-- [ ] **Step 2: bash 语法校验**
+- [ ] **Step 2: bash 语法校验**（未完成：仓库里查不到运行结果）
 
 Run:
 ```bash
@@ -894,7 +904,7 @@ bash -n D:/work-ai/0401-lumen-opc/springboot3/deploy/scripts/bootstrap-remote.sh
 
 Expected: `SYNTAX OK`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add springboot3/deploy/scripts/bootstrap-remote.sh
@@ -908,7 +918,7 @@ git commit -m "feat(deploy): W79 bootstrap Stage 5 — health-check + 5 项 smok
 **Files:**
 - Modify: `springboot3/deploy/RECOVERY.md` (append §15 before last "Last updated")
 
-- [ ] **Step 1: 在 RECOVERY.md 末尾追加 §15**
+- [x] **Step 1: 在 RECOVERY.md 末尾追加 §15**
 
 在最后一行 `**Last updated:** ...` 之前追加:
 
@@ -980,7 +990,7 @@ ssh -L 8079:127.0.0.1:8079 -L 8080:127.0.0.1:8080 -L 8848:127.0.0.1:8848 root@<V
 
 ```
 
-- [ ] **Step 2: 更新 Last updated 行**
+- [x] **Step 2: 更新 Last updated 行**
 
 找到:
 ```
@@ -992,7 +1002,7 @@ ssh -L 8079:127.0.0.1:8079 -L 8080:127.0.0.1:8080 -L 8848:127.0.0.1:8848 root@<V
 **Last updated:** 2026-09-22 (W79 — added §15 Remote SSH Bootstrap + backup-mysql-local.sh + bootstrap-remote.sh)
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add springboot3/deploy/RECOVERY.md
@@ -1006,14 +1016,14 @@ git commit -m "docs(deploy): W79 RECOVERY.md §15 — Remote SSH Bootstrap 一�
 **Files:**
 - Modify: `springboot3/deploy/.env.example`
 
-- [ ] **Step 1: 读现有 .env.example**
+- [x] **Step 1: 读现有 .env.example**（已做：文件存在，后续 fda7b5e 就是在此基础上改的）
 
 Run:
 ```bash
 cat D:/work-ai/0401-lumen-opc/springboot3/deploy/.env.example
 ```
 
-- [ ] **Step 2: 追加 Rocky 8 + placeholder 注释到末尾**
+- [x] **Step 2: 追加 Rocky 8 + placeholder 注释到末尾**（已实现：W79 块已加；但 .env.example 里 DEEPSEEK_API_KEY/MINIMAX_API_KEY 留空，与 stage_0 要求这两个键非空的门槛冲突）
 
 追加:
 ```bash
@@ -1033,7 +1043,7 @@ MINIMAX_API_KEY=ey-placeholder
 # MINIMAX_API_KEY=eyJhbGciOiJIUzI1NiJ9.xxxxxxxxxxxxxxxx
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add springboot3/deploy/.env.example
@@ -1047,7 +1057,7 @@ git commit -m "docs(deploy): W79 .env.example — Rocky 8 + placeholder key 注�
 **Files:**
 - Create: `docs/verification/late/W79-REMOTE-SSH-DEPLOY-VERIFICATION.md`
 
-- [ ] **Step 1: 写报告模板**
+- [x] **Step 1: 写报告模板**（已实现：文件已建（588a1ca），但内容不是 plan 的模板，而是另一版 150 行报告，且写明「VM 实跑需用户 SSH 验证」）
 
 ```markdown
 # W79 Remote SSH OPC Deploy — VERIFICATION
@@ -1195,19 +1205,19 @@ $ docker exec aiopc-mysql mysql -uroot -p'Opc@2026!' ry-vue-opc \
 
 ## 8. 结论
 
-- [x] 21 个容器 Up
-- [x] health-check 通过 (XX/XX PASS)
-- [x] 5 项 smoke test 全绿
-- [x] AI 接口预期失败 (placeholder key)
-- [x] MySQL 数据迁移成功 (行数与 dump 前一致)
-- [x] SSH 端口转发可访问前端/Nacos
+- [ ] 21 个容器 Up（未完成：云 VM 实跑没做过，仓库里查不到容器清单的运行结果）
+- [ ] health-check 通过 (XX/XX PASS)（未完成：仓库里查不到在目标 VM 上跑通 health-check 的运行结果）
+- [ ] 5 项 smoke test 全绿（未完成：仓库里查不到 5 项 smoke test 全绿的运行结果）
+- [ ] AI 接口预期失败 (placeholder key)（未完成：仓库里查不到 AI 接口 401 验证的运行结果）
+- [ ] MySQL 数据迁移成功 (行数与 dump 前一致)（未完成：仓库里查不到 MySQL 数据迁移成功的运行结果）
+- [ ] SSH 端口转发可访问前端/Nacos（未完成：仓库里查不到 SSH 端口转发可访问的运行结果）
 
 W79 Remote SSH Deploy 任务完成。
 
 ---
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/verification/late/W79-REMOTE-SSH-DEPLOY-VERIFICATION.md
@@ -1221,7 +1231,7 @@ git commit -m "docs(deploy): W79 VERIFICATION report template"
 **Files:**
 - Verify: 所有 11 个 commit 都已 staged
 
-- [ ] **Step 1: 检查所有 commit 都干净**
+- [x] **Step 1: 检查所有 commit 都干净**（已核对：W79 实现共 17 个 commit 落在 2026-09-22，全部在 origin/main 上，git status 干净）
 
 Run:
 ```bash
@@ -1232,7 +1242,7 @@ git status
 
 Expected: 12 个新 commit (Task 1-11 + self-review),`git status` 干净
 
-- [ ] **Step 2: 跑最终 bash 语法校验**
+- [ ] **Step 2: 跑最终 bash 语法校验**（未完成：仓库里查不到运行结果）
 
 Run:
 ```bash
@@ -1242,7 +1252,7 @@ bash -n springboot3/deploy/scripts/bootstrap-remote.sh && echo "BOOTSTRAP-REMOTE
 
 Expected: 两条 `SYNTAX OK`
 
-- [ ] **Step 3: shellcheck 静态分析 (若可用)**
+- [ ] **Step 3: shellcheck 静态分析 (若可用)**（未完成：仓库里查不到运行结果）
 
 Run:
 ```bash
@@ -1256,7 +1266,7 @@ fi
 
 Expected: shellcheck 0 error,或 echo 跳过消息
 
-- [ ] **Step 4: dry-run --help 校验两个脚本都正常**
+- [ ] **Step 4: dry-run --help 校验两个脚本都正常**（未完成：仓库里查不到运行结果）
 
 Run:
 ```bash
@@ -1267,7 +1277,7 @@ bash springboot3/deploy/scripts/bootstrap-remote.sh --help | head -15
 
 Expected: bootstrap 输出 "AIOPC 远程引导" 帮助
 
-- [ ] **Step 5: 最终 push**
+- [x] **Step 5: 最终 push**
 
 ```bash
 git push origin main
@@ -1279,12 +1289,12 @@ git push origin main
 
 完成所有 Task 后对照检查:
 
-- [ ] Task 1-2: 两个脚本骨架 OK
-- [ ] Task 3-8: 5 阶段 stage 函数全部实现 (非 placeholder)
-- [ ] Task 9-10: RECOVERY.md §15 + .env.example 注释已加
-- [ ] Task 11: VERIFICATION 报告模板已写
-- [ ] Task 12: 12 个 commit 干净 + bash 语法校验通过 + push 成功
-- [ ] spec §1-5 所有内容都有对应 Task (对照 `2026-09-22-remote-ssh-opc-deploy-design.md`)
-- [ ] 无 placeholder (搜 `: "placeholder"` 应 0 命中)
-- [ ] 无 TODO/TBD/FIXME
-- [ ] exit code 1/2/3/4 与 spec §4.2 一致
+- [x] Task 1-2: 两个脚本骨架 OK
+- [x] Task 3-8: 5 阶段 stage 函数全部实现 (非 placeholder)
+- [x] Task 9-10: RECOVERY.md §15 + .env.example 注释已加
+- [x] Task 11: VERIFICATION 报告模板已写
+- [ ] Task 12: 12 个 commit 干净 + bash 语法校验通过 + push 成功（未完成：commit 数和 push 有据，但 bash 语法校验通过在仓库里查不到运行结果）
+- [x] spec §1-5 所有内容都有对应 Task (对照 `2026-09-22-remote-ssh-opc-deploy-design.md`)（已核对：spec §1-5 各有对应 Task；§5.2 那 5 条业务路径 smoke 在 stage_5 里被换成了基建探针）
+- [x] 无 placeholder (搜 `: "placeholder"` 应 0 命中)
+- [x] 无 TODO/TBD/FIXME（已核对：W79 两个脚本 + RECOVERY.md §15 内 0 命中；RECOVERY.md:157 那条 TODO 是 2026-09-10 W48.7 遗留的，不在 §15 里）
+- [x] exit code 1/2/3/4 与 spec §4.2 一致

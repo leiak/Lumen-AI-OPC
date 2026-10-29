@@ -1,5 +1,14 @@
 # opc-hr Implementation Plan
 
+## 审计说明（2026-10-29）
+
+- **审计对象**：本 plan（`docs/superpowers/plans/2026-09-11-opc-hr-impl.md`）
+- **plan 目标**：交付 opc-hr 微服务（端口 9322），含 6 表 / 25 REST / 4 Feign / 3 LLM prompt / 5 Vue 页 / Dashboard，3 周交付
+- **审计方式**：只读仓库与 git 历史，逐条核实 69 个 checkbox。判据：文件在且内容对得上 / 代码里 grep 得到 / 测试文件与测试方法在 / 提交在 plan 时间窗（2026-09-11 ~ 09-14）内
+- **结果**：**勾了 54 / 没勾 15 / 共 69**
+- **没勾的 15 个主要卡在哪**：13 个是「跑一次看输出」的验证类步骤（mvn compile ×3 / mvn test ×5 / npm build / helm lint / docker compose config / 重 build 前端 + 启容器 / 跑 health-check / E2E），仓库里查不到运行结果，按规矩一律不勾；1 个是「跑单测 + Commit」混合 step（Commit 部分已由 8ccf15f 完成，跑测试部分查不到结果）；1 个是文件真的没做（`OpcHrFeignConfig.java`）
+- **另外要提醒的**：有 9 个 checkbox 勾上了但**只做了一半**，行尾都标了「（部分：…）」——最典型的是 Offer.respond() 不推进 application 状态也不调 Notification/UserCenter 网关、Candidate.search() 是空列表占位、publish() 不调 LLM 生成 JD、面试 PASS/FAIL 不推进状态机、dashboard 没用 ECharts
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver opc-hr 微服务（端口 9322），含 6 表 / 25 REST / 4 Feign / 3 LLM prompt / 5 Vue 页 / Dashboard，3 周交付。
@@ -116,7 +125,7 @@ vue3-typescript/src/
 - Create: `springboot3/sql/V20260911__opc_hr_schema.sql`
 - Modify: `springboot3/ruoyi-modules/pom.xml`（加入 opc-hr module）
 
-- [ ] **Step 1: 创建 pom.xml**
+- [x] **Step 1: 创建 pom.xml** （pom.xml 在，artifactId=opc-hr、mainClass=com.ruoyi.opc.hr.OpcHrApplication、thin jar <phase>none</phase> 都在；去掉了 plan 里的 opc-notification 依赖，改为纯 Feign 走 Nacos 服务发现）
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -176,7 +185,7 @@ vue3-typescript/src/
 </project>
 ```
 
-- [ ] **Step 2: 创建 application.yml**
+- [x] **Step 2: 创建 application.yml** （application.yml 在，server.port=9322、spring.application.name=opc-hr、mybatis.mapper-locations 一致；datasource 改成 dynamic-datasource + ry-vue-opc + 环境变量占位，与 plan 模板不同）
 
 ```yaml
 server:
@@ -204,7 +213,7 @@ logging:
     com.ruoyi.opc.hr: debug
 ```
 
-- [ ] **Step 3: 创建 bootstrap.yml**
+- [x] **Step 3: 创建 bootstrap.yml** （bootstrap.yml 在，nacos discovery/config 的 namespace=opc-dev 一致；shared-configs 改成 Spring Boot 3 的 config.import 写法）
 
 ```yaml
 spring:
@@ -231,7 +240,7 @@ nacos:
   fail-fast: true
 ```
 
-- [ ] **Step 4: 创建 OpcHrApplication.java**
+- [x] **Step 4: 创建 OpcHrApplication.java** （OpcHrApplication.java 在，@SpringBootApplication/@EnableDiscoveryClient/@EnableFeignClients(basePackages={com.ruoyi.system.api, com.ruoyi.opc})/@ComponentScan("com.ruoyi.opc") 都在，另加了 @EnableCustomConfig 和 com.ruoyi.system 的扫描）
 
 ```java
 package com.ruoyi.opc.hr;
@@ -253,7 +262,7 @@ public class OpcHrApplication {
 }
 ```
 
-- [ ] **Step 5: 创建 logback.xml**
+- [x] **Step 5: 创建 logback.xml** （logback.xml 在，内容与 plan 模板逐字一致）
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -263,7 +272,7 @@ public class OpcHrApplication {
 </configuration>
 ```
 
-- [ ] **Step 6: 创建 SQL V20260911__opc_hr_schema.sql**
+- [x] **Step 6: 创建 SQL V20260911__opc_hr_schema.sql** （文件在 springboot3/sql/migrations/V20260911__opc_hr_schema.sql，不在 plan 写的 springboot3/sql/ 下；6 张表 opc_hr_job/candidate/application/interview/offer/match_score 与列名都对得上）
 
 ```sql
 -- OPC HR 招聘管理 schema (W71)
@@ -367,19 +376,19 @@ CREATE TABLE opc_hr_match_score (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
-- [ ] **Step 7: 修改 ruoyi-modules/pom.xml 加入 opc-hr**
+- [x] **Step 7: 修改 ruoyi-modules/pom.xml 加入 opc-hr** （springboot3/ruoyi-modules/pom.xml:26 <module>opc-hr</module>）
 
 在 `<modules>` 列表加：
 ```xml
 <module>opc-hr</module>
 ```
 
-- [ ] **Step 8: 验证编译**
+- [ ] **Step 8: 验证编译** （未完成：仓库里查不到运行结果）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-hr -am compile -DskipTests`
 Expected: BUILD SUCCESS（首次会下载依赖,可能 2-3 分钟）
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit** （commit aafbdd6 "feat(hr): Task 1 - 模块骨架 + Application + 6 表 SQL"）
 
 ```bash
 git add springboot3/ruoyi-modules/opc-hr springboot3/ruoyi-modules/pom.xml springboot3/sql/V20260911__opc_hr_schema.sql
@@ -396,7 +405,7 @@ git commit -m "feat(hr): Task 1 - 模块骨架 + Application + 6 表 SQL"
 - Create: `springboot3/ruoyi-modules/opc-hr/src/main/java/com/ruoyi/opc/hr/enums/{HrJobStatus,HrJobCategory,HrApplicationStatus,HrInterviewType,HrInterviewResult,HrOfferStatus}.java`
 - Create: `springboot3/ruoyi-modules/opc-hr/src/main/java/com/ruoyi/opc/hr/dto/{OpcHrJobDto,OpcHrCandidateDto,OpcHrApplicationDto,OpcHrInterviewDto,OpcHrOfferDto,OpcHrDashboardDto,HrLlmRequest}.java`
 
-- [ ] **Step 1: 创建枚举（6 个）**
+- [x] **Step 1: 创建枚举（6 个）** （6 个枚举都在，HrJobStatus 的 DRAFT/OPEN/PAUSED/CLOSED + of() 与 plan 逐字一致）
 
 `HrJobStatus.java`:
 ```java
@@ -524,7 +533,7 @@ public enum HrOfferStatus {
 }
 ```
 
-- [ ] **Step 2: 创建 Domain（6 个）**
+- [x] **Step 2: 创建 Domain（6 个）** （6 个 Domain 都在，OpcHrJob 的字段、@JsonProperty snake_case、@Builder/@Data 与 plan 模板一致）
 
 每个 Domain 都按此模板（以 OpcHrJob 为例）：
 ```java
@@ -591,7 +600,7 @@ public class OpcHrJob {
 
 每个字段都按 **W50 教训 1**：NOT NULL DEFAULT 0/'' 列在 INSERT 时显式赋值（service 层兜底）。
 
-- [ ] **Step 3: 创建 Mapper 接口（6 个）**
+- [x] **Step 3: 创建 Mapper 接口（6 个）** （6 个 Mapper 接口都在，OpcHrJobMapper 的 insert/updateById/deleteById/selectById/selectList/countList 签名与 plan 一致）
 
 `OpcHrJobMapper.java`:
 ```java
@@ -619,7 +628,7 @@ public interface OpcHrJobMapper {
 
 其他 5 个 Mapper 按相同模式（参考实际 mapper 接口,不能照搬 plan 模板 — W50 教训 4）。
 
-- [ ] **Step 4: 创建 DTO（7 个）**
+- [x] **Step 4: 创建 DTO（7 个）** （plan 列的 7 个 DTO 全在；仓库里实际有 11 个，多出 HrScoreResult/HrSearchRequest/HrSearchResult/OpcHrJobLlmRequest）
 
 DTO 用于 Controller 入参/出参,字段与 Domain 对应,加 Lombok `@Data`。`HrLlmRequest.java`:
 ```java
@@ -639,12 +648,12 @@ public class HrLlmRequest {
 }
 ```
 
-- [ ] **Step 5: 验证编译**
+- [ ] **Step 5: 验证编译** （未完成：仓库里查不到运行结果）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-hr -am compile -DskipTests`
 Expected: BUILD SUCCESS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit** （commit 86308c2 "feat(hr): Task 2 - 6 Domain + 6 Mapper + 6 Enum + 9 DTO"）
 
 ```bash
 git add springboot3/ruoyi-modules/opc-hr/src/main/java/com/ruoyi/opc/hr/{domain,mapper,enums,dto}
@@ -662,7 +671,7 @@ git commit -m "feat(hr): Task 2 - 6 Domain + 6 Mapper + 6 Enum + 7 DTO"
 - Create: `springboot3/ruoyi-modules/opc-hr/src/main/java/com/ruoyi/opc/hr/controller/OpcHrJobController.java`
 - Create: `springboot3/ruoyi-modules/opc-hr/src/test/java/com/ruoyi/opc/hr/service/impl/OpcHrJobServiceImplTest.java`
 
-- [ ] **Step 1: 创建 OpcHrJobMapper.xml**
+- [x] **Step 1: 创建 OpcHrJobMapper.xml** （OpcHrJobMapper.xml 在 springboot3/ruoyi-modules/opc-hr/src/main/resources/mapper/hr/ 下，不在 plan 写的 mapper/ 下；6 个 statement 与 opc_hr_job 表都对得上）
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -726,7 +735,7 @@ git commit -m "feat(hr): Task 2 - 6 Domain + 6 Mapper + 6 Enum + 7 DTO"
 </mapper>
 ```
 
-- [ ] **Step 2: 创建 OpcHrJobService 接口 + Impl**
+- [x] **Step 2: 创建 OpcHrJobService 接口 + Impl** （部分：接口名是 IOpcHrJobService 不是 plan 写的 OpcHrJobService；publish() 只改状态和 publish_at，没有按 plan 调 LLM 生成 fullJd + skillsJson）
 
 ```java
 package com.ruoyi.opc.hr.service;
@@ -755,7 +764,7 @@ Impl 关键逻辑：
 - `close()`：status → CLOSED
 - `generateLlmJd()`：调 AiCoreGateway,返回 LLM 文本（不落库）
 
-- [ ] **Step 3: 创建 Controller（8 endpoints）**
+- [x] **Step 3: 创建 Controller（8 endpoints）** （OpcHrJobController 在，plan 列的 8 个端点全有，实际是 9 个——多一个 POST /opc/hr/job/{id}/pause）
 
 ```java
 package com.ruoyi.opc.hr.controller;
@@ -808,7 +817,7 @@ public class OpcHrJobController {
 }
 ```
 
-- [ ] **Step 4: 写单测 (15 测试)**
+- [x] **Step 4: 写单测 (15 测试)** （OpcHrJobServiceImplTest.java 在，实际 20 个 @Test，多于 plan 要求的 15）
 
 `OpcHrJobServiceImplTest.java`:
 ```java
@@ -871,12 +880,12 @@ class OpcHrJobServiceImplTest {
 }
 ```
 
-- [ ] **Step 5: 跑单测**
+- [ ] **Step 5: 跑单测** （未完成：仓库里查不到运行结果）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-hr test -Dtest=OpcHrJobServiceImplTest`
 Expected: 15/15 PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit** （commit 61ce278 "feat(hr): Task 3 - Job Service + 8 endpoints + Mapper XML + 15 单测"，另有 33d186c 补到 18 个）
 
 ```bash
 git add springboot3/ruoyi-modules/opc-hr/src/main/{java/com/ruoyi/opc/hr/{controller,service},resources/mapper/OpcHrJobMapper.xml} springboot3/ruoyi-modules/opc-hr/src/test
@@ -894,18 +903,18 @@ git commit -m "feat(hr): Task 3 - Job Service + 8 endpoints + 15 单测"
 - Create: `springboot3/ruoyi-modules/opc-hr/src/main/java/com/ruoyi/opc/hr/controller/OpcHrCandidateController.java`
 - Create: `springboot3/ruoyi-modules/opc-hr/src/test/java/com/ruoyi/opc/hr/service/impl/OpcHrCandidateServiceImplTest.java`
 
-- [ ] **Step 1: 创建 Mapper XML**
+- [x] **Step 1: 创建 Mapper XML** （OpcHrCandidateMapper.xml 在，opc_hr_candidate 的 insert/update/delete/select 都在）
 
 按 OpcHrJobMapper.xml 模板,改 table 名 opc_hr_candidate + column 名。
 
-- [ ] **Step 2: 创建 Service 接口 + Impl**
+- [x] **Step 2: 创建 Service 接口 + Impl** （部分：parse() 已实接 opc-ai-core 的 hr_resume_parse 场景；但 create() 不调 parseResume 也不写 embedding（parsedJson 直接取 DTO），search() 是占位实现返回空列表，没有 Qdrant 向量召回也没有 LLM 重排）
 
 关键逻辑：
 - `create(candidate)`：调 AiCoreGateway.parseResume(resumeUrl) → parsedJson + embedding 落库
 - `parseResume(id)`：调用 AiCoreGateway.llmGenerate("hr_resume_parse", resumeMd) → 更新 parsedJson
 - `search(companyId, query, topK)`：embedding 相似度检索 + LLM 重排序
 
-- [ ] **Step 3: 创建 Controller（7 endpoints）**
+- [x] **Step 3: 创建 Controller（7 endpoints）** （OpcHrCandidateController 在，7 个端点逐个对得上）
 
 ```java
 @RestController
@@ -924,16 +933,16 @@ public class OpcHrCandidateController {
 }
 ```
 
-- [ ] **Step 4: 写单测（10 测试）**
+- [x] **Step 4: 写单测（10 测试）** （OpcHrCandidateServiceImplTest.java 在，实际 12 个 @Test）
 
 参考 Task 3 模板,覆盖 create/parse/search/embedding 缓存/边界 10 case。
 
-- [ ] **Step 5: 跑单测**
+- [ ] **Step 5: 跑单测** （未完成：仓库里查不到运行结果）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-hr test -Dtest=OpcHrCandidateServiceImplTest`
 Expected: 10/10 PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit** （commit e9f0bc8 "feat(hr): Task 4 - Candidate Service + 7 endpoints + 10 单测"）
 
 ```bash
 git add springboot3/ruoyi-modules/opc-hr/src/main/{java/com/ruoyi/opc/hr/{controller/OpcHrCandidateController,service/OpcHrCandidate*,service/impl/OpcHrCandidate*},resources/mapper/OpcHrCandidateMapper.xml} springboot3/ruoyi-modules/opc-hr/src/test/java/com/ruoyi/opc/hr/service/impl/OpcHrCandidateServiceImplTest.java
@@ -951,27 +960,27 @@ git commit -m "feat(hr): Task 4 - Candidate Service + 7 endpoints + 10 单测"
 - Create: `springboot3/ruoyi-modules/opc-hr/src/main/java/com/ruoyi/opc/hr/controller/OpcHrApplicationController.java`
 - Create: `springboot3/ruoyi-modules/opc-hr/src/test/java/com/ruoyi/opc/hr/service/impl/OpcHrApplicationServiceImplTest.java`
 
-- [ ] **Step 1: 创建 Mapper XML + Service + Impl**
+- [x] **Step 1: 创建 Mapper XML + Service + Impl** （OpcHrApplicationMapper.xml + IOpcHrApplicationService + OpcHrApplicationServiceImpl 在；create 默认 score=0/status=NEW/channel=MANUAL；状态机 HrApplicationStatus.canTransitionTo() 与 plan 写的 NEW→SCREENING→INTERVIEW→OFFER→HIRED、任意→REJECTED 完全一致；score() 调 hr_candidate_score 并写 opc_hr_match_score）
 
 关键状态机：
 - `create(app)`：`score=0`（W50 教训 1）、status=NEW、channel=MANUAL
 - `score(id)`：调 AiCoreGateway.llmGenerate("hr_candidate_score", json) → 0-100 + reason,落库 opc_hr_match_score
 - `updateStatus(id, newStatus)`：状态机转换校验（NEW→SCREENING→INTERVIEW→OFFER→HIRED；任意→REJECTED）
 
-- [ ] **Step 2: 创建 Controller（5 endpoints）**
+- [x] **Step 2: 创建 Controller（5 endpoints）** （OpcHrApplicationController 在，5 个端点全对得上）
 
 `POST /opc/hr/application` / `GET /opc/hr/application/list` / `GET /opc/hr/application/{id}` / `PUT /opc/hr/application/{id}/status` / `POST /opc/hr/application/{id}/score`
 
-- [ ] **Step 3: 写单测（10 测试）**
+- [x] **Step 3: 写单测（10 测试）** （OpcHrApplicationServiceImplTest.java 在，实际 12 个 @Test）
 
 覆盖：状态机合法转换、非法转换抛异常、score 触发 LLM、LLM 失败 fallback、并发同候选人 uk_job_candidate 冲突
 
-- [ ] **Step 4: 跑单测**
+- [ ] **Step 4: 跑单测** （未完成：仓库里查不到运行结果）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-hr test -Dtest=OpcHrApplicationServiceImplTest`
 Expected: 10/10 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** （commit 506ea41 "feat(hr): Task 5 - Application Service + 5 endpoints + 10 单测 + 状态机"）
 
 ```bash
 git add springboot3/ruoyi-modules/opc-hr/src/main/{java/com/ruoyi/opc/hr/{controller/OpcHrApplicationController,service/OpcHrApplication*,service/impl/OpcHrApplication*},resources/mapper/OpcHrApplicationMapper.xml} springboot3/ruoyi-modules/opc-hr/src/test/java/com/ruoyi/opc/hr/service/impl/OpcHrApplicationServiceImplTest.java
@@ -987,29 +996,29 @@ git commit -m "feat(hr): Task 5 - Application Service + 5 endpoints + 10 单测"
 - Create: `OpcHrOfferMapper.xml` + `OpcHrOfferService.java` + `OpcHrOfferServiceImpl.java` + `OpcHrOfferController.java` + `OpcHrOfferServiceImplTest.java`
 - Create: `OpcHrMatchScoreMapper.xml` + `OpcHrMatchScoreMapper.java`
 
-- [ ] **Step 1: 创建 Interview 模块（3 endpoints）**
+- [x] **Step 1: 创建 Interview 模块（3 endpoints）** （部分：create() 没有校验 application 状态必须是 INTERVIEW 或 SCREENING；updateFeedback() 只更新面试行，result=PASS 不推进 application 到 INTERVIEW/OFFER、result=FAIL 也不推 REJECTED 且不强制填 reason）
 
 Service 关键逻辑：
 - `create(interview)`：applicationId 必须存在 → 验证 application 状态为 INTERVIEW 或 SCREENING
 - `update(id, feedback, result)`：result=PASS 自动推进 application → INTERVIEW（保持）/OFFER（如果是最后一轮）；result=FAIL → application → REJECTED,必填 reason
 
-- [ ] **Step 2: 创建 Offer 模块（2 endpoints）**
+- [x] **Step 2: 创建 Offer 模块（2 endpoints）** （部分：expire_at 由调用方传入，不是 plan 写的 NOW()+7 天自动算；respond() 只改 offer 状态，没有把 application 推进到 HIRED/REJECTED，也没有触发 NotificationGateway 通知 HR 和 UserCenterGateway 建员工档案）
 
 Service 关键逻辑：
 - `create(offer)`：applicationId 必唯一（uk_application）,expire_at = NOW() + 7 天
 - `respond(id, accept)`：ACCEPTED → application → HIRED + 触发 NotificationGateway 通知 HR + UserCenterGateway 创建员工档案；REJECTED → application → REJECTED
 
-- [ ] **Step 3: 写单测（8 测试）**
+- [x] **Step 3: 写单测（8 测试）** （OpcHrInterviewServiceImplTest 4 个 + OpcHrOfferServiceImplTest 4 个 @Test，合计 8 个）
 
 OpcHrInterviewServiceImplTest（5）：创建验证、轮次自增、result=PASS 推进、result=FAIL reason 必填
 OpcHrOfferServiceImplTest（3）：创建唯一约束、响应状态推进、过期检测
 
-- [ ] **Step 4: 跑单测**
+- [ ] **Step 4: 跑单测** （未完成：仓库里查不到运行结果）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-hr test -Dtest=OpcHrInterviewServiceImplTest,OpcHrOfferServiceImplTest`
 Expected: 8/8 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** （commit 8b97536 "feat(hr): Task 6 - Interview + Offer + MatchScore + 5 endpoints + 8 单测"）
 
 ```bash
 git add springboot3/ruoyi-modules/opc-hr/src/main/{java/com/ruoyi/opc/hr/{controller/{OpcHrInterviewController,OpcHrOfferController},service/{OpcHrInterview*,OpcHrOffer*,OpcHrMatchScoreMapper},service/impl/{OpcHrInterview*,OpcHrOffer*}},resources/mapper/{OpcHrInterview,OpcHrOffer,OpcHrMatchScore}Mapper.xml} springboot3/ruoyi-modules/opc-hr/src/test/java/com/ruoyi/opc/hr/service/impl/{OpcHrInterviewServiceImplTest,OpcHrOfferServiceImplTest}.java
@@ -1024,7 +1033,7 @@ git commit -m "feat(hr): Task 6 - Interview + Offer + MatchScore + 5 endpoints +
 - Create: `OpcHrDashboardService.java` + `OpcHrDashboardServiceImpl.java` + `OpcHrDashboardController.java`
 - Create: `OpcHrDashboardServiceImplTest.java`
 
-- [ ] **Step 1: 创建 Service**
+- [x] **Step 1: 创建 Service** （IOpcHrDashboardService + OpcHrDashboardServiceImpl 在，4 段聚合齐全：漏斗 countByStatusForDashboard、转化率内存计算、avg_hire_days 走 avgHireDaysForAcceptedOffers、JD 状态分布 countList×4）
 
 ```java
 public interface OpcHrDashboardService {
@@ -1038,7 +1047,7 @@ public interface OpcHrDashboardService {
 3. 平均招聘时长：`SELECT AVG(DATEDIFF(o.create_time, a.applied_at)) FROM opc_hr_offer o JOIN opc_hr_application a WHERE o.company_id=? AND o.status='ACCEPTED' AND a.applied_at>=DATE_SUB(NOW(),INTERVAL ? DAY)`
 4. JD 数量：`SELECT status, COUNT(*) FROM opc_hr_job WHERE company_id=? AND create_time>=DATE_SUB(NOW(),INTERVAL ? DAY) GROUP BY status`
 
-- [ ] **Step 2: 创建 Controller**
+- [x] **Step 2: 创建 Controller** （OpcHrDashboardController 在，GET /opc/hr/dashboard）
 
 ```java
 @RestController
@@ -1055,11 +1064,11 @@ public class OpcHrDashboardController {
 }
 ```
 
-- [ ] **Step 3: 单测（5 测试）**
+- [x] **Step 3: 单测（5 测试）** （OpcHrDashboardServiceImplTest.java 在，实际 8 个 @Test）
 
 mock mapper 返回样本数据,验证 Service 聚合逻辑（漏斗、转化率、平均时长四舍五入、空数据兜底）。
 
-- [ ] **Step 4: 跑单测 + Commit**
+- [ ] **Step 4: 跑单测 + Commit** （未完成：仓库里查不到测试运行结果；该 step 的 Commit 部分已由 commit 8ccf15f 完成）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-hr test -Dtest=OpcHrDashboardServiceImplTest`
 Expected: 5/5 PASS
@@ -1078,7 +1087,7 @@ git commit -m "feat(hr): Task 7 - Dashboard Service + 1 endpoint + 5 单测"
 - Create: `springboot3/ruoyi-modules/opc-hr/src/main/java/com/ruoyi/opc/hr/config/OpcHrFeignConfig.java`
 - Modify: `springboot3/ruoyi-modules/opc-hr/src/main/java/com/ruoyi/opc/hr/OpcHrApplication.java`（确认 FeignClients 已扫 opc 子包）
 
-- [ ] **Step 1: 创建 4 个 Gateway（每个带 FallbackFactory）**
+- [x] **Step 1: 创建 4 个 Gateway（每个带 FallbackFactory）** （4 个 Gateway + 4 个 FallbackFactory 都在） （4 个 Gateway 落在 feign/ 包、名字带 OpcHr 前缀（Notification/UserCenter/AiCore/Customer），FallbackFactory 拆成 feign/factory/ 下 4 个独立类而非内部类；AiCoreGateway 打的是 opc-ai-core 真实存在的 /opc/llm/chat + /opc/llm/embedding，不是 plan 写的 /opc/ai/llm/generate；UserCenterGateway 没有 /opc/user/dept/{deptId}，用的是 /opc/user/companies/profile）
 
 ```java
 package com.ruoyi.opc.hr.gateway;
@@ -1107,7 +1116,7 @@ CrmGateway：调 `/opc/crm/customer/findByEmail`
 
 每个都带 FallbackFactory（roadmap §2.2 强约束）。
 
-- [ ] **Step 2: 创建 OpcHrFeignConfig.java**
+- [ ] **Step 2: 创建 OpcHrFeignConfig.java** （未完成：OpcHrFeignConfig.java 在仓库里没有；opc-hr 下没有 config/ 目录，全仓库只有 opc-crm 的 config/FeignConfig.java）
 
 ```java
 @Configuration
@@ -1119,12 +1128,12 @@ public class OpcHrFeignConfig {
 }
 ```
 
-- [ ] **Step 3: 验证编译**
+- [ ] **Step 3: 验证编译** （未完成：仓库里查不到运行结果）
 
 Run: `cd springboot3 && mvn -pl ruoyi-modules/opc-hr -am compile -DskipTests`
 Expected: BUILD SUCCESS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit** （commit 1673e0c "feat(hr): Task 8 - 4 Feign Gateway + FallbackFactory + 4 单测"）
 
 ```bash
 git add springboot3/ruoyi-modules/opc-hr/src/main/java/com/ruoyi/opc/hr/{gateway,config}
@@ -1138,7 +1147,7 @@ git commit -m "feat(hr): Task 8 - 4 Feign Gateway + FallbackFactory"
 **Files:**
 - Create: `vue3-typescript/src/api/opc/hr.ts`
 
-- [ ] **Step 1: 写 API 客户端**
+- [x] **Step 1: 写 API 客户端** （vue3-typescript/src/api/opc/hr.ts 在，27 个函数、7+ 个 interface 都在） （URL 全部对得上；函数名和 plan 不同：generateLlmJob/parseCandidate/getHrDashboard，plan 写的是 generateJobLlm/parseResume/dashboard）
 
 ```typescript
 import request from '@/utils/request'
@@ -1208,7 +1217,7 @@ export const dashboard = (days = 30) =>
   request({ url: '/opc/hr/dashboard', method: 'get', params: { days } })
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit** （commit 24123e1 "feat(hr): Task 9 - frontend API 模块 + 类型定义 (25 endpoints)"）
 
 ```bash
 git add vue3-typescript/src/api/opc/hr.ts
@@ -1227,27 +1236,27 @@ git commit -m "feat(hr-frontend): Task 9 - API 模块 + 类型定义"
 - Create: `vue3-typescript/src/views/opc/hr/dashboard.vue`
 - Modify: `vue3-typescript/src/router/index.ts`
 
-- [ ] **Step 1: job/index.vue（JD 列表 + AI 生成）**
+- [x] **Step 1: job/index.vue（JD 列表 + AI 生成）** （views/opc/hr/job/index.vue 在，搜索/状态筛选/列表表格 + 「AI 生成 JD」弹窗 → 生成后创建草稿，plan 的描述对得上）
 
 Element Plus 模板：搜索框 + 状态筛选 + 列表表格 + 「AI 生成 JD」按钮 → 弹窗输入标题/类别/描述 → 调 generateJobLlm → 展示 full_jd + skills → 用户确认后 createJob。
 
-- [ ] **Step 2: job/detail.vue（JD 详情 + 投递列表）**
+- [x] **Step 2: job/detail.vue（JD 详情 + 投递列表）** （部分：JD 详情 + 状态徽章 + 投递表格都在；但没有 plan 说的「发布/关闭」按钮——这两个按钮在 job/index.vue 的列表行上）
 
 展示 JD 完整内容 + 当前状态徽章 + 「发布/关闭」按钮 + 该 JD 下所有投递表格（候选人姓名 + 评分 + 状态 + 操作）。
 
-- [ ] **Step 3: candidate/index.vue（候选人列表 + 搜索）**
+- [x] **Step 3: candidate/index.vue（候选人列表 + 搜索）** （部分：语义搜索框 + 列表表格 + 新建候选人都在；但没有文件上传按钮（是「新建候选人」表单），「解析简历」按钮在 candidate/detail.vue 上，index 页没有）
 
 搜索框（语义搜索）+ 上传按钮 + 列表表格 + 「解析简历」按钮。
 
-- [ ] **Step 4: candidate/detail.vue（候选人画像）**
+- [x] **Step 4: candidate/detail.vue（候选人画像）** （部分：基本信息 + 简历解析 tab + 投递历史 tab 都在；但 parsed_json 是整段 JSON 原文用 <pre> 展示，没拆成 plan 说的教育/工作/技能/项目字段）
 
 展示基本信息 + parsed_json 字段（教育/工作/技能/项目）+ 投递历史时间轴。
 
-- [ ] **Step 5: dashboard.vue（HR 仪表盘）**
+- [x] **Step 5: dashboard.vue（HR 仪表盘）** （部分：漏斗 + 转化率 + 平均招聘时长 + JD 状态分布 4 块都有；但漏斗是 el-table + 进度条画的，没用 ECharts，也没有 JD 状态分布饼图；文件里没有 ≥768 横排 / <768 纵排 的 media query，响应式靠 ResponsiveTable 组件）
 
 漏斗图（ECharts）+ 转化率卡片 + 平均招聘时长卡片 + JD 状态分布饼图。响应式（≥768 图表横排 / <768 纵排）。
 
-- [ ] **Step 6: Router 注册**
+- [x] **Step 6: Router 注册** （commit cf04974 当时在 router/index.ts 里注册了 5 条路由；后来 362c308 把 OPC 硬编码路由收敛成 11 条隐藏详情页，3 条菜单路由改由 sys_menu 表驱动）
 
 在 `vue3-typescript/src/router/index.ts` 加入 5 个路由：
 ```typescript
@@ -1263,12 +1272,12 @@ Element Plus 模板：搜索框 + 状态筛选 + 列表表格 + 「AI 生成 JD�
 }
 ```
 
-- [ ] **Step 7: 验证 type-check + build**
+- [ ] **Step 7: 验证 type-check + build** （未完成：仓库里查不到运行结果）
 
 Run: `cd vue3-typescript && npm run build:prod`
 Expected: BUILD 成功,dist/ 生成
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit** （commit cf04974 "feat(hr): Task 10 - 5 Vue 页 + Router(招聘管理)"）
 
 ```bash
 git add vue3-typescript/src/views/opc/hr vue3-typescript/src/router/index.ts
@@ -1289,7 +1298,7 @@ git commit -m "feat(hr-frontend): Task 10 - 5 Vue 页 + Router"
 - Modify: `springboot3/deploy/docker-compose.yml`（加 aiopc-hr）
 - Modify: `springboot3/deploy/helm/opc/values.yaml`（加 hr service）
 
-- [ ] **Step 1: 创建 Dockerfile（thin jar 模板）**
+- [x] **Step 1: 创建 Dockerfile（thin jar 模板）** （springboot3/ruoyi-modules/opc-hr/Dockerfile 在，thin jar + EXPOSE 9322 + 主类 com.ruoyi.opc.hr.OpcHrApplication 一致） （基础镜像是 eclipse-temurin:17-jre-jammy 不是 plan 写的 alpine）
 
 ```dockerfile
 FROM eclipse-temurin:17-jre-alpine
@@ -1301,7 +1310,7 @@ EXPOSE 9322
 ENTRYPOINT ["java", "-cp", "opc-hr.jar:lib/*", "com.ruoyi.opc.hr.OpcHrApplication"]
 ```
 
-- [ ] **Step 2: 创建 Nacos 配置**
+- [x] **Step 2: 创建 Nacos 配置** （部分：opc-hr-dev.yml 在，端口 9322 + 命名空间 opc-dev 一致；但 opc-hr-prod.yml 没有、import-prod.sh 里也没有 opc-hr 条目，whitelist-opc-hr.yml 也没有——白名单写在 ruoyi-gateway 的 application.yml 里）
 
 `opc-hr-dev.yml`:
 ```yaml
@@ -1326,12 +1335,12 @@ security:
       - /opc/hr/job/generate-llm
 ```
 
-- [ ] **Step 3: 创建 initdb SQL + seed**
+- [x] **Step 3: 创建 initdb SQL + seed** （springboot3/deploy/mysql-initdb.d/10-opc-hr-schema.sql 在，6 张表与 migrations 版一致） （seed 是 97-opc-hr-seed.sql 不是 plan 写的 96-（96 号被 opc-erp 占了）；数据量比 plan 多：6 JD + 5 候选人 + 5 投递 + 2 面试 + 1 offer + 3 match_score）
 
 `10-opc-hr-schema.sql`：内容与 V20260911 相同。
 `96-opc-hr-seed.sql`：5 个测试 JD + 3 个候选人 + 2 个投递 + 1 个面试 + 1 个 offer。
 
-- [ ] **Step 4: 修改 docker-compose.yml**
+- [x] **Step 4: 修改 docker-compose.yml** （docker-compose.yml 有 aiopc-hr 服务，ruoyi-gateway application.yml 有 /opc/hr/** 路由） （compose 里端口映射是 127.0.0.1:9322:9322，不是 plan 写的 9322:9322）
 
 在 services 段加入 aiopc-hr（参考 aiopc-crm 模式）：
 ```yaml
@@ -1368,21 +1377,21 @@ aiopc-hr:
     - Path=/opc/hr/**
 ```
 
-- [ ] **Step 5: 修改 Helm values.yaml**
+- [x] **Step 5: 修改 Helm values.yaml** （deploy/helm/opc/values.yaml 有 services.hr，templates/deployment-hr.yaml + service-hr.yaml 也在） （plan 里那句「helm template 输出 dev resources 21→23」无法在仓库里验证）
 
 在 services 段加入 hr service（同 CRM 模式）,确认 `helm template test deploy/helm/opc -f values-dev.yaml | grep '^kind:' | sort | uniq -c` 输出 dev resources 21→23 资源。
 
-- [ ] **Step 6: 验证 helm lint**
+- [ ] **Step 6: 验证 helm lint** （未完成：仓库里查不到运行结果）
 
 Run: `cd springboot3 && helm lint deploy/helm/opc`
 Expected: 0 errors
 
-- [ ] **Step 7: 验证 docker compose**
+- [ ] **Step 7: 验证 docker compose** （未完成：仓库里查不到运行结果）
 
 Run: `cd springboot3/deploy && docker compose config -q`
 Expected: exit 0
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit** （commit a3c6856 "feat(hr): Task 11 - Dockerfile + Nacos + compose + Helm + Gateway 路由"）
 
 ```bash
 git add springboot3/ruoyi-modules/opc-hr/Dockerfile springboot3/deploy/{nacos,mysql-initdb.d,docker-compose.yml,helm/opc/values.yaml}
@@ -1398,7 +1407,7 @@ git commit -m "feat(hr): Task 11 - Dockerfile + Nacos + compose + Helm"
 - Modify: `springboot3/deploy/nacos/whitelist-opc-hr.yml`
 - Create: `docs/verification/week-XX/OPC-WXX-VERIFICATION-opc-hr.md`
 
-- [ ] **Step 1: 更新 health-check.sh**
+- [x] **Step 1: 更新 health-check.sh** （deploy/scripts/health-check.sh 加了 check_hr() 段，8 项检查：容器 Up / Nacos 注册 / actuator health / 登录 + 4 个业务端点） （加的是 §8 check_hr() 不是 plan 写的 §9；8 项里有 4 个业务端点 job/list、candidate/list、application/list、dashboard，不是 plan 列的 8 个端点）
 
 在文件末尾追加 §9 段：
 ```bash
@@ -1415,7 +1424,7 @@ check_endpoint "/opc/hr/application/list" "opc-hr"
 echo -e "${GREEN}[OK]${NC}   Gateway /opc/hr/** 路由到 aiopc-hr (controller JSON 404)"
 ```
 
-- [ ] **Step 2: 重 build 前端 + 启容器**
+- [ ] **Step 2: 重 build 前端 + 启容器** （未完成：仓库里查不到运行结果）
 
 按 [[aiopc-deployment-persistence]] W51 教训：
 ```bash
@@ -1424,17 +1433,17 @@ docker compose build aiopc-hr aiopc-frontend
 docker compose up -d aiopc-hr aiopc-frontend
 ```
 
-- [ ] **Step 3: 跑 health-check**
+- [ ] **Step 3: 跑 health-check** （未完成：仓库里查不到运行结果）
 
 Run: `cd springboot3/deploy && bash scripts/health-check.sh`
 Expected: PASS 36→44（+8 新端点）
 
-- [ ] **Step 4: E2E 测试**
+- [ ] **Step 4: E2E 测试** （未完成：仓库里查不到运行结果；脚本 tmp_e2e/e2e_hr.py 只有 11 步，plan 要求 ≥15 步，且 VERIFICATION 报告 §3.5 自己写着「待服务启动后实跑；脚本已就绪」，即确实没跑）
 
 Run: `python tmp_e2e/e2e_hr.py`
 Expected: ≥15/15 PASS,覆盖完整流程：创建 JD → 发布 → 投递 → LLM 评分 → 推进 → 面试 → Offer → 入职
 
-- [ ] **Step 5: 写 VERIFICATION 报告**
+- [x] **Step 5: 写 VERIFICATION 报告** （docs/verification/week-71/OPC-W71-VERIFICATION-opc-hr.md 在） （报告在 docs/verification/week-71/ 下，不是 plan 模板里的 week-XX/OPC-WXX-…；报告自己的口径是 27 endpoints、58 @Test，与 plan 的 25 endpoints / 48 单测 不一致）
 
 模板（参考 [[opc-crm-w50]] 报告）:
 ```markdown
@@ -1461,7 +1470,7 @@ Expected: ≥15/15 PASS,覆盖完整流程：创建 JD → 发布 → 投递 →
 - W72: opc-erp（商业核心）
 ```
 
-- [ ] **Step 6: Commit + Push**
+- [x] **Step 6: Commit + Push** （commit 17f7196 "docs(hr): Task 12 - W71 VERIFICATION 报告 + 11 步 E2E 脚本"） （push 状态无法从仓库验证）
 
 ```bash
 git add springboot3/deploy/scripts/health-check.sh docs/verification/week-71/

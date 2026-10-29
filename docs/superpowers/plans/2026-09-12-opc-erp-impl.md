@@ -1,5 +1,14 @@
 # opc-erp (进销存) Implementation Plan
 
+## 审计说明（2026-10-29）
+
+- **审计对象**：本 plan（`docs/superpowers/plans/2026-09-12-opc-erp-impl.md`）
+- **plan 目标**：建 `opc-erp` 进销存服务（端口 9311）——10 张表的采购/库存/销售/退货后端，带 FIFO 批次跟踪、多供应商、Quartz 日/月快照、8 个前端页面
+- **审计方式**：只读仓库与 git 历史，逐条核实 72 个 checkbox。判据：文件在且内容对得上 / 代码里 grep 得到 / 测试文件与测试方法在 / 提交在 plan 时间窗（2026-09-12 ~ 09-14）内
+- **结果**：**勾了 60 / 没勾 12 / 共 72**
+- **没勾的 12 个主要卡在哪**：10 个是「跑一次看输出」的验证类步骤（mvn compile ×2、mvn test ×6、vue-tsc ×1、docker compose config + helm lint ×1）——其中 5 个是「Verify + Commit」混合 step，Commit 部分已由对应 commit 完成，但测试运行结果仓库里查不到；另 2 个是 plan 末尾 Self-Review 里原本就勾上的条目撑不住证据，被退回成未勾（「Spec coverage」：spec §1 只有 6 条 AC、13 条在 §13，且其中若干项根本没实现；「No placeholders」：plan 自己的代码块里有 `@Test ... (5 more)`、`// ... 29 more functions` 这类占位省略）
+- **另外要提醒的**：有 10 个 checkbox 勾上了但**只做了一半**，行尾都标了「（部分：…）」——最典型的是 `autoCategory()` 是关键词启发式占位而不是 plan 写的 LLM 调用（prompt `erp_auto_category_v1.0` 全仓 grep 不到）、两个 Quartz Job 没注册 cron、`OpcErpApplication` 里没有 plan 写的 `@PostConstruct registerJobs`、低库存告警没调 `notificationGateway`、Feign 的 `/opc/notification/inbox/send` 在 opc-notification 里根本不存在
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build opc-erp service (port 9311) — a 10-table purchase/inventory/sales/returns backend with FIFO batch tracking, multi-supplier support, Quartz daily/monthly snapshots, and 8 frontend pages.
@@ -133,11 +142,11 @@ tmp_e2e/
 - Create: `springboot3/ruoyi-modules/opc-erp/src/main/java/com/ruoyi/opc/erp/OpcErpApplication.java`
 - Create: `springboot3/sql/migrations/V20260912__opc_erp_schema.sql`
 
-- [ ] **Step 1: Create pom.xml (thin jar pattern, opc-notification dep)**
+- [x] **Step 1: Create pom.xml (thin jar pattern, opc-notification dep)** （部分：pom 里有 opc-common 依赖、`<phase>none</phase>` 薄包也对，但没加 plan 说的 opc-notification 依赖——pom 注释写明加了会让 opc-notification-3.6.8.jar 进 lib/ 触发启动失败；pom 里也没有 9311 端口注释）
 
 Copy opc-hr Task 1 pom exactly. Replace artifactId `opc-hr` → `opc-erp`, port 9311 in comments. Add dependency for `opc-notification` (Feign client) and `opc-common`. Keep `<phase>none</phase>` on spring-boot:repackage.
 
-- [ ] **Step 2: Create application.yml (port 9311)**
+- [x] **Step 2: Create application.yml (port 9311)** （部分：application.yml 里没有 plan 写的 `server.port: 9311`（端口挪到了 bootstrap.yml），也没有 jackson date-format/time-zone 块（改由 domain 上的 @JsonFormat 逐字段承担）；多出 datasource/redis/jasypt/opc.erp 段）
 
 ```yaml
 server:
@@ -163,7 +172,7 @@ mybatis:
     map-underscore-to-camel-case: true
 ```
 
-- [ ] **Step 3: Create bootstrap.yml (Nacos opc-dev, fail-fast)**
+- [x] **Step 3: Create bootstrap.yml (Nacos opc-dev, fail-fast)**
 
 ```yaml
 spring:
@@ -184,7 +193,7 @@ opc:
     namespace: opc-dev
 ```
 
-- [ ] **Step 4: Create logback.xml**
+- [x] **Step 4: Create logback.xml**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -199,7 +208,7 @@ opc:
 </configuration>
 ```
 
-- [ ] **Step 5: Create OpcErpApplication.java**
+- [x] **Step 5: Create OpcErpApplication.java**
 
 ```java
 package com.ruoyi.opc.erp;
@@ -224,7 +233,7 @@ public class OpcErpApplication {
 }
 ```
 
-- [ ] **Step 6: Create V20260912__opc_erp_schema.sql**
+- [x] **Step 6: Create V20260912__opc_erp_schema.sql** （部分：10+1 张表、company_id BIGINT NOT NULL 强约束、utf8mb4_unicode_ci、5 条 seed 供应商全对；但用的是 MySQL 8 原生 `CREATE TABLE IF NOT EXISTS`，不是 plan 写的 stored procedure）
 
 10 tables per spec §3 (supplier / product / product_sku / inventory_log / batch / purchase / purchase_item / sale / sale_item / return). All with `company_id NOT NULL` + composite indexes. Use `utf8mb4_unicode_ci`. Add 5 seed suppliers (`NORMAL` level). Use MySQL 8 stored procedure for `IF NOT EXISTS` (W3 经验).
 
@@ -275,7 +284,7 @@ VALUES
   (5, 1, '临时供应商', NULL, NULL, 'NORMAL', 0);
 ```
 
-- [ ] **Step 7: Compile verify**
+- [ ] **Step 7: Compile verify** （未完成：仓库里查不到运行结果）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3" && mvn -pl ruoyi-modules/opc-erp -am compile -DskipTests -Drat.skip=true 2>&1 | tail -10
@@ -283,7 +292,7 @@ cd "D:/work-ai/0401-lumen-opc/springboot3" && mvn -pl ruoyi-modules/opc-erp -am 
 
 Expected: BUILD SUCCESS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-erp/ springboot3/sql/migrations/V20260912__opc_erp_schema.sql
@@ -300,7 +309,7 @@ git commit -m "feat(erp): Task 1 - 模块骨架 + Application + 10 表 SQL (9311
 - Create: `enums/{ErpSupplierLevel, ErpProductStatus, ErpPurchaseStatus, ErpSaleStatus, ErpReturnType, ErpReturnStatus, ErpInventoryLogType}.java`
 - Create: `dto/{OpcErpProductDto, OpcErpProductSkuDto, OpcErpPurchaseDto, OpcErpPurchaseItemDto, OpcErpSaleDto, OpcErpSaleItemDto, OpcErpReturnDto, OpcErpSupplierDto, OpcErpReportDto}.java`
 
-- [ ] **Step 1: Domain Lombok conventions**
+- [x] **Step 1: Domain Lombok conventions** （部分：Lombok 4 件套 / @JsonProperty / LocalDateTime+LocalDate / GMT+8 / specAttrs 是 String / Batch 的 production_date·expiry_date·remaining·quantity / InventoryLog 的 change·type·ref_type·ref_id 全对；乐观锁改成手写 `updateByIdWithVersion`（version = version + 1），没用 @Version 注解，version 字段本身在）
 
 All Domain classes follow opc-hr pattern:
 - `@Data @Builder @NoArgsConstructor @AllArgsConstructor`
@@ -316,7 +325,7 @@ Critical fields:
 - `OpcErpBatch`:含 `production_date`/`expiry_date`/`remaining`/`quantity`
 - `OpcErpInventoryLog`:含 `change`/`type`/`ref_type`/`ref_id`
 
-- [ ] **Step 2: Mapper interfaces**
+- [x] **Step 2: Mapper interfaces**
 
 10 Mapper interfaces without `@Mapper` annotation (rely on `@MapperScan("com.ruoyi.**.mapper")` from `EnableCustomConfig`).
 
@@ -334,7 +343,7 @@ Methods per mapper:
 
 All queries must carry `@Param("companyId") Long companyId` for multi-tenant constraint.
 
-- [ ] **Step 3: 5 Enums (with `code`/`desc`/`of(String)`)**
+- [x] **Step 3: 5 Enums (with `code`/`desc`/`of(String)`)**
 
 ```java
 // ErpSupplierLevel.java
@@ -363,7 +372,7 @@ SUPPLIER_RETURN_OUT("SUPPLIER_RETURN_OUT","采退出库"),
 ADJUST("ADJUST","手动调整");
 ```
 
-- [ ] **Step 4: 9 DTOs**
+- [x] **Step 4: 9 DTOs**
 
 DTOs are minimal projection of Domain fields for Controller I/O. All have `@Data @Builder @NoArgsConstructor @AllArgsConstructor`.
 
@@ -371,7 +380,7 @@ Special DTOs:
 - `OpcErpProductSkuDto` — add `lowStock: boolean` (computed: stock < threshold)
 - `OpcErpReportDto` — 含 `daily[]` (date, inQty, outQty, balance) + `monthly[]` (month, inQty, outQty, balance) + `lowStockCount`
 
-- [ ] **Step 5: Compile verify**
+- [ ] **Step 5: Compile verify** （未完成：仓库里查不到运行结果）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3" && mvn -pl ruoyi-modules/opc-erp -am compile -DskipTests -Drat.skip=true 2>&1 | tail -10
@@ -379,7 +388,7 @@ cd "D:/work-ai/0401-lumen-opc/springboot3" && mvn -pl ruoyi-modules/opc-erp -am 
 
 Expected: BUILD SUCCESS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-erp/src/main/java/com/ruoyi/opc/erp/{domain,mapper,enums,dto}
@@ -399,7 +408,7 @@ git commit -m "feat(erp): Task 2 - 10 Domain + 10 Mapper + 7 Enum + 9 DTO"
 - Create: `resources/mapper/erp/OpcErpInventoryLogMapper.xml`
 - Create: `test/.../OpcErpProductServiceImplTest.java`
 
-- [ ] **Step 1: Product Service**
+- [x] **Step 1: Product Service** （部分：create() 的 spec_attrs JSON → 笛卡尔积 → 批量插 SKU、delete() 有库存不许删都对；但 autoCategory() 不是 plan 写的「Feign 调 opc-ai-core HttpLlmClient + prompt erp_auto_category_v1.0」，实际是关键词启发式占位（源码注释「TODO Task 8」），全仓 grep 不到 erp_auto_category_v1.0）
 
 ```java
 public interface IOpcErpProductService {
@@ -418,11 +427,11 @@ Key implementation:
 - `delete()`: only allowed when no SKU has stock > 0.
 - `autoCategory()`: Feign call to opc-ai-core HttpLlmClient with prompt `erp_auto_category_v1.0`. Fallback: return null.
 
-- [ ] **Step 2: SKU Service (auto-generated on product create)**
+- [x] **Step 2: SKU Service (auto-generated on product create)**
 
 SKU insert is part of `create()` transaction. No separate endpoint for SKU CRUD in v1 (product update can change specs but won't auto-recreate SKUs that already have stock).
 
-- [ ] **Step 3: Product Controller**
+- [x] **Step 3: Product Controller**
 
 ```java
 @RestController
@@ -473,13 +482,13 @@ public class OpcErpProductController {
 }
 ```
 
-- [ ] **Step 4: Mapper XML**
+- [x] **Step 4: Mapper XML**
 
 `OpcErpProductMapper.xml`: insert/updateById/deleteById/selectById/selectList/selectListByCategory
 `OpcErpProductSkuMapper.xml`: insert/updateById/selectById/selectBySkuCode/selectByProductId/selectLowStock (with `WHERE stock < threshold AND company_id = ?`)
 `OpcErpInventoryLogMapper.xml`: insert/selectBySkuId (last 30 days)
 
-- [ ] **Step 5: 15 @Test in OpcErpProductServiceImplTest**
+- [x] **Step 5: 15 @Test in OpcErpProductServiceImplTest**
 
 ```java
 @ExtendWith(MockitoExtension.class)
@@ -506,14 +515,14 @@ class OpcErpProductServiceImplTest {
 }
 ```
 
-- [ ] **Step 6: Verify**
+- [ ] **Step 6: Verify** （未完成：仓库里查不到运行结果）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3" && mvn -pl ruoyi-modules/opc-erp -am test -Dtest=OpcErpProductServiceImplTest -Drat.skip=true 2>&1 | tail -15
 ```
 Expected: 15/15 Tests passed
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-erp/
@@ -533,7 +542,7 @@ git commit -m "feat(erp): Task 3 - Product Service + 7 endpoints + Mapper XML + 
 - Create: `resources/mapper/erp/OpcErpBatchMapper.xml`
 - Create: `test/.../OpcErpPurchaseServiceImplTest.java`
 
-- [ ] **Step 1: Purchase Service**
+- [x] **Step 1: Purchase Service**
 
 ```java
 public interface IOpcErpPurchaseService {
@@ -554,7 +563,7 @@ Key implementation `confirm()`:
 
 Generate `purchase_no`: format `PO-{yyyyMMdd}-{4-digit-seq}` per company per day. Use Redis INCR or query `count(*)` for sequence.
 
-- [ ] **Step 2: Purchase Controller**
+- [x] **Step 2: Purchase Controller**
 
 ```java
 @RestController
@@ -567,7 +576,7 @@ public class OpcErpPurchaseController {
 }
 ```
 
-- [ ] **Step 3: Mapper XML**
+- [x] **Step 3: Mapper XML**
 
 `OpcErpPurchaseMapper.xml`: insert/updateById/selectById/selectByPurchaseNo/selectList/updateStatus
 `OpcErpPurchaseItemMapper.xml`: insertBatch/selectByPurchaseId/deleteByPurchaseId
@@ -584,7 +593,7 @@ Key SQL — selectFifoOrder:
 </select>
 ```
 
-- [ ] **Step 4: 12 @Test**
+- [x] **Step 4: 12 @Test**
 
 ```java
 @ExtendWith(MockitoExtension.class) @MockitoSettings(strictness = Strictness.LENIENT)
@@ -606,7 +615,7 @@ class OpcErpPurchaseServiceImplTest {
 }
 ```
 
-- [ ] **Step 5: Verify + Commit**
+- [ ] **Step 5: Verify + Commit** （未完成：仓库里查不到测试运行结果；该 step 的 Commit 部分已由 commit ebc2014 完成）
 
 ```bash
 mvn -pl ruoyi-modules/opc-erp test -Dtest=OpcErpPurchaseServiceImplTest -Drat.skip=true 2>&1 | tail -10
@@ -628,7 +637,7 @@ git add springboot3/ruoyi-modules/opc-erp/ && git commit -m "feat(erp): Task 4 -
 - Create: `test/.../OpcErpSaleServiceImplTest.java`
 - Create: `test/.../OpcErpFifoBatchServiceTest.java`
 
-- [ ] **Step 1: FIFO Batch Service**
+- [x] **Step 1: FIFO Batch Service**
 
 ```java
 public interface IOpcErpFifoBatchService {
@@ -678,7 +687,7 @@ public List<DeductedBatch> deductFifo(Long companyId, Long skuId, int quantity) 
 
 Critical: `selectFifoOrderForUpdate` must use `SELECT ... FOR UPDATE` for row-level lock in concurrent scenarios. Add separate Mapper method (don't reuse the unlocked one).
 
-- [ ] **Step 2: Sale Service**
+- [x] **Step 2: Sale Service**
 
 ```java
 public interface IOpcErpSaleService {
@@ -703,7 +712,7 @@ Key implementation `confirm()`:
 - Insert `opc_erp_inventory_log` (type=SALE_OUT, change=-quantity, ref_id=sale_id)
 - Update sale status → CONFIRMED → COMPLETED (single-step in v1, no separate complete stage)
 
-- [ ] **Step 3: Sale Controller**
+- [x] **Step 3: Sale Controller**
 
 ```java
 @RestController
@@ -714,7 +723,7 @@ public class OpcErpSaleController {
 }
 ```
 
-- [ ] **Step 4: Mapper XML**
+- [x] **Step 4: Mapper XML**
 
 `OpcErpSaleMapper.xml`: insert/updateById/selectById/selectBySaleNo/selectList/updateStatus
 `OpcErpSaleItemMapper.xml`: insert/selectBySaleId
@@ -733,7 +742,7 @@ Add to `OpcErpBatchMapper.xml`: `selectFifoOrderForUpdate` (with `FOR UPDATE`):
 
 Add corresponding method to `OpcErpBatchMapper.java` interface.
 
-- [ ] **Step 5: 15 @Test (Sale) + 4 @Test (FIFO)**
+- [x] **Step 5: 15 @Test (Sale) + 4 @Test (FIFO)**
 
 Sale:
 ```java
@@ -762,7 +771,7 @@ FIFO:
 @Test deductFifo_zeroQuantityThrows()
 ```
 
-- [ ] **Step 6: Verify + Commit**
+- [ ] **Step 6: Verify + Commit** （未完成：仓库里查不到测试运行结果；该 step 的 Commit 部分已由 commit 70271c1 完成）
 
 ```bash
 mvn -pl ruoyi-modules/opc-erp test -Dtest=OpcErpSaleServiceImplTest,OpcErpFifoBatchServiceTest -Drat.skip=true 2>&1 | tail -10
@@ -785,7 +794,7 @@ git add springboot3/ruoyi-modules/opc-erp/ && git commit -m "feat(erp): Task 5 -
 - Create: `test/.../OpcErpReturnServiceImplTest.java`
 - Create: `test/.../OpcErpSupplierServiceImplTest.java`
 
-- [ ] **Step 1: Supplier Service**
+- [x] **Step 1: Supplier Service**
 
 Standard CRUD (8 @Test):
 - create (with uk_company_supplier_name check)
@@ -797,7 +806,7 @@ Standard CRUD (8 @Test):
 - getByName
 - inactiveBlocksDelete
 
-- [ ] **Step 2: Return Service**
+- [x] **Step 2: Return Service**
 
 ```java
 public interface IOpcErpReturnService {
@@ -815,16 +824,16 @@ Key implementation `confirm()`:
 
 Generate `return_no`: format `RT-{yyyyMMdd}-{4-digit-seq}`.
 
-- [ ] **Step 3: Return + Supplier Controllers**
+- [x] **Step 3: Return + Supplier Controllers**
 
 Standard REST controllers. Return has 5 endpoints (create/confirm/cancel/list/detail). Supplier has 4 (create/list/update/delete).
 
-- [ ] **Step 4: Mapper XML**
+- [x] **Step 4: Mapper XML**
 
 `OpcErpReturnMapper.xml`: insert/updateById/selectById/selectByReturnNo/selectList/updateStatus
 `OpcErpSupplierMapper.xml`: 6 basic + selectByName + selectListByLevel
 
-- [ ] **Step 5: 10 @Test (Return) + 8 @Test (Supplier)**
+- [x] **Step 5: 10 @Test (Return) + 8 @Test (Supplier)**
 
 Return tests:
 ```java
@@ -842,7 +851,7 @@ Return tests:
 
 Supplier tests: standard CRUD (covered in Step 1 above).
 
-- [ ] **Step 6: Verify + Commit**
+- [ ] **Step 6: Verify + Commit** （未完成：仓库里查不到测试运行结果；该 step 的 Commit 部分已由 commit 0a11bfd 完成）
 
 ```bash
 mvn -pl ruoyi-modules/opc-erp test -Dtest=OpcErpReturnServiceImplTest,OpcErpSupplierServiceImplTest -Drat.skip=true 2>&1 | tail -10
@@ -867,7 +876,7 @@ git add springboot3/ruoyi-modules/opc-erp/ && git commit -m "feat(erp): Task 6 -
 - Create: `test/.../OpcErpInventoryServiceImplTest.java`
 - Create: `test/.../OpcErpReportServiceImplTest.java`
 
-- [ ] **Step 1: Add `opc_erp_daily_snapshot` table to schema**
+- [x] **Step 1: Add `opc_erp_daily_snapshot` table to schema**
 
 ```sql
 CREATE TABLE opc_erp_daily_snapshot (
@@ -887,7 +896,7 @@ CREATE TABLE opc_erp_daily_snapshot (
 
 Add this table to Task 1 schema file (or append now — idempotent via stored procedure).
 
-- [ ] **Step 2: Inventory Service**
+- [x] **Step 2: Inventory Service**
 
 ```java
 public interface IOpcErpInventoryService {
@@ -900,7 +909,7 @@ public interface IOpcErpInventoryService {
 }
 ```
 
-- [ ] **Step 3: Report Service**
+- [x] **Step 3: Report Service**
 
 ```java
 public interface IOpcErpReportService {
@@ -911,7 +920,7 @@ public interface IOpcErpReportService {
 }
 ```
 
-- [ ] **Step 4: Quartz Jobs (refer opc-job WorkflowCronJob pattern)**
+- [x] **Step 4: Quartz Jobs (refer opc-job WorkflowCronJob pattern)** （部分：2 个 Job 类都在且算法对（日报快照 opening/in/out/closing、低库存扫描）；但没实现 org.quartz.Job、OpcErpApplication 里没有 plan 写的 `@PostConstruct registerJobs`（整个模块 grep 不到 @PostConstruct）、没有 cron 表达式也没有 sys_job 种子；低库存告警没调 notificationGateway（源码里是 TODO），24h Redis 去重也没有）
 
 ```java
 // OpcErpDailySnapshotJob.java
@@ -946,7 +955,7 @@ public void registerJobs() {
 }
 ```
 
-- [ ] **Step 5: Controllers**
+- [x] **Step 5: Controllers**
 
 ```java
 @RestController
@@ -962,7 +971,7 @@ public class OpcErpReportController {
 }
 ```
 
-- [ ] **Step 6: 10 Inventory + 10 Report @Test**
+- [x] **Step 6: 10 Inventory + 10 Report @Test**
 
 Inventory:
 ```java
@@ -983,7 +992,7 @@ Report:
 @Test ... (6 more)
 ```
 
-- [ ] **Step 7: Verify + Commit**
+- [ ] **Step 7: Verify + Commit** （未完成：仓库里查不到测试运行结果；该 step 的 Commit 部分已由 commit 49ff87f 完成）
 
 ```bash
 mvn -pl ruoyi-modules/opc-erp test -Dtest=OpcErpInventoryServiceImplTest,OpcErpReportServiceImplTest -Drat.skip=true 2>&1 | tail -10
@@ -999,7 +1008,7 @@ git add springboot3/ruoyi-modules/opc-erp/ && git commit -m "feat(erp): Task 7 -
 - Create: `feign/factory/OpcErpNotificationGatewayFactory.java`
 - Create: `test/.../feign/OpcErpNotificationGatewayFactoryTest.java`
 
-- [ ] **Step 1: Gateway interface**
+- [x] **Step 1: Gateway interface** （部分：FeignClient 接口和两个方法都在，contextId/fallbackFactory 也对；但 sendInbox 打的 `/opc/notification/inbox/send` 在 opc-notification 里不存在——InboxController 只有 GET /inbox、POST /read/{id}、POST /read-all、GET /unread-count，跟 plan 说的「用真实路径」对不上）
 
 ```java
 @FeignClient(contextId = "opcErpNotification", name = "opc-notification",
@@ -1015,7 +1024,7 @@ public interface OpcErpNotificationGateway {
 
 Reference: opc-hr `OpcHrNotificationGateway.java` + opc-crm `OpcCrmNotificationGateway.java`. Use real notification controller paths (not aspirational).
 
-- [ ] **Step 2: FallbackFactory (log + R.ok)**
+- [x] **Step 2: FallbackFactory (log + R.ok)**
 
 ```java
 @Slf4j
@@ -1032,14 +1041,14 @@ public class OpcErpNotificationGatewayFactory implements FallbackFactory<OpcErpN
 }
 ```
 
-- [ ] **Step 3: 2 @Test**
+- [x] **Step 3: 2 @Test**
 
 ```java
 @Test sendEmail_fallbackReturnsOk()
 @Test sendInbox_fallbackReturnsOk()
 ```
 
-- [ ] **Step 4: Verify + Commit**
+- [ ] **Step 4: Verify + Commit** （未完成：仓库里查不到测试运行结果；该 step 的 Commit 部分已由 commit 4fd65bd 完成）
 
 ```bash
 mvn -pl ruoyi-modules/opc-erp test -Dtest=OpcErpNotificationGatewayFactoryTest -Drat.skip=true 2>&1 | tail -10
@@ -1053,7 +1062,7 @@ git add springboot3/ruoyi-modules/opc-erp/ && git commit -m "feat(erp): Task 8 -
 **Files:**
 - Create: `vue3-typescript/src/api/opc/erp.ts`
 
-- [ ] **Step 1: API module with 30 functions**
+- [x] **Step 1: API module with 30 functions**
 
 Reference: `vue3-typescript/src/api/opc/hr.ts` (opc-hr Task 9). Define inline interfaces for 9 entities + 1 report DTO.
 
@@ -1069,7 +1078,7 @@ export function createProduct(data: Partial<OpcErpProduct>): Promise<AjaxResult<
 
 All paths `/opc/erp/{product,purchase,sale,return,supplier,inventory,report}/...`. Methods: post/put/delete/get.
 
-- [ ] **Step 2: Verify TypeScript types**
+- [ ] **Step 2: Verify TypeScript types** （未完成：仓库里查不到运行结果）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/vue3-typescript" && npx vue-tsc --noEmit 2>&1 | grep -E "src/api/opc/erp" | head -10
@@ -1077,7 +1086,7 @@ cd "D:/work-ai/0401-lumen-opc/vue3-typescript" && npx vue-tsc --noEmit 2>&1 | gr
 
 Expected: no type errors in erp.ts.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add vue3-typescript/src/api/opc/erp.ts && git commit -m "feat(erp): Task 9 - frontend API 模块 + 类型定义 (30 endpoints)"
@@ -1091,7 +1100,7 @@ git add vue3-typescript/src/api/opc/erp.ts && git commit -m "feat(erp): Task 9 -
 - Create: 8 .vue files in `views/opc/erp/`
 - Modify: `router/index.ts` (add 8 routes under `/opc/erp`)
 
-- [ ] **Step 1: Pages**
+- [x] **Step 1: Pages**
 
 | Route | File | Notes |
 |---|---|---|
@@ -1104,7 +1113,7 @@ git add vue3-typescript/src/api/opc/erp.ts && git commit -m "feat(erp): Task 9 -
 | `/opc/erp/return` | `return/index.vue` | 退货单列表 + 销退/采退切换 |
 | `/opc/erp/inventory` | `inventory/index.vue` | 库存查询 + 低库存预警 + 日报/月报入口 |
 
-- [ ] **Step 2: Router registration**
+- [x] **Step 2: Router registration** （部分：8 个页面都可达——5 个主路由走 sys_menu 后端动态路由（V20261022__opc_sys_menus.sql 的 2017~2022），3 个隐藏路由写在 router/index.ts；plan 写的 Element Plus 图标名 Goods/ShoppingCart/Sell/Refresh/Box 没落地，sys_menu 用的是 RuoYi 图标名 product/zip/list/tree-table/tree）
 
 Add 8 routes to `router/index.ts` (or `router/modules/opc.ts`). Use Element Plus icons:
 - product: `Goods`
@@ -1113,7 +1122,7 @@ Add 8 routes to `router/index.ts` (or `router/modules/opc.ts`). Use Element Plus
 - return: `Refresh`
 - inventory: `Box`
 
-- [ ] **Step 3: Verify + Commit**
+- [x] **Step 3: Verify + Commit**
 
 ```bash
 git add vue3-typescript/src/views/opc/erp/ vue3-typescript/src/router/ && git commit -m "feat(erp): Task 10 - 8 Vue 页 + Router(进销存)"
@@ -1133,11 +1142,11 @@ git add vue3-typescript/src/views/opc/erp/ vue3-typescript/src/router/ && git co
 - Create: `springboot3/deploy/helm/opc/templates/service-erp.yaml`
 - Modify: `springboot3/ruoyi-gateway/src/main/resources/application.yml`
 
-- [ ] **Step 1: Dockerfile (thin jar)**
+- [x] **Step 1: Dockerfile (thin jar)**
 
 Identical to opc-hr/opc-crm/opc-community pattern. Replace `opc-hr.jar` → `opc-erp.jar`, Main-Class `com.ruoyi.opc.erp.OpcErpApplication`.
 
-- [ ] **Step 2: Nacos `opc-erp-dev.yml`**
+- [x] **Step 2: Nacos `opc-erp-dev.yml`**
 
 ```yaml
 server:
@@ -1159,11 +1168,11 @@ opc:
     namespace: opc-dev
 ```
 
-- [ ] **Step 3: Modify import-dev.sh** (add opc-erp-dev.yml entry)
+- [x] **Step 3: Modify import-dev.sh** (add opc-erp-dev.yml entry)
 
-- [ ] **Step 4: docker-compose.yml** (add `aiopc-erp` service on port 9311)
+- [x] **Step 4: docker-compose.yml** (add `aiopc-erp` service on port 9311)
 
-- [ ] **Step 5: Helm chart** (values.yaml services.erp + 2 template files)
+- [x] **Step 5: Helm chart** (values.yaml services.erp + 2 template files)
 
 ```yaml
 # values.yaml
@@ -1178,7 +1187,7 @@ erp:
     limits: { cpu: 500m, memory: 512Mi }
 ```
 
-- [ ] **Step 6: Gateway route + whitelist**
+- [x] **Step 6: Gateway route + whitelist** （部分：路由 `id: opc-erp` → `http://aiopc-erp:9311` + `Path=/opc/erp/**` 都在；白名单实际放行的是 GET:/opc/erp/product/list、GET:/opc/erp/product/**、GET:/opc/erp/inventory/low-stock——plan 写的 `/opc/erp/product-sku/list` 实际控制器路径是 `/opc/erp/product/product-sku/list`，且 2026-10-24 收紧成只放行 GET）
 
 ```yaml
 # application.yml
@@ -1194,7 +1203,7 @@ White-list URLs:
 - `/opc/erp/product-sku/list` (公开浏览商品 SKU)
 - `/opc/erp/inventory/low-stock` (公开预警查询)
 
-- [ ] **Step 7: Verify**
+- [ ] **Step 7: Verify** （未完成：仓库里查不到运行结果）
 
 ```bash
 cd "D:/work-ai/0401-lumen-opc/springboot3/deploy" && docker compose config -q 2>&1 | head -3
@@ -1203,7 +1212,7 @@ cd "D:/work-ai/0401-lumen-opc/springboot3/deploy/helm/opc" && helm lint . 2>&1 |
 
 Expected: both PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add springboot3/ruoyi-modules/opc-erp/Dockerfile springboot3/deploy/ springboot3/ruoyi-gateway/
@@ -1219,7 +1228,7 @@ git commit -m "feat(erp): Task 11 - Dockerfile + Nacos + compose + Helm + Gatewa
 - Create: `tmp_e2e/e2e_erp.py`
 - Modify: `springboot3/deploy/scripts/health-check.sh` (add 6 erp endpoints)
 
-- [ ] **Step 1: health-check.sh additions**
+- [x] **Step 1: health-check.sh additions**
 
 Add `check_erp()` after `check_hr()`:
 ```bash
@@ -1232,7 +1241,7 @@ curl_check "aiopc-erp-sale-list" "http://aiopc-erp:9311/opc/erp/sale/list?compan
 curl_check "aiopc-erp-inventory-low-stock" "http://aiopc-erp:9311/opc/erp/inventory/low-stock?companyId=1" '"code":200'
 ```
 
-- [ ] **Step 2: E2E `tmp_e2e/e2e_erp.py`**
+- [x] **Step 2: E2E `tmp_e2e/e2e_erp.py`** （部分：tmp_e2e/e2e_erp.py 在、确实是 10 步；但第 6~10 步是「列销售单/查低库存/查日报/查月报/列供应商」，plan 要求的「建销售单 → FIFO 确认 → 建销退单 → 确认销退」整条链路没跑）
 
 10-step full chain:
 1. Login → token
@@ -1246,7 +1255,7 @@ curl_check "aiopc-erp-inventory-low-stock" "http://aiopc-erp:9311/opc/erp/invent
 9. Create return (SALES_RETURN) for the sale
 10. Confirm return → stock restored + inventory_log written
 
-- [ ] **Step 3: VERIFICATION report**
+- [x] **Step 3: VERIFICATION report**
 
 ```markdown
 # opc-erp 服务验证报告 (W72)
@@ -1269,7 +1278,7 @@ curl_check "aiopc-erp-inventory-low-stock" "http://aiopc-erp:9311/opc/erp/invent
 ## 8. Commit 历史
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/verification/week-72/ tmp_e2e/e2e_erp.py springboot3/deploy/scripts/health-check.sh
@@ -1280,8 +1289,8 @@ git commit -m "docs(erp): Task 12 - W72 VERIFICATION 报告 + 10 步 E2E 脚本 
 
 ## Self-Review Checklist
 
-- [x] **Spec coverage**: All 13 acceptance criteria from spec §1 → mapped to Tasks 3-7 (Product CRUD, Purchase, Sale FIFO, Return SALES_RETURN, Return SUPPLIER_RETURN, Low stock alert cron, Daily/Monthly reports).
-- [x] **No placeholders**: No "TBD" / "implement later" / "fill in details". All code blocks are complete.
+- [ ] **Spec coverage**: All 13 acceptance criteria from spec §1 → mapped to Tasks 3-7 (Product CRUD, Purchase, Sale FIFO, Return SALES_RETURN, Return SUPPLIER_RETURN, Low stock alert cron, Daily/Monthly reports). （未完成：spec §1 只有 6 条 AC（AC-1~AC-6），13 条验收清单在 spec §13 而不是 §1；且 §13 那 13 条里「1 prompt + EvalRunnerTest」「2 Quartz 定时任务」「Nacos 2 yml」在仓库里都没实现——全仓 grep 不到 erp_auto_category_v1.0、opc-erp 下没有 EvalRunnerTest、OpcErpApplication 里没有 @PostConstruct 注册 cron、opc-erp-prod.yml 不存在；spec AC-5 要求的「低库存预警经 opc-notification Feign 发通知」也没接上）
+- [ ] **No placeholders**: No "TBD" / "implement later" / "fill in details". All code blocks are complete. （未完成：plan 自己的代码块里有占位省略——`@Test ... (5 more)`（974/983 行）、`// ... 29 more functions` 与 `export interface OpcErpPurchase { ... }`（1063~1067 行）、`-- (重复上述模式 create 9 张表)`（266 行）、`mapper/{...}Mapper.java`（299 行）都不是「完整代码块」）
 - [x] **Type consistency**: All references to types/entities use consistent snake_case (`created_by`, `purchase_no`, `sku_root`, `spec_attrs`, `spec_json`, `batch_no`, `production_date`, `expiry_date`, `remaining`, `quantity`, `in_qty`, `out_qty`, `closing_stock`, `opening_stock`, `return_type`, `refund_amount`, `total_amount`, `unit_price`, `subtotal`).
 - [x] **Project conventions**: Lombok 4 件套, `@JsonProperty`, `LocalDateTime`, `GMT+8`, `SnowflakeIdGenerator`, `@EnableCustomConfig`, `@ComponentScan("com.ruoyi.opc")`, company_id strong constraint, fallback factory required.
 - [x] **Known pattern alignment**: Follows opc-hr W71 template exactly (same Dockerfile, same Nacos structure, same Helm pattern, same gateway route pattern, same e2e_*.py pattern).
