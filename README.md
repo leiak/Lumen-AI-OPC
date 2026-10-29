@@ -47,16 +47,20 @@ OPC = **One-Person Company**，核心假设是未来大量"一人公司"会涌�
 
 ### 后端（`springboot3/`）
 
-- **Spring Boot 3.2** + Spring Cloud 2023 + Spring Cloud Alibaba 2022.0.0.0
-- **Nacos** 配置中心 + 服务发现（namespace `opc-prod`）
-- **MySQL 8** + MyBatis-Plus 3.5
-- **Redis** + Caffeine 双层缓存
-- **RabbitMQ** 异步事件
+- **Spring Boot 3.5.16** + Spring Cloud 2025.0.2 + Spring Cloud Alibaba 2025.0.0.0（Java 17）
+- **Nacos** 配置中心 + 服务发现（演示环境命名空间 `opc-dev`，生产 `opc-prod`）
+- **MySQL 8** + MyBatis 3.5.19（**普通 MyBatis，不是 MyBatis-Plus**）
+- **Redis** 缓存（单层 —— **没有 Caffeine**，全仓没有这个依赖）
 - **Qdrant** 向量库（Agent 长期记忆）
 - **Sentinel** 限流熔断
-- **Quartz** 定时任务（OPC 沿用 RuoYi 原生 `ruoyi-job`，不走 XXL-Job）
+- **Quartz** 定时任务 —— ⚠️ `ruoyi-job` 模块在仓库里（唯一引 quartz 的地方，
+  `WorkflowCronJob` 也在里面），但**没有任何服务依赖它、compose 里也没有它的容器**
+  → **演示栈里没有调度器在跑**，`sys_job` 表里注册的任务没人执行
 - **OpenFeign** 微服务调用（带 Sentinel 降级）
 - **Jasypt** 配置加密（口令 `OpcEncrypt!2026`）
+- **RabbitMQ**：compose 里有个容器，也有服务拿到了 `RABBITMQ_HOST`，
+  但**全仓没有一个 pom 引入 amqp 客户端，也没有一行 Java 代码用它** ——
+  异步目前走的是 opc-notification 的 Redis 收件箱 + WebSocket 推送
 
 ### 前端（`vue3-typescript/`）
 
@@ -70,31 +74,55 @@ OPC = **One-Person Company**，核心假设是未来大量"一人公司"会涌�
 
 ### AI 能力（`opc-ai-core`）
 
-- 多 LLM Provider 适配：**OpenAI / DeepSeek / 文心一言**
+- 多 LLM Provider 适配：**DeepSeek / MiniMax / OpenAI 兼容 / 文心一言**（演示环境主用 MiniMax）
 - Token 用量计量 + 单租户/单用户配额
-- Prompt 版本化 + 红队评测 + AB 测试
 - **PromptGuard** + **SensitiveWordFilter** 多层安全防护（详见 `OPC-SECURITY-REPORT-v0.1.md`）
 - **AgentRuntime** ReAct 循环（Reasoning + Acting，最多 8 步）
+- ⚠️ `opc_prompt_template` 表**建了但没人用** —— 全仓没有一行代码读写它，
+  「Prompt 版本化 / 红队评测 / AB 测试」目前是**表结构，不是功能**
 
 ---
 
 ## 模块布局
 
-```
-opc-ai-core      (9301) AI 中台  ── LLM gateway / agent runtime / 评测 / 安全
-opc-user-center  (9302) 用户中心  ── 注册 / 公司 / 成员 / 邀请
-opc-agent-hub    (9303) Agent 调度 ── Workflow Engine + 多 Agent 编排
-opc-billing      (9304) 计费     ── 钱包 / 代金券 / 流水
-opc-finance      (9305) 财务     ── 凭证 / 流水 / 报税报表
+> 端口以 `springboot3/deploy/docker-compose.yml` 为准（下表逐条对过 compose）。
+> 业务端口只绑 127.0.0.1，对外只有前端 8079 一个口子。
 
-OPC 沿用的 RuoYi 内置模块：
-  ruoyi-gateway     (9200) Spring Cloud Gateway + Sentinel 流控
-  ruoyi-auth        (9201) OAuth2 统一认证
-  ruoyi-system      (9202) 用户 / 角色 / 菜单 / 字典
-  ruoyi-job         (9203) Quartz 调度（任务注册在 sys_job 表）
-  ruoyi-file        (9204) 文件存储抽象
-  ruoyi-gen         (9205) 代码生成器
 ```
+OPC 业务服务（13 个）
+opc-ai-core      (9301) AI 中台      ── LLM gateway / agent runtime / 安全
+opc-user-center  (9302) 用户中心     ── 注册 / 公司 / 成员 / 邀请
+opc-agent-hub    (9303) Agent 调度   ── Workflow Engine + 多 Agent 编排
+opc-billing      (9304) 计费         ── 钱包 / 代金券 / 流水
+opc-finance      (9305) 财务         ── 凭证 / 流水 / 报税报表
+opc-insight      (9306) 数据洞察     ── 日报 / 驾驶舱 / 异常预警
+opc-notification (9310) 通知中心     ── 邮件 / 短信 / 站内收件箱 / WebSocket
+opc-erp          (9311) 进销存       ── 采购 / 库存 / 销售 / 退货 / FIFO 批次
+opc-crm          (9312) CRM          ── 客户 / 商机 / 合同 / 订单 / LLM 打分
+opc-community    (9316) 模块社区     ── 功能模块目录 / 评分 / 安装计数
+opc-marketplace  (9317) 开发者集市   ── 上架 / 安装 / 评价 / 订阅
+opc-hr           (9322) 招聘管理     ── 职位 / 候选人 / 面试 / Offer
+opc-content      (9325) AI 内容创作  ── 4 个 LLM 场景 / 抖音发布
+
+平台（RuoYi 内置）
+  ruoyi-gateway     (8080) Spring Cloud Gateway + Sentinel 流控
+  ruoyi-auth        (9200) OAuth2 统一认证（对外映射 19200）
+  ruoyi-system      (9201) 用户 / 角色 / 菜单 / 字典
+
+前端
+  aiopc-frontend    (8079) Vue 3 + TS，唯一对外开放的端口
+
+基础设施（12 个）
+  nacos1 / mysql / redis / rabbitmq / qdrant / minio / elasticsearch
+  prometheus / grafana / sentinel-dashboard / skywalking-oap / skywalking-ui
+```
+
+`ruoyi-job`、`ruoyi-file`、`ruoyi-gen` 是 RuoYi 自带模块，本栈不单独起容器，
+而且**全仓没有任何模块依赖它们**（`ruoyi-job` 里的 quartz 依赖和 `WorkflowCronJob`
+都只服务于自己）→ **本栈没有 Quartz 调度器，`sys_job` 表里的注册没人消费**。
+Spring 那边也不行：**全仓 0 个 `@Scheduled`、0 个 `@EnableScheduling`** ——
+所以「定时任务」目前一次都没自动跑过（日报快照、低库存告警、Workflow cron 都是
+写好了但没人叫醒）。
 
 ---
 
@@ -104,31 +132,34 @@ OPC 沿用的 RuoYi 内置模块：
                 ┌─────────────────────┐
                 │  用户浏览器 (Vue 3)  │
                 └──────────┬──────────┘
-                           │ HTTPS
+                           │ HTTP :8079
                 ┌──────────▼──────────┐
-                │ Nginx / Cloudflare │
+                │  aiopc-frontend     │  nginx（唯一对外开放的端口）
+                │  /prod-api/* 反代    │
                 └──────────┬──────────┘
                            │
                 ┌──────────▼──────────┐
-                │  ruoyi-gateway:9200  │ ◄── Sentinel 流控
+                │ aiopc-gateway:8080  │ ◄── Sentinel 流控（控制台 :8718）
                 │  AuthFilter (JWT)    │
                 └──────────┬──────────┘
                            │  内部 RPC (OpenFeign)
-        ┌──────────┬───────┼────────┬──────────┐
-        ▼          ▼       ▼        ▼          ▼
-  ai-core    user-center  agent-hub  billing   finance
-  (9301)      (9302)      (9303)     (9304)    (9305)
+   ┌──────────┬───────────┼───────────┬──────────┬──────────┐
+   ▼          ▼           ▼           ▼          ▼          ▼
+ ai-core  user-center  agent-hub   billing   finance   ...（共 13 个业务服务）
 
                 ▲                       ▲
                 │ cron trigger           │ Nacos config
                 │                        │
-          ┌─────┴───────┐         ┌──────┴──────┐
-          │ ruoyi-job   │         │   Nacos     │
-          │ (Quartz)    │         │  opc-prod   │
-          └─────────────┘         └─────────────┘
+      ┌─────────┴────────┐      ┌────────┴─────────┐
+      │ agent-hub        │      │ Nacos            │
+      │ (无调度器 ⚠️)    │      │ opc-dev（演示）  │
+      └──────────────────┘      └──────────────────┘
 ```
 
-完整 K8s Helm Chart 在 `springboot3/deploy/helm/opc/`（7 服务 + HPA + PDB + Ingress）。
+> 图里画的是**演示环境**（Nacos 命名空间 `opc-dev`）。生产用 `opc-prod`。
+
+完整 K8s Helm Chart 在 `springboot3/deploy/helm/opc/`（**14 个 deployment** + HPA + PDB +
+Ingress + ServiceMonitor + ConfigMap + Namespace + ServiceAccount）。
 
 ---
 
@@ -140,7 +171,7 @@ OPC 沿用的 RuoYi 内置模块：
 |------|------|---------|---------|
 | #1 | AI 评测集扩展（10 → 119） | `finance-100.json` + 19 条扩展 | [task1-eval-set](./docs/verification/week-1/OPC-W1-VERIFICATION-task1-eval-set.md) |
 | #2 | 后端 prod profile 切 Nacos | 6 个 DataID + Jasypt + fail-fast | [nacos-prod](./docs/verification/week-1/OPC-W1-VERIFICATION-nacos-prod.md) |
-| #3 | WorkflowEngine 接入 Quartz cron | `WorkflowCronJob` + Feign + 16 文件 | [task3-workflow-cron](./docs/verification/week-1/OPC-W1-VERIFICATION-task3-workflow-cron.md) |
+| #3 | WorkflowEngine 接入 Quartz cron | `WorkflowCronJob` + Feign + 16 文件 ⚠️ 代码在 `ruoyi-job`，而 `ruoyi-job` 没有任何服务依赖、也没有容器 —— **没跑起来** | [task3-workflow-cron](./docs/verification/week-1/OPC-W1-VERIFICATION-task3-workflow-cron.md) |
 | #4 | 财务税务报表 | Tax Report Service + Controller + 移动端页 | [tax-report-service](./docs/verification/week-1/OPC-W1-VERIFICATION-tax-report-service.md) / [controller](./docs/verification/week-1/OPC-W1-VERIFICATION-tax-report-controller.md) |
 | #5 | 移动端适配（9 页） | Sidebar 抽屉 + ResponsiveTable + 响应式 SCSS | [mobile-drawer](./docs/verification/week-1/OPC-W1-VERIFICATION-mobile-drawer.md) / [responsive-table](./docs/verification/week-1/OPC-W1-VERIFICATION-responsive-table.md) / [responsive-scss](./docs/verification/week-1/OPC-W1-VERIFICATION-responsive-scss.md) |
 | #6 | Helm Chart（7 服务 + HPA + PDB + CI） | Chart + 多环境 values + Jenkinsfile | [helm-chart](./docs/verification/week-1/OPC-W1-VERIFICATION-helm-chart.md) / [templates-v2](./docs/verification/week-1/OPC-W1-VERIFICATION-helm-templates-v2.md) / [values-split](./docs/verification/week-1/OPC-W1-VERIFICATION-values-split.md) / [helm-ci](./docs/verification/week-1/OPC-W1-VERIFICATION-helm-ci.md) |
@@ -275,7 +306,7 @@ mysql -uroot -p --default-character-set=utf8mb4 ry-vue-opc \
 | 数据隔离 | 任何 SQL 必须带 `company_id` 过滤 | 多租户强约束；越权查询立即 fail |
 | Agent 工具调用 | 必须在 `PromptGuard.ALLOWED_TOOLS` 白名单内 | `validateToolName()` 在 Runtime 强制 |
 | Job Handler | 必须放在 `com.ruoyi.job.task` 包下 | `ScheduleUtils.whiteList()` 强制 |
-| Cron 触发 | 走 Quartz `sys_job`，不引 XXL-Job | 新增 cron 任务见 `opc_agent_workflow` 表设计 |
+| Cron 触发 | 走 Quartz `sys_job`，不引 XXL-Job | ⚠️ 规矩是这样，但**本栈没跑调度器**（`ruoyi-job` 没容器也没人依赖，全仓 0 个 `@Scheduled`）—— 往 `sys_job` 里加任务目前不会自动执行 |
 | 邀请码 | 31 字符 base32（去 I/L/O/0/1），8 位 | 见 `OpcCodeGenerator.inviteCode()` |
 | **SQL 脚本字符集** | 含中文 INSERT 的 `.sql` 必须以 `SET NAMES utf8mb4;` 开头 | 客户端默认 latin1 时中文会被双重编码入库（UTF-8 字节 E4B89A 存成 C3A4C2B8），页面全是乱码。已漏加的见 `sql/migrations`、`sql/seed` |
 | **跨模块 Feign** | 返回值必须声明 `R<T>`，不能声明 `Map`/`AjaxResult` | 对端返回 `R.ok(x)` 时，声明 `Map` 反序列化的是整个响应体，业务字段藏在 `data` 里，`resp.get("x")` 恒为 null。见 `RemoteFinanceService`、`AgentHubClient` |

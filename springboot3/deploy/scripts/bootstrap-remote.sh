@@ -247,11 +247,17 @@ stage_0() {
   fi
 
   # 校验 .env 必填项
+  #
+  # 这两个 Key 在**本地栈**里可以留空(只是 LLM 调用 401),
+  # 但远程 bootstrap 是给真要用的云主机装一套完整的 OPC ——
+  # 装一个问一句话就 401 的系统没意义,所以这里当必填处理。
+  # .env.example 里两个键默认是空的,照抄过来必然踩这一下,
+  # 所以报错要说清楚是去哪儿填。
   for key in DEEPSEEK_API_KEY MINIMAX_API_KEY; do
     local val
     val="$(grep -E "^${key}=" "${PROJECT_ROOT}/.env" | cut -d= -f2- || true)"
     if [[ -z "${val}" ]]; then
-      fail ".env 缺 ${key}"
+      fail ".env 里的 ${key} 是空的 —— 去 ${PROJECT_ROOT}/.env 填上真 key 再跑本脚本"
     fi
   done
   log "  ✓ .env 必填项齐全"

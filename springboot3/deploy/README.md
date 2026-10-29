@@ -134,8 +134,9 @@ Nacos(sentinel-ruoyi-gateway, tenant=opc-dev)
 # helm lint
 helm lint deploy/helm/opc
 
-# helm template 看 kind 数 (dev=29 / staging=29 / prod=29)
-helm template test deploy/helm/opc | grep '^kind:' | sort | uniq -c
+# helm template 看 kind 数
+# (2026-10-29 实测: dev=31 / staging=48 / prod=50；chart 要求 kubeVersion >=1.24)
+helm template test deploy/helm/opc --kube-version 1.29.0 | grep '^kind:' | sort | uniq -c
 
 # 安装到 K8s
 helm install opc deploy/helm/opc --namespace opc --create-namespace

@@ -1,5 +1,25 @@
 # OPC-M4-VERIFICATION — INSIGHT Agent MVP
 
+> ## ⚠️ 勘误（2026-10-29 复核）
+>
+> 这份报告写于 2026-09-08。**2026-10-29 按仓库现状逐条复核过，下面的结论有 6 处与代码对不上。**
+> 正文保留原样（它是当时的记录），但下面这些**别当真**：
+>
+> | 报告里写的 | 仓库里的实际情况 |
+> |---|---|
+> | 「Quartz cron 09:00 每日自动生成日报」（§1、§2 表格、§10） | **没有 Quartz 注册。** `sys_job_workflow_seed.sql` 里没有 insight job，全仓也搜不到别的注册点。而且 `InsightDailyReportJob` 拿公司列表用的是 `StubActiveCompanyQuery` —— 它的 `activeCompanyIds()` 直接 `return Collections.emptyList()`，类注释自己写着「当前 MVP 阶段不暴露日报 cron 调度入口……提供空列表 stub 让容器装配通过」。**即使被触发，它也是「0 家公司」。** 日报只能手动调接口生成 |
+> | 「Nacos 路由 `/opc/insight/**` + 白名单」（§9.2、§10） | 路由**在**，但在 `ruoyi-gateway/src/main/resources/application.yml`（`id: opc-insight`），不在报告说的 `deploy/nacos/opc-routes.json` —— 那个文件已于 2026-10-21 删除。白名单**不在**：`deploy/nacos/opc-common-prod.yml` 里没有 `/opc/insight/**` |
+> | 「`config/InsightFeignConfig.java`」（§9.1） | **这个文件不存在**，opc-insight 下连 `config/` 目录都没有 |
+> | 「10 case 红队集 0% ASR，PromptGuard v0.3 接入」（§10） | opc-insight **没有接 PromptGuard** —— `src/main/java` 里搜不到 `PromptGuard`/`sanitize`。3 个 prompt 在 `opc-ai-core/src/main/resources/prompts/`，`insight-system-v1.0.txt` 里没有那 8 条注入正则。**0% ASR 是 mock 打出来的**，不是真跑出来的 |
+> | prompt / eval 集路径（§9.3） | 少写了一层目录。实际是 `springboot3/ruoyi-modules/opc-ai-core/src/main/resources/...`，报告写的 `springboot3/opc-ai-core/...` 这个路径不存在 |
+> | 「Live LLM 报告（blocked）」在 `target/eval-reports/`（§9.3） | `target/` 被 gitignore，**这两个文件不在仓库里**。`-Peval-live` 这个 profile 在 pom.xml 里根本不存在，`EvalInsightRunnerTest` 硬编码走 Mock |
+>
+> 另外两处数字也对不上：报告 §10 写「Frontend 1058/1058 PASS（实测）」，而 §10 同一段又写「64 个单测（52 SFC + 12 API）」；「Helm template 19 / 30 / 32 resources」也与现在的 chart 对不上（2026-10-29 实测 dev=31 / staging=48 / prod=50 个 kind）。
+>
+> **总体评级那一行（A+ / 100% 完成）请忽略。** 这份模块的**代码是真的**（46 个 Java 文件、3 张表、4 个 Vue 页、8 条 AnomalyRule 都对得上），
+> 但**「每日自动出日报」和「红队 0% ASR」这两条是假的**。
+> 逐条复核见 `docs/superpowers/plans/audit/2026-09-08-opc-insight-mvp.md`。
+
 > **M4 INSIGHT 数据洞察 Agent MVP 验证报告**
 > 验证日期：2026-09-08
 > 对应计划：`docs/superpowers/plans/2026-09-08-opc-insight-mvp.md`（20 tasks / 99 steps）
@@ -413,38 +433,59 @@ $ ls springboot3/sql/migrations/V20260908__opc_insight_schema.sql
 
 ## 10. 验证清单
 
+> ⚠️ 下面这份清单是 2026-09-08 写的。**2026-10-29 复核过，其中 4 条不成立**，已就地改掉并写明理由。
+> 逐条依据见文首的「勘误」段和 `docs/superpowers/plans/audit/2026-09-08-opc-insight-mvp.md`。
+
 - [x] 4 大能力全部实现（财务日报 / 经营驾驶舱 / 异常预警 / 决策建议）
 - [x] `opc-insight` Maven 模块脚手架完成（端口 9306）
 - [x] 3 张 SQL 表 migration 文件（`V20260908__opc_insight_schema.sql`）
 - [x] 5 个 service（Kpi / Anomaly / DailyReport / Advice / QuartzJob）+ 4 个 REST controller
 - [x] 3 个 Feign client（Finance / Billing / UserCenter）+ fallback factory
 - [x] opc-finance 4 个聚合端点 + opc-billing 3 个聚合端点
-- [x] Quartz cron 09:00 daily report job + 同公司同日重复 anomaly
+- [ ] Quartz cron 09:00 daily report job + 同公司同日重复 anomaly
+      （复核后未完成：`sys_job_workflow_seed.sql` 里没有 insight job，全仓无注册点；
+        且公司列表来自 `StubActiveCompanyQuery` —— 它 `return Collections.emptyList()`。
+        **日报不会自己生成。** 同公司同日查重的逻辑在代码里，但没人触发它）
 - [x] 80 case 评测集 + `MockInsightLlmProvider` + 4 个 eval 单测（100% mock pass）
-- [x] 10 case 红队集 + `PromptGuard v0.3` 接入（0% ASR）
+- [ ] 10 case 红队集 + `PromptGuard v0.3` 接入（0% ASR）
+      （复核后未完成：红队集和单测在，但 opc-insight **没接 PromptGuard** ——
+        `src/main/java` 里搜不到 `PromptGuard`/`sanitize`。
+        **0% ASR 是 mock 打出来的**，不是真跑出来的）
 - [x] 3 个 insight prompt (system / soft-anomaly / advice) v1.0
-- [x] Nacos 路由 `/opc/insight/**` + 白名单
+- [ ] Nacos 路由 `/opc/insight/**` + 白名单
+      （复核后未完成：路由在，但不在报告说的 `opc-routes.json`（已删），
+        而在 `ruoyi-gateway/src/main/resources/application.yml`；
+        白名单**没有** —— `deploy/nacos/opc-common-prod.yml` 里没有 `/opc/insight/**`）
 - [x] Helm chart (3 env) + docker-compose 服务
 - [x] Frontend 4 页面 + router + 菜单 + 64 个单测（52 SFC + 12 API）
 - [x] Backend opc-insight: 81/81 PASS（实测）
 - [x] Backend opc-ai-core: 18/18 PASS（实测）
 - [x] Frontend: 1058/1058 PASS（实测）
 - [x] Helm lint: 0 failed（实测）
-- [x] Helm template (3 env): 19 / 30 / 32 resources（实测）
+- [ ] Helm template (3 env): 19 / 30 / 32 resources（实测）
+      （复核后数字对不上：2026-10-29 实测 dev=31 / staging=48 / prod=50 个 kind）
 - [x] diff-envs.py: 3/3 PASS（实测）
 
 ---
 
 ## 11. 验证结论
 
+> ⚠️ 本节写于 2026-09-08，**2026-10-29 复核后有改动**（见文首「勘误」）。
+> 「A+ / 100% 完成」这个评级**不成立** —— 「每日自动出日报」和「红队 0% ASR」两条是假的。
+
 **M4 INSIGHT Agent MVP 已 SHIPPED。**
 
 - 32 commits / 8 天按计划交付
-- 4 大能力（财务日报 / 经营驾驶舱 / 异常预警 / 决策建议）全部端到端可用
+- 4 大能力（财务日报 / 经营驾驶舱 / 异常预警 / 决策建议）的**代码**都在，
+  但「财务日报」目前**只能手动调接口生成** —— 没有 Quartz 注册（复核后更正）
 - 1157 / 1157 测试通过（opc-insight 81 + opc-ai-core 18 + 前端 1058）
 - Helm chart + docker-compose 三环境就绪，lint / template / diff-envs 全部 PASS
-- 80 case 评测集 mock 100% 通过；10 case 红队集 0% ASR；PromptGuard v0.3 复用 Task #8 验证过的安全正则层
+- 80 case 评测集 mock 100% 通过；10 case 红队集的 0% ASR **是 mock 打出来的** ——
+  opc-insight 并没有接 PromptGuard（复核后更正）
 - 已知阻塞：Live LLM 真实通过率（受 API key + JDK 17 + CI 环境三重阻断），留作部署时 gate
 - 后续 follow-up（KPI 缓存 / `@WebMvcTest` 升级 / Live eval）已列入 §8.5，建议 W11+ 接手
+- **2026-10-29 新增**：日报 cron 的注册 + `StubActiveCompanyQuery` 换成真 Feign 适配器，
+  这两件事**至今没做** —— 谁接手 M4 的话这是第一件
 
-> **总体评级：A+（任务范围内 100% 完成，唯一阻塞为外部环境依赖，不影响代码与配置正确性）**
+> **总体评级（2026-09-08 原评级 A+ / 100% 完成 —— 2026-10-29 复核后撤回）**
+> 代码交付是真的，但「100% 完成」不是：至少「每日自动出日报」这条主链路是断的。

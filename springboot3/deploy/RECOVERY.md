@@ -278,9 +278,14 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 **端口**：9312
 
 **依赖服务**:
-- opc-notification (9310) — 阶段变更/新跟进站内信通知
-- opc-ai-core (9301) — 商机 LLM 评分 (`crm-opportunity-scorer`)
+- opc-ai-core (9301) — 商机 LLM 评分（场景名 `crm_opportunity_score`）
 - opc-user-center (9302) — 客户所有人信息
+- ~~opc-notification (9310) — 阶段变更/新跟进站内信通知~~ —
+  **这一条不成立**（2026-10-29 复核）：opc-crm 里**没有一行代码**引用 notification，
+  阶段变更不会发站内信。opc-notification 的 `InboxController` 也只有
+  `GET /`、`POST /read/{id}`、`POST /read-all`、`GET /unread-count` 四个端点，
+  **没有 `/push`** —— 就算接了也没有可调用的入口。详见
+  `docs/superpowers/plans/audit/2026-09-11-opc-crm-impl.md`
 
 **6 张核心表**:
 - `opc_crm_customer` (客户档案, 客户级别 A/B/C/D, 来源, 标签)
@@ -290,7 +295,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - `opc_crm_contract` (合同 DRAFT/ACTIVE/EXPIRED/TERMINATED)
 - `opc_crm_order` (订单 PENDING/PAID/SHIPPED/COMPLETED/CANCELLED)
 
-**schema 初始化**：`mysql-initdb.d/12-opc-crm-schema.sql` + `mysql-initdb.d/13-crm-seed.sql`（首次 `mysql/data` 为空时自动跑）
+**schema 初始化**：`mysql-initdb.d/09-opc-crm-schema.sql` + `mysql-initdb.d/95-opc-crm-seed.sql`（首次 `mysql/data` 为空时自动跑）
 
 **Nacos 配置**:
 - DataID: `opc-crm-dev.yml` / `opc-crm-prod.yml`
@@ -311,11 +316,15 @@ docker compose up -d aiopc-crm aiopc-gateway
 ```
 
 **注意**:
-- 必须用 `-Dmaven.test.skip=true` 绕过 `opc-common` 测试编译错误（`OpcNacosStartupCheckerTest.java`）
+- ~~必须用 `-Dmaven.test.skip=true` 绕过 `opc-common` 测试编译错误（`OpcNacosStartupCheckerTest.java`）~~
+  **这条已经过期**（2026-10-29 复核）：那个测试类已被整体注释掉
+  （`74e0596`），opc-common 的测试现在能编译过。
 - gateway 路由 `opc-crm` → `http://aiopc-crm:9312` 必须在 `ruoyi-gateway/src/main/resources/application.yml` 存在；改完要重启 gateway
 - thin jar 模式下 docker 容器 `java -cp "xxx.jar:lib/*" Main-Class` 启动，需先 `mvn dependency:copy-dependencies`
 - 商机 LLM 评分依赖 opc-ai-core 真实 LLM key。dev 命名空间可设置 `opc.ai-core.enabled=true` 用 DeepSeek/MiniMax 真实评分；若 opc-ai-core 不可用,`/opc/crm/opportunity/{id}/score` 会返回 502。
-- 阶段变更通知 (LEAD→QUALIFIED 等) 通过 `opc-crm.opportunity.auto-notify-on-stage-change` 控制。dev 默认 `true`。
+- ~~阶段变更通知 (LEAD→QUALIFIED 等) 通过 `opc-crm.opportunity.auto-notify-on-stage-change` 控制。dev 默认 `true`。~~
+  **这条开关不存在**（2026-10-29 复核）：`application.yml` / `opc-crm-dev.yml` 里都没有它，
+  代码里也没有任何地方读它 —— 而阶段变更通知本身（见上面「依赖服务」那条）也没实现。
 
 **验证**:
 ```bash
