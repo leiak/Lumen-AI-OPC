@@ -150,7 +150,22 @@ npx vitest run src/views/opc/marketplace/detail.spec.ts
 
 **加基础设施之前先确认有代码用它。**
 
-### 8. 「定时任务」目前一次都没自动跑过
+### 8. HTTP 200 不代表成功 —— RuoYi 的错误在 `body.code` 里
+
+- 后端业务错误全是 **HTTP 200 + `body.code=500`**：
+  `GlobalExceptionHandler`（`ruoyi-common-security`，经 `AutoConfiguration.imports` 注册）
+  把**所有**异常都转成 `AjaxResult.error(...)` 返回，**没有 `@ResponseStatus`** ——
+  缺必填参数、路径变量类型不匹配、业务异常，全都长这样。
+- 网关的拒绝也是 **HTTP 200 + `body.code=401`**：
+  `AuthFilter.unauthorizedResponse` → `ServletUtils.webFluxResponseWriter(response, msg, 401)`
+  → 里面传的是 `HttpStatus.OK`。
+- 所以 **`curl -sf` 判不出成败** —— 它只看 HTTP 码，200 就是成功。
+  写检查必须看 `body.code`（`health-check.sh` 里的 `body_code()` 助手）。
+- 这坑已经吃过一次：第 10 节有条检查查 `/opc/content/script/recent` —— 那个 handler
+  从来不存在，撞上 `@GetMapping("/{id}")` → `"recent"` 转不成 Long → `body.code=500`
+  —— 而 HTTP 仍是 200 → 那条检查**一直报 ok，却什么都没断言**。2026-10-29 已重写。
+
+### 9. 「定时任务」目前一次都没自动跑过
 
 `ruoyi-job` 是全仓**唯一**引 quartz 的地方，`WorkflowCronJob` 也在里面 ——
 但**没有任何模块依赖 `ruoyi-job`**，compose 里**也没有它的容器**。
@@ -160,18 +175,18 @@ Spring 那边同样空：**全仓 0 个 `@Scheduled`、0 个 `@EnableScheduling`
 全都是**写好了但没人叫醒**。根 README 的部署图里那个「agent-hub (Quartz cron)」
 是画的，不是真的。
 
-### 9. 手搓 curl 会被分类器拦
+### 10. 手搓 curl 会被分类器拦
 
 线上验证走仓库自带入口：`bash deploy.sh health` / `bash deploy.sh rebuild`。
 直接 `bash scripts/health-check.sh` 会被判成 Production Reads 拒掉 —— 同一个脚本，
 加一层 `deploy.sh` 就放行。**被拒不代表线上有问题，别据此改结论。**
 
-### 10. 生产操作要点名授权
+### 11. 生产操作要点名授权
 
 拉镜像 / 推配置 / 停容器 / 改历史 —— 每样都要用户**单独明确点名**。
 「重建镜像」不等于授权重启。分类器拒了就停下问，不要绕。
 
-### 11. 口令不上命令行
+### 12. 口令不上命令行
 
 - 查库：`mysql -t ry-vue-opc -e '...'`（走 `/root/.my.cnf`，600）
 - 控制台口令：放在 `springboot3/deploy/sentinel-dashboard/application.yml`，
