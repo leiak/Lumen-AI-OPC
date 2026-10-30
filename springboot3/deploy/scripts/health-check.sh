@@ -30,6 +30,8 @@
 #  21) CRM 的 AI 评分是真的 (分数和理由同生共死)
 #  22) Nacos 配置中心是真的在管事 (命名空间 + 配置真在跑)
 #  23) 记忆系统记事 + Sentinel 限流真的在限
+#  24) Sentinel 控制台是真的在管事 (不是「零节点零规则」的空壳)
+#  25) 定时任务是真的在跑 (ruoyi-job 真的被装起来 + 真的触发过)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -114,6 +116,7 @@ check_containers() {
     "aiopc-gateway"
     "aiopc-auth"
     "aiopc-system"
+    "aiopc-job"
     "aiopc-user-center"
     "aiopc-agent-hub"
     "aiopc-ai-core"
@@ -1893,7 +1896,7 @@ check_port_exposure() {
   # --- 15.2 业务 + 中间件端口必须只绑回环口 ---
   # 网关也算业务端口: 它做鉴权, 直连它等于绕过前端那条链路。
   local p exposed bad=""
-  local -a guard_ports=(8080 9201 19200 9301 9302 9303 9304 9305 9306 9310 9311 9312 9316 9317 9322 9325
+  local -a guard_ports=(8080 9201 9203 19200 9301 9302 9303 9304 9305 9306 9310 9311 9312 9316 9317 9322 9325
                         3308 6379 5672 15672 8848 9848 9000 9001 9200 6333 6334 9090 3000 8081 11800 12800)
   for p in "${guard_ports[@]}"; do
     exposed="$(printf '%s\n' "${listen}" | grep -E ":${p}\$" | grep -vE '^(127\.0\.0\.1|\[::1\]):' | tr '\n' ' ')"
@@ -3792,6 +3795,195 @@ PY
   fi
 }
 
+# ---------- 25) 定时任务是真的在跑 (不是界面上的一行字) ----------
+#
+# 这一节存在的理由:ruoyi-job 模块的代码一直在仓库里(Quartz + sys_job 表 +
+# WorkflowCronJob + 前端「定时任务」页面,一整套都齐),但它**从来没被部署过** ——
+# 没有 Dockerfile、没有 compose 容器、网关没有 /schedule 路由。
+# 于是界面上「定时任务」菜单点进去全是 404,而 sys_job 里那条
+# 「每天 09:00 生成财务日报」的 cron 一次都没跑过(sys_job_log 表 0 行)。
+#
+# 判据不能是「容器在跑」—— 那也可能是空壳。要**真的触发一次**,然后看见:
+#   · opc_agent_workflow_run 多了一行 trigger_source='quartz:...' 的记录
+#   · sys_job_log 多了一行 status='0'(成功)
+# 这两行都是应用自己写的,不是检查脚本造的 —— 造不出来才是关键。
+#
+# ⚠️ URL 不带 /prod-api:前端 axios 的 baseURL 是 /prod-api,但 nginx 的
+#    proxy_pass 末尾带斜杠,会把 /prod-api/ 整段剥掉再转给网关
+#    (见 vue3-typescript/nginx.conf)。所以网关收到的是 /schedule/job/list。
+check_scheduler_truth() {
+  hr
+  echo "[25] 定时任务是真的在跑"
+  hr
+
+  # --- 25.1 容器 ---
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "aiopc-job"; then
+    ok "25.1 aiopc-job 容器在跑"
+  else
+    nok "25.1 aiopc-job 容器没起来 —— 调度器代码在仓库里,但没被装起来跑过"
+    return
+  fi
+
+  # --- 25.2 sys_job 里得有启用中的任务 ---
+  local enabled_jobs
+  enabled_jobs=$(db_q "SELECT COUNT(*) FROM sys_job WHERE status='0';" | tr -d '\r')
+  if [[ -z "${enabled_jobs}" ]]; then
+    nok "25.2 查不到 sys_job —— 护栏空转, 证明不了任何东西"
+  elif [[ "${enabled_jobs}" == "0" ]]; then
+    nok "25.2 sys_job 里一条启用中的任务都没有 —— 调度器起来了也没东西可跑"
+  else
+    ok "25.2 sys_job 里有 ${enabled_jobs} 条启用中的任务"
+  fi
+
+  # --- 25.3 网关这条路由真的通, 且列表里确实有「财务日报」 ---
+  #
+  # 以前网关没有 /schedule/** 这条路由 → 界面「定时任务」点进去所有接口 404。
+  # 这一条直接问网关, 用 body.code 判定(RuoYi 的错误是 HTTP 200 + body.code)。
+  local login_body token
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/login" 2>/dev/null) || true
+  token=$(printf '%s' "${login_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data', {})
+except Exception:
+    print('')
+    raise SystemExit
+print(d.get('token','') or d.get('access_token',''))
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    nok "25.3 拿不到 admin token —— 25.3 之后的断言都跑不了"
+    return
+  fi
+
+  local list_body list_code
+  list_body=$(curl -s -m 15 -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/schedule/job/list" 2>/dev/null) || list_body=""
+  list_code=$(body_code "${list_body}")
+  if [[ "${list_code}" != "200" ]]; then
+    nok "25.3 GET /schedule/job/list body.code=${list_code} —— 网关没有 /schedule 路由, 或 ruoyi-job 没起来"
+    return
+  fi
+  local has_daily
+  has_daily=$(printf '%s' "${list_body}" | python -c "
+import sys,json
+try:
+    rows = (json.load(sys.stdin).get('rows') or [])
+except Exception:
+    print('0')
+    raise SystemExit
+print(sum(1 for r in rows if r.get('jobId') == 100))
+" 2>/dev/null)
+  if [[ "${has_daily}" == "1" ]]; then
+    ok "25.3 网关 /schedule/job/list 通, 且列得出 job 100「财务日报」"
+  else
+    nok "25.3 /schedule/job/list 里没有 job 100「财务日报」(命中 ${has_daily:-?}) —— 界面上的定时任务是空的"
+  fi
+
+  # --- 25.4 真触发一次 ---
+  #
+  # PUT /schedule/job/run → 网关 StripPrefix=1 → /job/run → SysJobController.run
+  # → scheduler.triggerJob() → Quartz 工作线程 → WorkflowCronJob.execute()
+  # → Feign 调 opc-agent-hub → 工作流真的跑起来。
+  #
+  # triggerJob 是**异步**的:HTTP 立刻返回,工作流在后台跑。所以下面要轮询等落库。
+  # 另外 WorkflowTriggerServiceImpl 有 30 秒去重窗口(正在跑的不会重复触发),
+  # 触发前先等掉上一次没跑完的。
+  local busy
+  for _ in $(seq 1 12); do
+    busy=$(db_q "SELECT COUNT(*) FROM opc_agent_workflow_run WHERE workflow_id=1 AND status='RUNNING' AND start_time >= DATE_SUB(NOW(), INTERVAL 30 SECOND);" | tr -d '\r')
+    [[ "${busy}" == "0" ]] && break
+    sleep 3
+  done
+
+  local before_id
+  before_id=$(db_q "SELECT COALESCE(MAX(id),0) FROM opc_agent_workflow_run;" | tr -d '\r')
+  if [[ -z "${before_id}" ]]; then
+    nok "25.4 查不到 opc_agent_workflow_run —— 护栏空转, 证明不了任何东西"
+    return
+  fi
+
+  local run_body run_code
+  run_body=$(curl -s -m 30 -X PUT \
+    -H "Authorization: Bearer ${token}" \
+    -H "Content-Type: application/json" \
+    -d '{"jobId":100,"jobGroup":"SYSTEM"}' \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/schedule/job/run" 2>/dev/null) || run_body=""
+  run_code=$(body_code "${run_body}")
+  if [[ "${run_code}" == "200" ]]; then
+    ok "25.4 PUT /schedule/job/run 受理了 (job 100 立即执行一次)"
+  else
+    nok "25.4 PUT /schedule/job/run body.code=${run_code}: ${run_body:0:160} —— 触发链没通"
+    return
+  fi
+
+  # --- 25.5 等真的落库:新的运行记录 trigger_source='quartz:...' ---
+  #
+  # 这是整节的关键断言:这一行是 opc-agent-hub 自己写的
+  # (WorkflowTriggerServiceImpl.newRun),而且 trigger_source 带 quartz: 前缀
+  # —— 与每天 09:00 定时触发产生的记录**完全一样**。
+  local new_run=""
+  for _ in $(seq 1 40); do
+    new_run=$(db_q "SELECT CONCAT(id,'|',run_code,'|',trigger_type,'|',trigger_source,'|',status) FROM opc_agent_workflow_run WHERE id > ${before_id} AND trigger_source LIKE 'quartz:%' ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+    [[ -n "${new_run}" ]] && break
+    sleep 3
+  done
+  if [[ -z "${new_run}" ]]; then
+    nok "25.5 触发后 2 分钟内没等到 trigger_source='quartz:%' 的运行记录 —— 定时器这一环没通"
+  else
+    ok "25.5 真跑出一条定时器触发的记录: ${new_run}"
+  fi
+
+  # --- 25.6 sys_job_log 里必须有这次执行, 而且是成功 ---
+  local log_row
+  log_row=$(db_q "SELECT CONCAT(job_name,'|',status,'|',LEFT(job_message,40)) FROM sys_job_log WHERE job_name='财务日报' ORDER BY job_log_id DESC LIMIT 1;" | tr -d '\r')
+  if [[ -z "${log_row}" ]]; then
+    nok "25.6 sys_job_log 里没有「财务日报」的执行记录 —— 调度器没真的执行过"
+  else
+    local log_status
+    log_status=$(printf '%s' "${log_row}" | cut -d'|' -f2)
+    if [[ "${log_status}" == "0" ]]; then
+      ok "25.6 sys_job_log 记下了这次执行(成功): ${log_row}"
+    else
+      nok "25.6 sys_job_log 记下了这次执行但**失败**: ${log_row}"
+    fi
+  fi
+
+  # --- 25.7 没有冒充 CRON 的运行记录 ---
+  #
+  # trigger_type 记的是**这次到底怎么触发的**。历史上 30 条 healthcheck 触发的
+  # 记录都写着 'CRON' —— 那时根本没有调度器,这个字段在冒充事实。
+  # 现在规则是:trigger_source LIKE 'quartz:%' 才算 CRON,其余一律 MANUAL。
+  local fake_cron
+  fake_cron=$(db_q "SELECT COUNT(*) FROM opc_agent_workflow_run WHERE trigger_type='CRON' AND (trigger_source IS NULL OR trigger_source NOT LIKE 'quartz:%');" | tr -d '\r')
+  if [[ -z "${fake_cron}" ]]; then
+    nok "25.7 查不到 opc_agent_workflow_run —— 护栏空转"
+  elif [[ "${fake_cron}" != "0" ]]; then
+    nok "25.7 有 ${fake_cron} 条运行记录 trigger_type='CRON' 但不是定时器触发的 —— 类型字段在冒充事实"
+  else
+    ok "25.7 没有一条运行记录冒充 CRON"
+  fi
+
+  # --- 25.8 界面上没有指向 localhost 的死外链 ---
+  #
+  # 那四个菜单(Sentinel控制台 / Nacos控制台 / Admin控制台 / 系统接口)
+  # 指的是**访客自己电脑**的 localhost —— 演示环境从浏览器点开必然是
+  # 「无法访问此网站」。三个改成隐藏,一个(9100 端口上什么都没有)直接删掉,
+  # 需要的人按 README 里的 ssh -L 端口转发自己开隧道看。
+  local dead_links visible_links
+  dead_links=$(db_q "SELECT COUNT(*) FROM sys_menu WHERE path LIKE 'http://localhost%';" | tr -d '\r')
+  visible_links=$(db_q "SELECT COUNT(*) FROM sys_menu WHERE visible='0' AND path LIKE 'http://localhost%';" | tr -d '\r')
+  if [[ -z "${dead_links}" ]]; then
+    nok "25.8 查不到 sys_menu —— 护栏空转"
+  elif [[ "${visible_links}" != "0" ]]; then
+    nok "25.8 界面上还有 ${visible_links} 个指向 localhost 的外链菜单 —— 点开必然打不开"
+  else
+    ok "25.8 界面上没有指向 localhost 的死外链菜单"
+  fi
+}
+
 # ---------- Main ----------
 main() {
   echo "=================================================="
@@ -3828,6 +4020,7 @@ main() {
   step 22 check_nacos_config_center
   step 23 check_memory_and_flow_control
   step 24 check_sentinel_dashboard
+  step 25 check_scheduler_truth
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"
