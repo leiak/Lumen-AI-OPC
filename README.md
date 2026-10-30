@@ -53,9 +53,11 @@ OPC = **One-Person Company**，核心假设是未来大量"一人公司"会涌�
 - **Redis** 缓存（单层 —— **没有 Caffeine**，全仓没有这个依赖）
 - **Qdrant** 向量库（Agent 长期记忆）
 - **Sentinel** 限流熔断
-- **Quartz** 定时任务 —— ⚠️ `ruoyi-job` 模块在仓库里（唯一引 quartz 的地方，
-  `WorkflowCronJob` 也在里面），但**没有任何服务依赖它、compose 里也没有它的容器**
-  → **演示栈里没有调度器在跑**，`sys_job` 表里注册的任务没人执行
+- **Quartz** 定时任务 —— `ruoyi-job` 模块**真的在跑**（容器 `aiopc-job`，
+  端口 9203，RAMJobStore，启动时从 `sys_job` 表重建触发器）。
+  `sys_job` 里那条「财务日报」（cron `0 0 9 * * ?`）每天 09:00 会真的触发
+  `finance_daily_report_v1` 工作流；健康检查第 25 节会**真的触发一次**
+  来证明它不是一句空话
 - **OpenFeign** 微服务调用（带 Sentinel 降级）
 - **Jasypt** 配置加密（口令 `OpcEncrypt!2026`）
 - **RabbitMQ**：compose 里有个容器，也有服务拿到了 `RABBITMQ_HOST`，
@@ -108,6 +110,7 @@ opc-content      (9325) AI 内容创作  ── 4 个 LLM 场景 / 抖音发布
   ruoyi-gateway     (8080) Spring Cloud Gateway + Sentinel 流控
   ruoyi-auth        (9200) OAuth2 统一认证（对外映射 19200）
   ruoyi-system      (9201) 用户 / 角色 / 菜单 / 字典
+  ruoyi-job         (9203) Quartz 调度器 —— 定时任务真的在跑
 
 前端
   aiopc-frontend    (8079) Vue 3 + TS，唯一对外开放的端口
@@ -117,12 +120,31 @@ opc-content      (9325) AI 内容创作  ── 4 个 LLM 场景 / 抖音发布
   prometheus / grafana / sentinel-dashboard / skywalking-oap / skywalking-ui
 ```
 
-`ruoyi-job`、`ruoyi-file`、`ruoyi-gen` 是 RuoYi 自带模块，本栈不单独起容器，
-而且**全仓没有任何模块依赖它们**（`ruoyi-job` 里的 quartz 依赖和 `WorkflowCronJob`
-都只服务于自己）→ **本栈没有 Quartz 调度器，`sys_job` 表里的注册没人消费**。
-Spring 那边也不行：**全仓 0 个 `@Scheduled`、0 个 `@EnableScheduling`** ——
-所以「定时任务」目前一次都没自动跑过（日报快照、低库存告警、Workflow cron 都是
-写好了但没人叫醒）。
+`ruoyi-file`、`ruoyi-gen` 是 RuoYi 自带模块，本栈不单独起容器。
+`ruoyi-job` **起容器了**（`aiopc-job`，9203）—— 它以前和这两个模块一样只是躺在仓库里：
+没有 Dockerfile、没有 compose 服务、网关也没有 `/schedule` 路由，所以界面上「定时任务」
+菜单点进去全是 404，`sys_job` 表里注册的 cron 一次都没跑过（`sys_job_log` 表 0 行）。
+
+现在它被接上了：
+
+- Quartz 用 **RAMJobStore**（触发器不落 `QRTZ_*` 表，每次启动从 `sys_job` 重建
+  —— 这是 RuoYi 自己的推荐做法，`ruoyi-job/config/ScheduleConfig.java` 里那份
+  JDBC 方案整个被注释掉了，注释里写的也是「单机部署建议删掉此类和 qrtz 数据库表」）
+- `sys_job` 里那条「财务日报」（`0 0 9 * * ?`）**启用中**，每天 09:00 触发
+  `finance_daily_report_v1` 工作流
+- 触发链：`sys_job` → Quartz → `WorkflowCronJob.execute()` → OpenFeign →
+  `opc-agent-hub` 的 `/opc/agent/workflows/{code}/trigger`（`@InnerAuth` 内部端点）
+- 界面「定时任务」菜单现在**真的能用**：网关新增 `/schedule/**` 路由（StripPrefix=1
+  → `ruoyi-job` 的 `/job/**`），前端 `src/api/monitor/job.ts` 本来就用的这个路径
+- 健康检查第 25 节会**真的触发一次**并断言 `opc_agent_workflow_run` 里多了一行
+  `trigger_source='quartz:...'`、`sys_job_log` 里多了一行成功记录
+
+Spring 那边仍然没有 `@Scheduled`（**全仓 0 个 `@Scheduled`、0 个 `@EnableScheduling`**）——
+但那不重要：调度靠的是 Quartz，不是 Spring 的定时器。
+
+> 运行记录里的 `trigger_type` 记的是**这次到底怎么触发的**（`quartz:` 前缀 → CRON，
+> 其余 → MANUAL），不是工作流配置里声明的类型。改这条的是
+> `WorkflowTriggerServiceImpl.resolveTriggerType`。
 
 ---
 
@@ -140,7 +162,7 @@ Spring 那边也不行：**全仓 0 个 `@Scheduled`、0 个 `@EnableScheduling`
                            │
                 ┌──────────▼──────────┐
                 │ aiopc-gateway:8080  │ ◄── Sentinel 流控（控制台 :8718）
-                │  AuthFilter (JWT)    │
+                │  AuthFilter (JWT)    │     /schedule/** → aiopc-job
                 └──────────┬──────────┘
                            │  内部 RPC (OpenFeign)
    ┌──────────┬───────────┼───────────┬──────────┬──────────┐
@@ -149,17 +171,65 @@ Spring 那边也不行：**全仓 0 个 `@Scheduled`、0 个 `@EnableScheduling`
 
                 ▲                       ▲
                 │ cron trigger           │ Nacos config
-                │                        │
+                │ (Feign, @InnerAuth)     │
       ┌─────────┴────────┐      ┌────────┴─────────┐
       │ agent-hub        │      │ Nacos            │
-      │ (无调度器 ⚠️)    │      │ opc-dev（演示）  │
-      └──────────────────┘      └──────────────────┘
+      └──────────────────┘      │ opc-dev（演示）  │
+                ▲                └──────────────────┘
+                │  Quartz 触发（每天 09:00 财务日报）
+      ┌─────────┴────────┐
+      │ aiopc-job :9203  │  读 sys_job 表重建触发器
+      │ (Quartz)         │
+      └──────────────────┘
 ```
 
 > 图里画的是**演示环境**（Nacos 命名空间 `opc-dev`）。生产用 `opc-prod`。
 
 完整 K8s Helm Chart 在 `springboot3/deploy/helm/opc/`（**14 个 deployment** + HPA + PDB +
 Ingress + ServiceMonitor + ConfigMap + Namespace + ServiceAccount）。
+
+---
+
+## 打开各个控制台（端口转发）
+
+演示环境**只有前端 8079 一个对外开放的端口**，其余全是 `127.0.0.1` 绑定
+（健康检查第 15 节会现场验这条规矩）。所以「Nacos 控制台」「Sentinel 控制台」
+这些入口，**在浏览器里点菜单是没用的** —— 它们指向的是 `localhost`，
+指的是**访客自己电脑**的 localhost。
+
+界面里那四个菜单（Sentinel控制台 / Nacos控制台 / Admin控制台 / 系统接口）
+已经处理掉了：三个改成隐藏，一个（9100 端口上根本没有服务）直接删掉。
+需要看的话，自己开一条 SSH 隧道：
+
+```bash
+# 在你自己的电脑上执行（不是服务器上）。<server> 换成部署机器的地址。
+ssh -N -L 8848:127.0.0.1:8848 <server>   # Nacos 控制台 → http://127.0.0.1:8848/nacos
+ssh -N -L 8718:127.0.0.1:8718 <server>   # Sentinel 控制台 → http://127.0.0.1:8718
+ssh -N -L 8080:127.0.0.1:8080 <server>   # 网关 → http://127.0.0.1:8080
+```
+
+可以一次开多个（`-L` 写多次）：
+
+```bash
+ssh -N \
+  -L 8848:127.0.0.1:8848 \
+  -L 8718:127.0.0.1:8718 \
+  -L 8080:127.0.0.1:8080 \
+  <server>
+```
+
+| 控制台 | 服务器上的端口 | 打开后 |
+|---|---|---|
+| Nacos | 8848 | `http://127.0.0.1:8848/nacos` — 配置中心 + 服务发现 |
+| Sentinel | 8718 | `http://127.0.0.1:8718` — 网关限流规则（控制台是回头问网关要的） |
+| 网关 | 8080 | 直连网关会**绕过**前端那条链路，正常演示用不到 |
+| 各业务服务 | 9200 / 9201 / 9203 / 9301-9325 | 比如定时任务 `http://127.0.0.1:9203` |
+
+> Sentinel 控制台**没有鉴权** —— 拿到 URL 就能改限流规则。所以它只绑回环口，
+> 不对外暴露，需要看就自己开隧道。
+
+> 「Admin控制台」（`ruoyi-visual` 监控中心，9100）在这套 compose 里**没有容器**，
+> 菜单已删除 —— 那个菜单指向的东西根本不存在。
 
 ---
 
@@ -171,7 +241,7 @@ Ingress + ServiceMonitor + ConfigMap + Namespace + ServiceAccount）。
 |------|------|---------|---------|
 | #1 | AI 评测集扩展（10 → 119） | `finance-100.json` + 19 条扩展 | [task1-eval-set](./docs/verification/week-1/OPC-W1-VERIFICATION-task1-eval-set.md) |
 | #2 | 后端 prod profile 切 Nacos | 6 个 DataID + Jasypt + fail-fast | [nacos-prod](./docs/verification/week-1/OPC-W1-VERIFICATION-nacos-prod.md) |
-| #3 | WorkflowEngine 接入 Quartz cron | `WorkflowCronJob` + Feign + 16 文件 ⚠️ 代码在 `ruoyi-job`，而 `ruoyi-job` 没有任何服务依赖、也没有容器 —— **没跑起来** | [task3-workflow-cron](./docs/verification/week-1/OPC-W1-VERIFICATION-task3-workflow-cron.md) |
+| #3 | WorkflowEngine 接入 Quartz cron | `WorkflowCronJob` + Feign + 16 文件 —— 代码当时写在 `ruoyi-job` 里，而 `ruoyi-job` 没有任何服务依赖、也没有容器，**没跑起来**；2026-10-30 把它接上了（容器 `aiopc-job` + 网关 `/schedule/**` + `sys_job` 启用），健康检查第 25 节会真触发一次来证明 | [task3-workflow-cron](./docs/verification/week-1/OPC-W1-VERIFICATION-task3-workflow-cron.md) |
 | #4 | 财务税务报表 | Tax Report Service + Controller + 移动端页 | [tax-report-service](./docs/verification/week-1/OPC-W1-VERIFICATION-tax-report-service.md) / [controller](./docs/verification/week-1/OPC-W1-VERIFICATION-tax-report-controller.md) |
 | #5 | 移动端适配（9 页） | Sidebar 抽屉 + ResponsiveTable + 响应式 SCSS | [mobile-drawer](./docs/verification/week-1/OPC-W1-VERIFICATION-mobile-drawer.md) / [responsive-table](./docs/verification/week-1/OPC-W1-VERIFICATION-responsive-table.md) / [responsive-scss](./docs/verification/week-1/OPC-W1-VERIFICATION-responsive-scss.md) |
 | #6 | Helm Chart（7 服务 + HPA + PDB + CI） | Chart + 多环境 values + Jenkinsfile | [helm-chart](./docs/verification/week-1/OPC-W1-VERIFICATION-helm-chart.md) / [templates-v2](./docs/verification/week-1/OPC-W1-VERIFICATION-helm-templates-v2.md) / [values-split](./docs/verification/week-1/OPC-W1-VERIFICATION-values-split.md) / [helm-ci](./docs/verification/week-1/OPC-W1-VERIFICATION-helm-ci.md) |
@@ -306,7 +376,7 @@ mysql -uroot -p --default-character-set=utf8mb4 ry-vue-opc \
 | 数据隔离 | 任何 SQL 必须带 `company_id` 过滤 | 多租户强约束；越权查询立即 fail |
 | Agent 工具调用 | 必须在 `PromptGuard.ALLOWED_TOOLS` 白名单内 | `validateToolName()` 在 Runtime 强制 |
 | Job Handler | 必须放在 `com.ruoyi.job.task` 包下 | `ScheduleUtils.whiteList()` 强制 |
-| Cron 触发 | 走 Quartz `sys_job`，不引 XXL-Job | ⚠️ 规矩是这样，但**本栈没跑调度器**（`ruoyi-job` 没容器也没人依赖，全仓 0 个 `@Scheduled`）—— 往 `sys_job` 里加任务目前不会自动执行 |
+| Cron 触发 | 走 Quartz `sys_job`，不引 XXL-Job | 调度器**真的在跑**（`aiopc-job` 容器，RAMJobStore，启动时从 `sys_job` 重建触发器）—— 往 `sys_job` 里加任务**会**自动执行。改完记得让 `deploy.sh` 重建 `aiopc-job`，否则新任务不会被加载 |
 | 邀请码 | 31 字符 base32（去 I/L/O/0/1），8 位 | 见 `OpcCodeGenerator.inviteCode()` |
 | **SQL 脚本字符集** | 含中文 INSERT 的 `.sql` 必须以 `SET NAMES utf8mb4;` 开头 | 客户端默认 latin1 时中文会被双重编码入库（UTF-8 字节 E4B89A 存成 C3A4C2B8），页面全是乱码。已漏加的见 `sql/migrations`、`sql/seed` |
 | **跨模块 Feign** | 返回值必须声明 `R<T>`，不能声明 `Map`/`AjaxResult` | 对端返回 `R.ok(x)` 时，声明 `Map` 反序列化的是整个响应体，业务字段藏在 `data` 里，`resp.get("x")` 恒为 null。见 `RemoteFinanceService`、`AgentHubClient` |

@@ -852,7 +852,79 @@ docker exec -i aiopc-mysql mysql -uroot -p'Opc@2026!' ry-vue-opc \
 
 ---
 
-**Last updated:** 2026-10-20 (W80.1 — added §16 租户 companyId 上线故障排查: 旧 token 无 companyId 导致全员 400 的症状/原因/修复, 以及租户表缺失时 ruoyi-system 的 ERROR 日志定位)
+## 17. 「定时任务」相关故障 (2026-10-30 接上 ruoyi-job 之后)
+
+> 2026-10-30 之前 `ruoyi-job` **从来没被部署过**（没 Dockerfile、没容器、
+> 网关没路由），`sys_job_log` 表 0 行。这一节记的是「接上之后」的排障。
+
+### 17.1 健康检查第 25 节的期望输出
+
+```
+[25] 定时任务是真的在跑
+--------------------------------------------------
+[OK]   25.1 aiopc-job 容器在跑
+[OK]   25.2 sys_job 里有 1 条启用中的任务
+[OK]   25.3 网关 /schedule/job/list 通, 且列得出 job 100「财务日报」
+[OK]   25.4 PUT /schedule/job/run 受理了 (job 100 立即执行一次)
+[OK]   25.5 真跑出一条定时器触发的记录: <id>|R2026...|CRON|quartz:finance_daily_report_v1|SUCCESS
+[OK]   25.6 sys_job_log 记下了这次执行(成功): 财务日报|0|财务日报 总共耗时：xxxx毫秒
+[OK]   25.7 没有一条运行记录冒充 CRON
+[OK]   25.8 界面上没有指向 localhost 的死外链菜单
+```
+
+单项调试：`HEALTH_ONLY=25 bash deploy.sh health`
+
+### 17.2 常见症状
+
+| 症状 | 原因 | 怎么查 |
+|---|---|---|
+| 25.1 容器没起来 | 镜像没构建 / compose 里没这个服务 | `docker compose ps aiopc-job`；`bash deploy.sh rebuild ruoyi-job` |
+| 25.1 容器起来又退出 | **没有 DataSource** → `SysJobServiceImpl.init()`（`@PostConstruct`）启动就失败 | `docker logs aiopc-job`，看是不是 `Failed to configure a DataSource` |
+| 25.3 `body.code=404` | 网关没有 `/schedule` 路由（旧网关镜像） | `bash deploy.sh rebuild gateway` |
+| 25.3 `body.code=401` | token 没带上 / 过期 | 重新登录；admin 的权限是 `*:*:*` |
+| 25.4 `body.code=500` | ruoyi-job 里的 Quartz 没排上这个任务 | `sys_job.status` 必须是 `'0'`（0=正常，1=暂停） |
+| 25.5 等不到新记录 | Feign 找不到 `opc-agent-hub` | ruoyi-job 的 `bootstrap.yml` 必须有 `namespace: opc-dev`（不写就落 public，发现不到对端）；`docker logs aiopc-job` 看有没有 503 |
+| 25.5 等不到新记录（另一种） | 30 秒去重窗口：上一次还在跑 | `SELECT status,start_time FROM opc_agent_workflow_run ORDER BY id DESC LIMIT 5` |
+| 25.6 记的是失败 | 工作流本身跑失败（LLM 超时等） | `sys_job_log.exception_info` + `opc_agent_workflow_run.error_message` |
+| 25.7 冒出冒充 CRON 的记录 | 有人手改了 `trigger_type` | `trigger_type='CRON'` 只允许配 `trigger_source LIKE 'quartz:%'` 的行 |
+
+### 17.3 改了 `sys_job` 表却不生效
+
+Quartz 用的是 **RAMJobStore** —— 触发器**不落库**，容器启动时从 `sys_job` 表重建。
+所以改完 `sys_job` 必须重启容器才生效：
+
+```bash
+cd springboot3/deploy
+bash deploy.sh rebuild ruoyi-job     # 重建镜像并重启
+```
+
+> 那 11 张 `QRTZ_*` 表一直是空的 —— **这是预期状态**（RuoYi 自己的
+> `ScheduleConfig.java` 里那份 JDBC 方案整个被注释掉了，注释里写的也是
+> 「单机部署建议删掉此类和 qrtz 数据库表」）。看到空表别以为调度器坏了。
+
+### 17.4 想手动触发一次「财务日报」
+
+界面上「定时任务」→「财务日报」→「执行一次」（`PUT /schedule/job/run`），
+或者直接走网关（**不带 `/prod-api`** —— nginx 会把那段剥掉）：
+
+```bash
+TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}' \
+  http://127.0.0.1:8080/login | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["token"])')
+
+curl -s -X PUT -H "Authorization: Bearer ${TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"jobId":100,"jobGroup":"SYSTEM"}' \
+  http://127.0.0.1:8080/schedule/job/run
+```
+
+`scheduler.triggerJob()` 是**异步**的 —— 这个请求立刻返回，工作流在后台跑。
+要看结果就查 `opc_agent_workflow_run`（`trigger_source` 带 `quartz:` 前缀）和
+`sys_job_log`。
+
+---
+
+**Last updated:** 2026-10-30 (W80.2 — 接上 ruoyi-job 调度器: 新增 §17 定时任务故障排查, 含健康检查第 25 节期望输出 / 常见症状 / RAMJobStore 重启要求 / 手动触发方法)
 
 
 ---

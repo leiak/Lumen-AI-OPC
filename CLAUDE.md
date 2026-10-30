@@ -43,7 +43,7 @@ docs/superpowers/      9 份实施计划 + 逐份审计报告（plans/audit/）
 
 ### 落地办法：把断言写进健康检查
 
-`springboot3/deploy/scripts/health-check.sh` 现在有 **24 节**，每节只做一件事：
+`springboot3/deploy/scripts/health-check.sh` 现在有 **25 节**，每节只做一件事：
 把「这个功能是不是真的在管事」变成一条会红的断言。新功能上线时：
 
 1. 在 `health-check.sh` 里加一节（`ok()` / `nok()` / `warn()`）；
@@ -165,15 +165,45 @@ npx vitest run src/views/opc/marketplace/detail.spec.ts
   从来不存在，撞上 `@GetMapping("/{id}")` → `"recent"` 转不成 Long → `body.code=500`
   —— 而 HTTP 仍是 200 → 那条检查**一直报 ok，却什么都没断言**。2026-10-29 已重写。
 
-### 9. 「定时任务」目前一次都没自动跑过
+### 9. 「定时任务」现在真的在跑 —— 但它**曾经**一次都没跑过
 
-`ruoyi-job` 是全仓**唯一**引 quartz 的地方，`WorkflowCronJob` 也在里面 ——
-但**没有任何模块依赖 `ruoyi-job`**，compose 里**也没有它的容器**。
-Spring 那边同样空：**全仓 0 个 `@Scheduled`、0 个 `@EnableScheduling`**。
+`ruoyi-job` 是全仓**唯一**引 quartz 的地方，`WorkflowCronJob` 也在里面。
+2026-10-30 之前它**从来没有被部署过**：没有 `application.yml`（→ 没有 DataSource
+→ `SysJobServiceImpl.init()` 这个 `@PostConstruct` 启动就失败）、没有 Dockerfile、
+compose 里没有容器、网关没有 `/schedule` 路由。`sys_job_log` 表 0 行。
 
-所以 `sys_job` 表里的注册没人消费，日报快照 / 低库存告警 / Workflow cron
-全都是**写好了但没人叫醒**。根 README 的部署图里那个「agent-hub (Quartz cron)」
-是画的，不是真的。
+现在它被接上了（`aiopc-job` 容器，9203）：
+
+- **Quartz 用 RAMJobStore**（`spring.quartz.job-store-type: memory`）——
+  `ruoyi-job/config/ScheduleConfig.java` 里那份 JDBC 方案**整个被注释掉了**，
+  注释里写的也是「单机部署建议删掉此类和 qrtz 数据库表」。所以那 11 张
+  `QRTZ_*` 表一直是空的，**这是预期状态，不是调度器坏了**。
+- 触发链：`sys_job` → Quartz → `WorkflowCronJob.execute()` → OpenFeign
+  (`RemoteWorkflowService`) → `opc-agent-hub` 的
+  `/opc/agent/workflows/{code}/trigger`（`@InnerAuth` 内部端点）。
+- `scheduler.triggerJob()` 是**异步**的：HTTP 立刻返回，工作流在后台跑。
+  写检查不能只看接口返回，得等落库。
+- `WorkflowTriggerServiceImpl` 有 **30 秒去重窗口**（正在跑的不会重复触发），
+  连续触发两次可能只产生一条运行记录。
+
+> ⚠️ 「Spring 那边 0 个 `@Scheduled`」这句话**依然成立**，但它不再是结论的根据 ——
+> 调度靠的是 Quartz，不是 Spring 的定时器。
+
+### 9b. 网关路由 / 前端路径：少一个前缀就对不上
+
+- 前端 axios 的 `baseURL` 是 `/prod-api`，但 nginx 的 `proxy_pass` 末尾带斜杠
+  → **会把 `/prod-api/` 整段剥掉**再转给网关（`vue3-typescript/nginx.conf`）。
+  所以**直接问网关时 URL 不带 `/prod-api`**：`/schedule/job/list`，
+  不是 `/prod-api/schedule/job/list`。
+- 网关路由 `/schedule/**` + `StripPrefix=1` → `ruoyi-job` 的 `/job/**`
+  （`SysJobController` 是 `@RequestMapping("/job")`，`SysJobLogController` 是 `/job/log`）。
+- `ruoyi-job` 的 `bootstrap.yml` **必须写 `namespace: opc-dev`**：
+  Feign 靠 Nacos 发现解析 `opc-agent-hub`，不写就落默认 tenant（public）→ 找不到对端。
+  `spring.config.import` 必须带 `optional:` —— opc-dev 下没有 `ruoyi-job-dev.yml`，
+  不带 optional 拉不到配置会直接让应用启动失败。
+- `ruoyi-job` 的 pom **缺 `ruoyi-common-datasource`** 就起不来（没有 DataSource）。
+  而 `org.mybatis:mybatis` 不能直接声明 —— 根 pom 没管它的版本，会报
+  "version is missing"；只声明 `mybatis-spring` 就够（mybatis 本体由它传递带进来）。
 
 ### 10. 手搓 curl 会被分类器拦
 
