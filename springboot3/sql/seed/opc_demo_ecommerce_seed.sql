@@ -547,21 +547,26 @@ SELECT i.company_id, @uid, i.id, 'USG20261020003', 'qwen-plus', DATE_SUB(CURDATE
        5200, 2700, 7900, 0.048, 5200, 1, @by, DATE_SUB(NOW(), INTERVAL 2 DAY)
 FROM opc_agent_instance i WHERE i.instance_code='INST20261012002';
 
-INSERT INTO `opc_agent_workflow_run`
-  (`company_id`, `workflow_id`, `run_code`, `trigger_type`, `status`, `input_params`,
-   `output_result`, `error_message`, `token_used`, `cost`, `start_time`, `end_time`, `create_time`)
-SELECT @cid, w.id, 'RUN20261016001', 'CRON', 'SUCCESS', '{"date":"auto"}',
-       '{"summary":"财务日报已生成"}', NULL, 3200, 0.058,
-       DATE_SUB(NOW(), INTERVAL 6 DAY), DATE_SUB(NOW(), INTERVAL 6 DAY), DATE_SUB(NOW(), INTERVAL 6 DAY)
-FROM opc_agent_workflow w WHERE w.workflow_code='finance_daily_report_v1' LIMIT 1;
-
-INSERT INTO `opc_agent_workflow_run`
-  (`company_id`, `workflow_id`, `run_code`, `trigger_type`, `status`, `input_params`,
-   `output_result`, `error_message`, `token_used`, `cost`, `start_time`, `end_time`, `create_time`)
-SELECT @cid, w.id, 'RUN20261017002', 'CRON', 'FAILED', '{"date":"auto"}', NULL,
-       '{"error":"LLM 超时"}', 800, 0.015,
-       DATE_SUB(NOW(), INTERVAL 5 DAY), DATE_SUB(NOW(), INTERVAL 5 DAY), DATE_SUB(NOW(), INTERVAL 5 DAY)
-FROM opc_agent_workflow w WHERE w.workflow_code='finance_daily_report_v1' LIMIT 1;
+-- =============================================================================
+-- 工作流运行记录 —— 这里**不造假**
+--
+-- 以前这里硬插了 2 条运行记录(RUN20261016001 SUCCESS / RUN20261017002 FAILED),
+-- trigger_type 都写 'CRON', output_result 是编的("财务日报已生成"),
+-- error_message 是编的("LLM 超时")。
+--
+-- 为什么删掉:写它们的时候,ruoyi-job 模块**根本没被部署过** ——
+-- 没有容器、没有 Dockerfile、网关也没有路由。调度器代码在仓库里,但
+-- 一次都没被装起来跑过。于是"CRON"这个类型字段是在**冒充事实**:
+-- 表里说定时器跑过,而实际上连定时器都没有。
+--
+-- 现在 ruoyi-job 已经真的跑起来了(定时任务是真触发),
+-- 运行记录由 WorkflowTriggerServiceImpl 落库 —— 那才是事实。
+--
+-- 要造历史数据的话,正确的做法是**真的把它跑一遍**:
+--   PUT /schedule/job/run  (后台「执行一次」)
+-- 那条链路的 trigger_source='quartz:finance_daily_report_v1',
+-- 和每天 09:00 定时触发产生的记录**完全一样**。
+-- =============================================================================
 
 -- =============================================================================
 -- 8. 智能体市场(Marketplace)
