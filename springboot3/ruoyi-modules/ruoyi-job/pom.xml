@@ -58,7 +58,32 @@
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
         </dependency>
-        
+
+        <!-- RuoYi Common DataSource (druid + dynamic-datasource) -->
+        <!--
+            以前这个模块只有 quartz 依赖、没有数据源, 于是从来没被部署过 ——
+            SysJobServiceImpl.init() 是 @PostConstruct, 启动时就要读 sys_job 表,
+            没有 DataSource 直接启动失败。现在要把它真正跑起来, 数据源必须补上。
+            参考: ruoyi-system / opc-marketplace 都靠它拿 spring.datasource.dynamic.*。
+        -->
+        <dependency>
+            <groupId>com.ruoyi</groupId>
+            <artifactId>ruoyi-common-datasource</artifactId>
+        </dependency>
+
+        <!-- MyBatis (XML mapper, 不用 MyBatis-Plus) -->
+        <!--
+            只声明 mybatis-spring(版本由根 pom 的 dependencyManagement 管)。
+            mybatis 本体由它传递带进来 —— 直接写 org.mybatis:mybatis 会因为
+            根 pom 没管它的版本而报 "version is missing"。
+            MyBatis 的自动配置(mybatis-spring-boot-starter)由
+            ruoyi-common-core 里的 pagehelper-spring-boot-starter 带入。
+        -->
+        <dependency>
+            <groupId>org.mybatis</groupId>
+            <artifactId>mybatis-spring</artifactId>
+        </dependency>
+
         <!-- RuoYi Common Log -->
         <dependency>
             <groupId>com.ruoyi</groupId>

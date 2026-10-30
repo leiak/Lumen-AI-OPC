@@ -354,6 +354,59 @@ services:
       - aiopc-net
     restart: unless-stopped
 
+  # ============ Ruoyi Job（定时任务 / Quartz）============
+  #
+  # 这个服务以前**根本不存在**：ruoyi-job 模块的代码在仓库里，但
+  #   - 没有 application.yml → 没有数据源 → SysJobServiceImpl.init() 启动就失败
+  #   - 没有 Dockerfile
+  #   - compose 里没有容器
+  #   - 网关没有 /schedule 路由 → 界面「定时任务」菜单点进去全是 404
+  # 于是 sys_job 里那条「财务日报」(cron 每天 09:00) 永远不会被触发，
+  # 而界面和数据库都写着它「正常」。
+  #
+  # 现在它被接上了：Quartz 用 RAMJobStore（触发器不落 QRTZ_* 表，
+  # 每次启动从 sys_job 重建），WorkflowCronJob 通过 Feign 调 opc-agent-hub
+  # 触发工作流。
+  aiopc-job:
+    build:
+      context: ..
+      dockerfile: ruoyi-modules/ruoyi-job/Dockerfile
+    image: aiopc-job:latest
+    container_name: aiopc-job
+    ports:
+      - "127.0.0.1:9203:9203"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: nacos1:8848
+      SPRING_CLOUD_NACOS_DISCOVERY_NAMESPACE: opc-dev
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: nacos1:8848
+      NACOS_NAMESPACE: opc-dev
+      JASYPT_PASSWORD: OpcEncrypt!2026
+      SERVER_PORT: "9203"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: Opc@2026!
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: Opc@2026!
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DB: ry-vue-opc
+      MYSQL_USER: root
+      MYSQL_PASSWORD: Opc@2026!
+      # 显式注入数据源 URL：共享的 application-dev.yml 里如果哪天又把
+      # 127.0.0.1 写回来（那是容器自己），这里把它按回 mysql。
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_URL: jdbc:mysql://mysql:3306/ry-vue-opc?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_USERNAME: root
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_PASSWORD: Opc@2026!
+    depends_on:
+      - nacos1
+      - mysql
+      - redis
+    networks:
+      - aiopc-net
+    restart: unless-stopped
+
   # ============ OPC User Center（用户中心/邀请/企业）============
   aiopc-user-center:
     build:

@@ -1,0 +1,89 @@
+# ruoyi-job —— 定时任务 (Quartz)
+#
+# 这个模块以前**只有 bootstrap.yml、没有 application.yml**，所以从来没跑起来过：
+#   SysJobServiceImpl.init() 是 @PostConstruct，启动时就要读 sys_job 表，
+#   没有 DataSource → 应用直接启动失败 → 于是它既没有容器、也没有被任何模块依赖，
+#   sys_job 里那条「财务日报」永远不会被触发，
+#   而界面上的「定时任务」菜单点进去所有接口都 404（网关没有 /schedule 路由）。
+#
+# 现在它被真正接上了：
+#   数据源  : spring.datasource.dynamic.datasource.master (druid + dynamic-datasource)
+#   MyBatis : mapper-locations = classpath*:mapper/**/*.xml (XML mapper，不用 MyBatis-Plus)
+#   Redis   : ruoyi-common-redis 的 TokenService / 登录态要用
+#
+# 端口 9203，只绑 127.0.0.1（见 deploy/docker-compose.yml）。
+# 网关侧的入口是 /schedule/** → http://aiopc-job:9203（StripPrefix=1）。
+server:
+  port: ${SERVER_PORT:9203}
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+  tomcat:
+    uri-encoding: UTF-8
+
+spring:
+  application:
+    name: ruoyi-job
+  profiles:
+    # 默认 dev；prod 通过 -Dspring.profiles.active=prod 或 SPRING_PROFILES_ACTIVE=prod 切换
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  main:
+    allow-bean-definition-overriding: true
+  cloud:
+    # Spring Cloud OpenFeign 的 FeignClient 注册跑在 bootstrap 阶段，优先于
+    # spring.main.allow-bean-definition-overriding 加载，所以这里必须独立声明。
+    allow-bean-definition-overriding: true
+
+  datasource:
+    dynamic:
+      primary: master
+      datasource:
+        master:
+          # Docker 容器里 127.0.0.1 是容器本身，必须用 Docker DNS 名 'mysql'
+          url: jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/${MYSQL_DB:ry-vue-opc}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+          username: ${MYSQL_USER:root}
+          password: ${MYSQL_PASSWORD:Opc@2026!}
+
+  # Spring Boot 3.5: Lettuce 只读 spring.data.redis.* (旧 spring.redis.* 已废弃,
+  # 写了也不生效)。ruoyi-common-redis 的 RedisConfig 走标准自动配置,
+  # 没有 @Value("spring.redis.*") —— 所以只写 spring.data.redis.* 就够。
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:Opc@2026!}
+      timeout: 10s
+
+  # Quartz
+  #
+  # job-store-type=memory (RAMJobStore)：触发器不落 QRTZ_* 表，每次启动由
+  # SysJobServiceImpl.init() 从 sys_job 重建 —— 跟上游 RuoYi 单机部署的推荐一致
+  # （ruoyi-job/config/ScheduleConfig.java 整份是注释掉的，注释里写明
+  #  「单机部署建议删除此类和 qrtz 数据库表，默认走内存会最高效」）。
+  # 代价：运行中的触发器状态不跨重启保留 —— 但真相源本来就是 sys_job 表，不受影响。
+  # 库里的 11 张 QRTZ_* 表因此一直是空的，这是**预期**状态，不是「Quartz 没起来」。
+  quartz:
+    job-store-type: memory
+    scheduler-name: RuoyiScheduler
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+  http:
+    encoding:
+      charset: UTF-8
+      force: true
+
+jasypt:
+  encryptor:
+    password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
+    algorithm: PBEWithMD5AndDES
+
+# MyBatis
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.ruoyi.job.domain
+  configuration:
+    map-underscore-to-camel-case: true

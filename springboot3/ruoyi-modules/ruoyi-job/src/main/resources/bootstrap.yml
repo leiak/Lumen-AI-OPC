@@ -3,7 +3,7 @@ server:
   port: 9203
 
 # Spring
-spring: 
+spring:
   application:
     # 应用名称
     name: ruoyi-job
@@ -16,12 +16,22 @@ spring:
         # 服务注册地址
         # 容器里 127.0.0.1 指向容器自己, 不是 Nacos —— 用 compose 里的 DNS 名。
         server-addr: ${NACOS_SERVER:nacos1}:8848
+        # 命名空间必须写死 opc-dev:
+        # RemoteWorkflowService 是个 Feign 客户端, 靠 Nacos 发现解析对端
+        # `opc-agent-hub`。不写 namespace 就落默认 tenant(public),
+        # 而 opc-agent-hub 注册在 opc-dev → Feign 找不到对端, 定时任务一跑就 503。
+        namespace: ${NACOS_NAMESPACE:opc-dev}
       config:
         # 配置中心地址
         server-addr: ${NACOS_SERVER:nacos1}:8848
+        namespace: ${NACOS_NAMESPACE:opc-dev}
   config:
     # 配置文件格式
     file-extension: yml
     import:
-      - nacos:application-${spring.profiles.active}.${spring.config.file-extension}
-      - nacos:${spring.application.name}-${spring.profiles.active}.${spring.config.file-extension}
+      # 全用 optional: —— opc-dev 下**没有** ruoyi-job-dev.yml 这份配置
+      # (仓库里从来没写过 dev 版), 而 spring.config.import 不带 optional 时
+      # 拉不到配置会直接让应用启动失败。本模块的配置真相源是 jar 内
+      # application.yml + compose 的环境变量, Nacos 这份只是可运维副本。
+      - optional:nacos:application-${spring.profiles.active}.${spring.config.file-extension}
+      - optional:nacos:${spring.application.name}-${spring.profiles.active}.${spring.config.file-extension}

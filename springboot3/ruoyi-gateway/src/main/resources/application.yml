@@ -53,6 +53,21 @@ spring:
               filters:
                 - StripPrefix=1
 
+            # === 定时任务 (Quartz / ruoyi-job) ===
+            # /schedule/** StripPrefix=1: 前端调 /schedule/job/list、
+            # /schedule/job/run、/schedule/job/log/list —— 去掉 /schedule 前缀后
+            # 正好对上 ruoyi-job 里 SysJobController 的 @RequestMapping("/job")
+            # 和 SysJobLogController 的 @RequestMapping("/job/log")。
+            #
+            # 以前网关没有这条路由 → 界面「定时任务」菜单点进去所有接口都 404，
+            # 而 ruoyi-job 模块连容器都没有 —— 调度器代码在，但从没被装起来跑过。
+            - id: ruoyi-job
+              uri: http://aiopc-job:9203
+              predicates:
+                - Path=/schedule/**
+              filters:
+                - StripPrefix=1
+
             # === OPC 业务服务 ===
             - id: opc-user-center
               uri: http://aiopc-user-center:9302

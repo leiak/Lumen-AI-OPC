@@ -9,6 +9,7 @@
 #   bash deploy.sh stop                     # 停所有容器,保留 host 数据
 #   bash deploy.sh nuke                     # ⚠️ 删 mysql/redis 数据卷重新初始化
 #   bash deploy.sh rebuild crm              # 重建镜像(改完 OPC 源码后)
+#   bash deploy.sh rebuild ruoyi-job        # 只重建定时任务服务 (改完 ruoyi-job 后)
 #   bash deploy.sh rebuild gateway          # 只重建网关 (改完 ruoyi-gateway 后)
 #   bash deploy.sh rebuild auth             # 只重建认证服务 (改完 ruoyi-auth 后)
 #   bash deploy.sh rebuild frontend         # 只重建前端 (改完 vue3-typescript 后)
@@ -161,7 +162,7 @@ cmd_rebuild() {
   require_docker
   local target="${1:-}"
   if [[ -z "${target}" ]]; then
-    fail "用法: deploy.sh rebuild <svc-name|all|gateway|auth|frontend>     (e.g. crm / notification / ai-core / gateway / auth / frontend / all)"
+    fail "用法: deploy.sh rebuild <svc-name|all|gateway|auth|frontend>     (e.g. crm / notification / ai-core / ruoyi-job / gateway / auth / frontend / all)"
   fi
 
   # 共享模块必须**先 install 进本地仓库** ——
@@ -198,6 +199,7 @@ cmd_rebuild() {
   svc_of() {
     case "$1" in
       ruoyi-system) echo "aiopc-system" ;;
+      ruoyi-job)    echo "aiopc-job" ;;
       *)            echo "aiopc-${1#opc-}" ;;
     esac
   }
@@ -208,13 +210,14 @@ cmd_rebuild() {
   #       Dockerfile 用 `-cp x.jar:lib/*` 启动。
   # fat:  ruoyi-system —— pom 里 repackage 正常跑, 打成带 Main-Class 的
   #       fat jar, Dockerfile 用 `java -jar` 启动, 没有 lib/ 目录。
+  #       ruoyi-job 同理(它的 pom 也没挡 repackage)。
   #
   # 之前对所有模块一律加 -Dspring-boot.repackage.skip=true, 把 ruoyi-system
   # 也打成了 thin jar → 容器起来就 "no main manifest attribute" 无限重启,
   # 而部署脚本照样报成功。
   mode_of() {
     case "$1" in
-      ruoyi-system) echo "fat" ;;
+      ruoyi-system|ruoyi-job) echo "fat" ;;
       *)            echo "thin" ;;
     esac
   }
@@ -283,6 +286,9 @@ cmd_rebuild() {
     # ruoyi-system 的 compose 服务名是 aiopc-system(不是 aiopc-ruoyi-system),
     # 而且它是 fat jar 启动(java -jar), 不能走 thin jar 那套
     build_one ruoyi-system
+    # ruoyi-job 同理: compose 服务名是 aiopc-job, 也是 fat jar。
+    # 它以前压根不在这个列表里 —— 因为它根本没有 Dockerfile、没有容器。
+    build_one ruoyi-job
     build_gateway
     build_auth
     build_frontend
@@ -389,7 +395,7 @@ Commands:
   status                   docker compose ps
   stop                     停所有容器,保留 host 数据
   nuke                     ⚠️  清 mysql/redis/nacos 数据卷
-  rebuild <svc|all|gateway|auth|frontend>  重建指定服务镜像 (e.g. crm / notification / gateway / auth / frontend / all)
+  rebuild <svc|all|gateway|auth|frontend>  重建指定服务镜像 (e.g. crm / notification / ruoyi-job / gateway / auth / frontend / all)
   snapshot                 跑全栈状态快照
   health                   跑健康检查 (36+ 项)
   help                     显示本帮助

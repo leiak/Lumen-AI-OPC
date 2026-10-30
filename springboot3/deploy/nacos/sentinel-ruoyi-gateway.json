@@ -24,6 +24,14 @@
     "controlBehavior": 0
   },
   {
+    "resource": "ruoyi-job",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 30,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
     "resource": "opc-user-center",
     "resourceMode": 0,
     "grade": 1,
