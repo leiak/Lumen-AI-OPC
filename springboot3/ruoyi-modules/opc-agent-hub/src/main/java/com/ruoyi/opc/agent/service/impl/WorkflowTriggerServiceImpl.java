@@ -42,6 +42,12 @@ public class WorkflowTriggerServiceImpl implements IWorkflowTriggerService {
 
     private static final String DEFAULT_TIMEZONE = "Asia/Shanghai";
 
+    /**
+     * 定时器触发的前缀 —— ruoyi-job 的 WorkflowCronJob 调用时传的是
+     * {@code "quartz:" + workflowCode}。见 ruoyi-job 的 WorkflowCronJob.execute()。
+     */
+    private static final String QUARTZ_TRIGGER_PREFIX = "quartz:";
+
     private final OpcAgentWorkflowMapper workflowMapper;
     private final OpcAgentWorkflowRunMapper runMapper;
     private final WorkflowEngine workflowEngine;
@@ -124,13 +130,35 @@ public class WorkflowTriggerServiceImpl implements IWorkflowTriggerService {
         run.setWorkflowId(workflow.getId());
         // company_id 非空；系统模板工作流（company_id 为 NULL）统一归到 0
         run.setCompanyId(workflow.getCompanyId() == null ? 0L : workflow.getCompanyId());
-        run.setTriggerType(workflow.getTriggerType());
+        run.setTriggerType(resolveTriggerType(triggerSource));
         run.setTriggerSource(triggerSource);
         run.setStatus(OpcConstants.TASK_RUNNING);
         run.setStartTime(new Date());
         run.setCreateBy(OpcConstants.SYSTEM_CODE);
         run.setUpdateBy(OpcConstants.SYSTEM_CODE);
         return run;
+    }
+
+    /**
+     * 运行记录的 trigger_type 记的是**这次到底怎么触发的**，不是工作流配置里声明的类型。
+     *
+     * <p>以前这里直接 {@code run.setTriggerType(workflow.getTriggerType())} ——
+     * 而工作流行上的 trigger_type 是它「打算」怎么被触发（CRON）。
+     * 结果是：健康检查手动打的工作流、健康检查里触发的、运维在后台点「执行一次」的，
+     * 全部在运行记录里写着 'CRON'。
+     * 迁移 V20261033 之前那 32 条运行记录里没有一条是真的定时器触发的
+     * （那时根本没有调度器），但表里写着 'CRON' —— 类型字段冒充事实。
+     *
+     * <p>现在按实际来源区分：
+     * <ul>
+     *   <li>{@code quartz:xxx} —— ruoyi-job 的 Quartz 定时器触发 → CRON</li>
+     *   <li>其他（healthcheck / 人工 / 后台点「执行一次」）→ MANUAL</li>
+     * </ul>
+     * 健康检查第 25 节据此断言「确实有定时器触发过」。
+     */
+    private String resolveTriggerType(String triggerSource) {
+        return triggerSource != null && triggerSource.startsWith(QUARTZ_TRIGGER_PREFIX)
+                ? "CRON" : "MANUAL";
     }
 
     /**

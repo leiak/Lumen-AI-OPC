@@ -119,6 +119,22 @@ class WorkflowTriggerServiceImplTest {
     }
 
     @Test
+    @DisplayName("非 quartz 来源 → trigger_type 记 MANUAL,不许冒充 CRON")
+    void trigger_nonQuartzSource_recordsManual() {
+        when(runMapper.findRunningByCodeSince(anyString(), any())).thenReturn(null);
+        when(workflowMapper.selectByCode(CODE)).thenReturn(workflow);
+        when(workflowEngine.run(any(), any())).thenReturn(WorkflowEngine.WorkflowResult.builder()
+                .success(true).build());
+
+        // 工作流自己声明 trigger_type=CRON,但这次是健康检查/人工触发的
+        OpcAgentWorkflowRun run = service.trigger(CODE, "healthcheck");
+
+        assertEquals("MANUAL", run.getTriggerType(),
+                "trigger_type 记的是这次怎么触发的 —— 不是工作流声明的类型");
+        assertEquals("healthcheck", run.getTriggerSource());
+    }
+
+    @Test
     @DisplayName("工作流已停用：抛出 OpcException 且不写 run 记录")
     void trigger_disabledWorkflow_returnsError() {
         workflow.setEnabled(0);
