@@ -22,13 +22,13 @@
 
 - Docker Desktop 或 docker engine 24+
 - 本机可联网（拉镜像 + 调 LLM API）
-- GitHub repo 已 clone 到本地: `D:\work-ai\0401-lumen-opc\`
+- GitHub repo 已 clone 到本地: `/www/Lumen-AI-OPC/`
 
 ### 步骤
 
 ```bash
 # 1. 拉最新代码
-cd /d/work-ai/0401-lumen-opc
+cd /www/Lumen-AI-OPC
 git pull origin main
 
 # 2. 创建密钥文件 (从模板, 然后填真值)
@@ -47,7 +47,7 @@ cd nacos
 ### 5. 启动 MySQL + 其它基建 (一次性)
 
 ```bash
-cd /d/work-ai/0401-lumen-opc/springboot3/deploy
+cd /www/Lumen-AI-OPC/springboot3/deploy
 
 # 先只启动 mysql, 让它自动跑 mysql-initdb.d/ 建库
 # ⚠️ 如果 deploy/mysql/data 不空 (之前的数据残留), initdb.d 不会执行
@@ -72,7 +72,7 @@ docker exec aiopc-mysql mysql -uroot -p'Opc@2026!' ry-vue-opc -e "SHOW TABLES;"
 
 ```bash
 # 6.1 灌 Nacos 配置 (现在 nacos 已起)
-cd /d/work-ai/0401-lumen-opc/springboot3/deploy/nacos
+cd /www/Lumen-AI-OPC/springboot3/deploy/nacos
 ./import-dev.sh
 
 # 6.2 起所有业务服务
@@ -84,7 +84,7 @@ docker compose up -d
 ### 7. 验证栈
 
 ```bash
-cd /d/work-ai/0401-lumen-opc/springboot3/deploy
+cd /www/Lumen-AI-OPC/springboot3/deploy
 bash deploy.sh health
 # 应该看到: PASS: 184  FAIL: 0   （25 节全绿）
 ```
@@ -111,7 +111,7 @@ bash deploy.sh health
 每次重大变更前(改 schema、加新 OPC 微服务)跑一次备份:
 
 ```bash
-cd /d/work-ai/0401-lumen-opc/springboot3/deploy
+cd /www/Lumen-AI-OPC/springboot3/deploy
 bash scripts/backup-mysql.sh
 # 生成 deploy/backups/aiopc-mysql-YYYYMMDD-HHMMSS.sql.gz
 # 旧备份 (>30 天) 自动删除
@@ -578,15 +578,13 @@ sleep 40
 # 6. 重建 frontend (W51 教训: 上游 IP 漂移后必须 rebuild)
 docker compose build aiopc-frontend && docker compose up -d aiopc-frontend
 
-# 6b. (Fallback) Docker.io 不可达时 (W74 实战) — 用 Python proxy 替代 nginx
-# 当 nginx:1.27-alpine + node:20-alpine 基础镜像无法 pull 时,
-# 本地 dist/ 已存在,可用 Python http.server + 反向代理脚本跑 8079 端口
-python C:/Users/wma19/AppData/Local/Temp/frontend_proxy.py
-# 等价 nginx.conf: /prod-api/* → http://127.0.0.1:8080 (gateway)
-#                   / → vue3-typescript/dist/index.html (SPA fallback)
+# 6b. (Fallback) Docker.io 不可达时 (W74 实战) — ⚠️ 那次用的临时脚本不在 repo 里
+# W74 当天用过一个放在 Windows 临时目录的 frontend_proxy.py 顶替 nginx,
+# 但那个文件没有进仓库,别人拿不到 —— 现在唯一可复现的前端起法是上面的
+# docker compose build aiopc-frontend。镜像拉不下来就先修网络,别找那个脚本。
 
-# 7. 健康检查 (期望 10/10 + 之前所有服务)
-bash scripts/health-check.sh
+# 7. 健康检查 (期望 25 节 / 184 项断言全绿)
+bash deploy.sh health
 
 # 8. e2e 验证
 cd ../tmp_e2e && OPC_GATEWAY=http://127.0.0.1:8080 python e2e_content.py

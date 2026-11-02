@@ -29,9 +29,9 @@ docker compose up -d aiopc-gateway aiopc-auth aiopc-system aiopc-job \
 # 5. 启动前端 (W51 教训: 上游 IP 漂移后必须显式 rebuild)
 docker compose build aiopc-frontend && docker compose up -d aiopc-frontend
 
-# 5b. (可选) Docker.io 不可达 fallback — 用 Python proxy 直接 serve
-# W74 实践: 本地 dist/ 已存在时, 用 Python proxy 替代 nginx 容器
-python C:/Users/wma19/AppData/Local/Temp/frontend_proxy.py  # 后台跑, 端口 8079
+# 5b. (可选) Docker.io 不可达 fallback — ⚠️ 那次用的临时脚本不在 repo 里
+# W74 当天用过 Windows 临时目录里的 frontend_proxy.py 顶替 nginx,
+# 但它没有进仓库 —— 前端唯一可复现的起法还是上面的 docker compose build。
 
 # 6. 健康检查 —— 25 节, 184 项断言
 bash deploy.sh health          # ← 走这个入口, 见下方「健康检查的 25 节」
@@ -204,7 +204,14 @@ bash deploy.sh rebuild all              # 全部
 - **必须执行**: `docker compose build aiopc-frontend && docker compose up -d aiopc-frontend`
 - **本次 docker.io 不可达,frontend build 失败**,需后续网络恢复后补做
 
-## Helm 部署 (K8s)
+## K8s 部署（存档 —— 不在本项目范围内）
+
+> ⚠️ **2026-11-02 决定：本项目只有 Docker Compose 一条部署路径，K8s 不做。**
+> 本节到「灰度发布」整段是**存档**，保留是因为里面的 manifest 还在仓库里，
+> 但**不要照着跑** —— 那条路径没有接调度器、没有验收过、也没有健康检查。
+> 演示环境的部署、健康检查、故障恢复全部在 compose 路径上，见本文件上面几节。
+
+### Helm Chart（存档）
 
 ```bash
 # helm lint
@@ -218,7 +225,7 @@ helm template test deploy/helm/opc --kube-version 1.29.0 | grep '^kind:' | sort 
 helm install opc deploy/helm/opc --namespace opc --create-namespace
 ```
 
-## 公测部署 (K8s 旧版,待更新)
+## 公测部署（存档 —— K8s 旧版，已过时）
 
 ```bash
 # 1. 创建命名空间
@@ -245,7 +252,7 @@ kubectl get svc -n opc
 kubectl apply -f k8s/ingress.yaml
 ```
 
-## 灰度发布
+## 灰度发布（存档 —— 不在本项目范围内）
 
 ```bash
 # 1. 给新版本打 tag
@@ -302,8 +309,11 @@ kubectl delete deployment opc-ai-core-old
 | **W74 设计 spec** | `../docs/superpowers/specs/2026-09-14-opc-content-design.md` | opc-content 设计 |
 | **历史 VERIFICATION** | `../docs/verification/README.md` | 索引 (week-1..12 + milestones) |
 
-### Helm chart 的一个已知差异
+### 为什么 Helm chart 里没有调度器 —— 因为 K8s 不在本项目范围内
 
-`helm/opc/` 里有 **14 个 deployment**，**没有调度器**（`ruoyi-job`）——
-K8s 那条路径上 `sys_job` 里的 cron 不会自动跑。compose 路径（演示环境）有。
-这是**已知差异**，不是「装好了」—— 见 `CLAUDE.md` 坑 #9 与 `RECOVERY.md` §17。
+`helm/opc/` 里有 **14 个 deployment**，**没有调度器**（`ruoyi-job`）。
+这不是「装漏了」，是 **2026-11-02 定的范围**：本项目只走 Docker Compose 一条部署路径，
+K8s 那条路径整个划出范围，**不补、不修、不验收**。
+
+compose 路径上的调度器是通的 —— `aiopc-job` 容器（9203）+ 网关 `/schedule` 路由 +
+健康检查第 25 节（真触发一次 + 落库对账）。见 `CLAUDE.md` 坑 #9 与 `RECOVERY.md` §17。

@@ -207,8 +207,10 @@ Spring 那边仍然没有 `@Scheduled`（**全仓 0 个 `@Scheduled`、0 个 `@E
 
 > 图里画的是**演示环境**（Nacos 命名空间 `opc-dev`）。生产用 `opc-prod`。
 
-完整 K8s Helm Chart 在 `springboot3/deploy/helm/opc/`（**14 个 deployment** + HPA + PDB +
-Ingress + ServiceMonitor + ConfigMap + Namespace + ServiceAccount）。
+> **部署形态只有 Docker Compose 一条路径。** `springboot3/deploy/helm/opc/`（14 个 deployment
+> + HPA + PDB + Ingress + ServiceMonitor）和 `springboot3/deploy/k8s/` 都是 **2026-11-02 决定
+> 划出范围之外的存档**，不是本项目的部署方案 —— 下面的图和所有命令都只对 compose 路径成立。
+> 唯一在用的编排路径上，调度器 `ruoyi-job` 是通的（compose 有 /schedule 路由 + 容器）。
 
 ---
 
@@ -468,7 +470,7 @@ mvn -pl ruoyi-modules/opc-ai-core test -Dtest=RedTeamRunnerTest,PromptGuardHarde
 - `springboot3/deploy/RECOVERY.md` — 灾难恢复 + 各服务 runbook（17 节）
 - `springboot3/deploy/scripts/health-check.sh` — **25 节 / 184 项断言**（`bash deploy.sh health`）
 - `springboot3/deploy/nacos/README.md` — Nacos 配置管理（`tenant=` 参数陷阱 / 限流规则真相源）
-- `springboot3/deploy/helm/opc/` — K8s Helm Chart（**没有调度器**，见「状态」一节）
+- `springboot3/deploy/helm/opc/` — K8s Helm Chart（**存档 —— 本项目不走 K8s 路径**，见「状态」一节）
 - `springboot3/Jenkinsfile` — CI 流水线
 - `vue3-typescript/package.json` — 前端依赖与脚本
 
@@ -570,10 +572,10 @@ mvn -pl ruoyi-modules/opc-ai-core test -Dtest=RedTeamRunnerTest,PromptGuardHarde
 - **MVP**：已上线（参考 `OPC-MVP-DELIVERY.md`）
 - **W1**：8 Task / 25 Sub-task 全部完成（2026-09-06）
 - **W80 市场**：演示数据已就绪，`opctest` 账号可跑通 13 模块 / 33 页面
+- **部署形态**：只有 Docker Compose 一条路径。**K8s / Helm 不在本项目范围内**
+  （2026-11-02 决定）—— `deploy/helm/` 与 `deploy/k8s/` 是存档；compose 路径上
+  `ruoyi-job` 调度器是通的（`/schedule` 路由 + 容器 + 健康检查第 25 节）。
 - **已知问题**（2026-11-02 核对）：
-  - ⚠️ **Helm chart 里没有调度器** —— `helm/opc/` 有 14 个 deployment，
-    但**没有 `ruoyi-job`**。K8s 那条路径上 `sys_job` 里的 cron 不会自动跑
-    （compose 路径有）。这是已知差异，不是「装好了」。
   - ⚠️ **Prometheus 只覆盖 7 个服务**（gateway / system / ai-core / user-center /
     agent-hub / billing / finance）；其余 8 个业务模块的 pom 里没有
     `micrometer-registry-prometheus`，它们**不产生指标**。

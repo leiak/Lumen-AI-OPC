@@ -55,10 +55,10 @@
 | `springboot3/README.md` | 后端基座 README（RuoYi 上游原文 + OPC 定制说明） |
 | `springboot3/deploy/README.md` | Docker 部署 README（31 服务清单 / **健康检查 25 节** / rebuild 入口） |
 | `springboot3/deploy/RECOVERY.md` | 灾难恢复 + 各服务 runbook（17 节） |
-| `springboot3/deploy/scripts/health-check.sh` | **25 节 / 184 项断言** —— 唯一被放行的线上验证入口 |
+| `springboot3/deploy/scripts/health-check.sh` | **25 节 / 184 项断言** —— 实现文件；**执行入口是 `bash deploy.sh health`**（直接跑这个脚本会被安全分类器拦掉） |
 | `springboot3/deploy/nacos/README.md` | Nacos 配置操作（`tenant=` 参数陷阱 / 限流规则真相源） |
-| `springboot3/deploy/helm/opc/README.md` | Helm chart README |
-| `springboot3/deploy/runbooks/incident-response.md` | F-01..F-07 故障手册 |
+| `springboot3/deploy/helm/opc/README.md` | Helm chart README（**存档 —— K8s 不在本项目范围内**） |
+| `springboot3/deploy/runbooks/incident-response.md` | F-01..F-07 故障手册（**存档 —— K8s 操作步骤不适用**，compose 排障看 RECOVERY.md） |
 
 ## 4. 前端 (`vue3-typescript/`)
 

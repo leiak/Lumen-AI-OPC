@@ -1,5 +1,11 @@
 # OPC 故障处理手册（Runbook）
 
+> ⚠️ **存档 —— 本项目不走 K8s 路径（2026-11-02 决定）。**
+> 本手册里的 `kubectl` / `kubectl set image` 是 K8s 公测环境的操作步骤，
+> **演示环境（Docker Compose）上不适用**。compose 路径的排障看
+> `../../deploy/RECOVERY.md`（17 节，按服务/症状分）和 `bash deploy.sh health`。
+> 本文件保留是因为 F-01..F-07 的故障分级和通知流程仍然有效。
+
 > 适用场景：公测环境 7×24 监控值守
 > 维护：DevOps 团队
 
