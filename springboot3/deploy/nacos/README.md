@@ -90,7 +90,7 @@ cd springboot3/deploy/nacos
 | `opc-hr-dev.yml`            | opc-hr                                      | 单服务私有                  |
 | `opc-erp-dev.yml`           | opc-erp                                     | 单服务私有                  |
 | `opc-content-dev.yml`       | opc-content                                 | 单服务私有                  |
-| `sentinel-ruoyi-gateway`    | 网关的 Sentinel 数据源（`gw-flow` 流控规则） | **17 条规则**，一一对应网关 17 条路由 |
+| `sentinel-ruoyi-gateway`    | 网关的 Sentinel 数据源（`gw-flow` 流控规则） | **18 条规则**，一一对应网关 18 条路由 |
 
 `opc-ai-core` / `opc-agent-hub` / `opc-user-center` / `opc-billing` / `opc-finance`
 没有各自的 dev 文件：它们的私有配置（`ai.*` / `langchain4j.*` / `qdrant.*` 等）
@@ -145,7 +145,7 @@ new EntryConfig(route.getId(), EntryType.IN, 1, params,
 | 0  | `RESOURCE_MODE_ROUTE_ID`    | 按**路由 id**匹配（网关用这个） |
 | 1  | `RESOURCE_MODE_CUSTOM_API_NAME` | 按自定义 API 名匹配（本栈不用） |
 
-#### 规则表只有 17 条，一一对应网关的 17 条路由
+#### 规则表只有 18 条，一一对应网关的 18 条路由
 
 真相源是**仓库里**的 `deploy/nacos/sentinel-ruoyi-gateway.json`；
 Nacos 里那份是它的部署副本。改规则改仓库那份，然后 `./import-dev.sh` 重推。
@@ -158,6 +158,7 @@ Nacos 里那份是它的部署副本。改规则改仓库那份，然后 `./impo
 | `opc-insight` / `opc-agent-hub` / `opc-crm` / `opc-community` / `opc-hr` / `opc-erp` / `opc-content` | 20 | 重查询/重聚合 |
 | `ruoyi-auth` / `ruoyi-system` / `opc-billing` / `opc-finance` / `opc-notification` / `opc-marketplace` | 30 | 普通业务读写 |
 | `opc-notification-ws` | 50 | 长连接，握手频繁但单个请求很轻 |
+| `ruoyi-job` | 30 | 调度器（`/schedule/**`）—— 2026-10-30 才接上网关，见下 |
 
 `grade=1`（QPS 限流）、`intervalSec=1`（每秒）、`controlBehavior=0`（直接拒绝）。
 
@@ -172,7 +173,11 @@ burst / maxQueueingTimeoutMs / paramItem`。
 两个问题叠在一起：
 
 1. 带了 `strategy` 和 `limitApp` 两个字段 —— `GatewayFlowRule` 里**压根没有这两个字段**；
-2. `ruoyi-gen` / `ruoyi-job` **不是本网关的路由**（网关只有 17 条）。
+2. `ruoyi-gen` / `ruoyi-job` **当时不是本网关的路由**。
+
+> ⚠️ 情况后来变了：`ruoyi-job` 在 **2026-10-30** 接上了调度器（网关新增 `/schedule/**`
+> 路由，id = `ruoyi-job`），所以它**现在是一条真实路由**，规则表里也有它了。
+> `ruoyi-gen` 仍然不是路由 —— 本栈不跑代码生成器，规则表里也不该有它。
 
 即便当初它被正确推到了 `opc-dev`、网关也正确连上了 Nacos，这 4 条里
 至少 2 条挂在不存在的路由上、另外 2 条带着模型里没有的字段。
@@ -342,7 +347,7 @@ Nacos 在这里只管 DataID / Redis / DB / 白名单,不碰路由。
 > 它停留在"路由还挂在 Nacos 里"的那个年代,与上述配置早已分叉,**现已删除**。
 > **不要**再把它转成 routes 节点发回 Nacos,也不要手写 `application.yml` 片段用
 > `curl POST /v1/cs/configs` 覆盖网关配置 —— 那会用一份 6 条、剥前缀、`lb://` 的旧清单
-> 顶掉现行 14 条 `http://aiopc-*:93xx` 路由,顺带打掉通知 / CRM / HR / ERP / 内容 /
+> 顶掉现行 **18 条**路由（其中 14 条 `http://aiopc-*:93xx`）,顺带打掉通知 / CRM / HR / ERP / 内容 /
 > 社区 / 市场 8 个服务的入口,并让所有 controller 的全路径 `@RequestMapping("/opc/…")` 对不上。
 > 这与 `apply-whitelist.sh` 那次「整体替换白名单,一次摧毁 35 条」是同一类事故:
 > **整体替换 ≠ 合并**。
@@ -359,5 +364,7 @@ Nacos 在这里只管 DataID / Redis / DB / 白名单,不碰路由。
    —— 去查对应服务的容器/IP;日志里**根本没有**这一行,说明请求压根没匹配上 `routes`
    里的 Path,回到 `application.yml` 第 29 行起的 routes 核对路径写法。
 4. **确要改路由**:改 `springboot3/ruoyi-gateway/src/main/resources/application.yml`
-   并重建网关镜像。改之前先数一遍现有 OPC 路由条数(现行 14 条),改完再数一遍,
+   并重建网关镜像。改之前先数一遍现有路由条数(现行 18 条),改完再数一遍,
    少一条就是回归 —— 注意 OPC 路由一律**不加** `StripPrefix`。
+   **加路由要同时加限流规则**:`deploy/nacos/sentinel-ruoyi-gateway.json` 里
+   补一条同名 `resource`(resourceMode=0),否则健康检查第 23.4 节会报 FAIL。

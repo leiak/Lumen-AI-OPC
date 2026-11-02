@@ -52,7 +52,12 @@ OPC = **One-Person Company**，核心假设是未来大量"一人公司"会涌�
 - **MySQL 8** + MyBatis 3.5.19（**普通 MyBatis，不是 MyBatis-Plus**）
 - **Redis** 缓存（单层 —— **没有 Caffeine**，全仓没有这个依赖）
 - **Qdrant** 向量库（Agent 长期记忆）
-- **Sentinel** 限流熔断
+- **Sentinel** 限流熔断 —— 规则表在 `springboot3/deploy/nacos/sentinel-ruoyi-gateway.json`
+  （**18 条 ↔ 网关 18 条路由**，一一对应；加一条路由就要加一条规则，
+  健康检查第 23.4 节会逐条对表，缺一条报 FAIL）
+- **Prometheus** 指标采集 —— 7 个服务接了 `micrometer-registry-prometheus`
+  （gateway / system / ai-core / user-center / agent-hub / billing / finance）；
+  业务端口只绑 `127.0.0.1` 且网关没有 `/actuator/**` 路由，所以端点不经网关，公网不可达
 - **Quartz** 定时任务 —— `ruoyi-job` 模块**真的在跑**（容器 `aiopc-job`，
   端口 9203，RAMJobStore，启动时从 `sys_job` 表重建触发器）。
   `sys_job` 里那条「财务日报」（cron `0 0 9 * * ?`）每天 09:00 会真的触发
@@ -95,6 +100,7 @@ OPC 业务服务（13 个）
 opc-ai-core      (9301) AI 中台      ── LLM gateway / agent runtime / 安全
 opc-user-center  (9302) 用户中心     ── 注册 / 公司 / 成员 / 邀请
 opc-agent-hub    (9303) Agent 调度   ── Workflow Engine + 多 Agent 编排
+                                     ── 「官方数字员工」目录（平台自营）
 opc-billing      (9304) 计费         ── 钱包 / 代金券 / 流水
 opc-finance      (9305) 财务         ── 凭证 / 流水 / 报税报表
 opc-insight      (9306) 数据洞察     ── 日报 / 驾驶舱 / 异常预警
@@ -102,7 +108,7 @@ opc-notification (9310) 通知中心     ── 邮件 / 短信 / 站内收件�
 opc-erp          (9311) 进销存       ── 采购 / 库存 / 销售 / 退货 / FIFO 批次
 opc-crm          (9312) CRM          ── 客户 / 商机 / 合同 / 订单 / LLM 打分
 opc-community    (9316) 模块社区     ── 功能模块目录 / 评分 / 安装计数
-opc-marketplace  (9317) 开发者集市   ── 上架 / 安装 / 评价 / 订阅
+opc-marketplace  (9317) 开发者集市   ── 上架 / 安装 / 评价 / 订阅（开发者自营）
 opc-hr           (9322) 招聘管理     ── 职位 / 候选人 / 面试 / Offer
 opc-content      (9325) AI 内容创作  ── 4 个 LLM 场景 / 抖音发布
 
@@ -141,6 +147,22 @@ opc-content      (9325) AI 内容创作  ── 4 个 LLM 场景 / 抖音发布
 
 Spring 那边仍然没有 `@Scheduled`（**全仓 0 个 `@Scheduled`、0 个 `@EnableScheduling`**）——
 但那不重要：调度靠的是 Quartz，不是 Spring 的定时器。
+
+### 两个市场页，别认错
+
+以前两个菜单都叫「智能体市场」，从名字上分不出谁是谁。现在改名了：
+
+| 页面 | 路由 | 卖的是什么 | 谁在卖 | 徽标 |
+|---|---|---|---|---|
+| **官方数字员工** | `/opc/agent/market` | 平台自营的智能体目录（`opc_agent_definition`，4 个已发布） | OPC 平台 | 「平台直营」 |
+| **开发者集市** | `/opc/marketplace/index` | 开发者上架的智能体与功能模块（`mp_publication`，2 件商品） | 第三方开发者 | 「开发者自营」 |
+
+`opc-community` 的「模块市场」是第三回事 —— 那是**模块社区**（`opc_community_module` 目录），
+和上面两个不是同一批数据。
+
+> 顺带把商品卡上编出来的数字归零了：823 次浏览、343 次安装、4.8 分 127 条评价
+> 全部改成从真实表推出来的值（浏览数没有对应表，只能从 0 起步并随访问自增）。
+> 健康检查第 19 节会现场对账。
 
 > 运行记录里的 `trigger_type` 记的是**这次到底怎么触发的**（`quartz:` 前缀 → CRON，
 > 其余 → MANUAL），不是工作流配置里声明的类型。改这条的是
@@ -413,6 +435,11 @@ npm run type-check   # vue-tsc --noEmit
 npm run build        # vite build
 npm run dev          # 本地开发服务器
 
+# 线上验证（唯一被放行的入口, 别手搓 curl）
+cd springboot3/deploy
+bash deploy.sh health                  # 25 节全量
+HEALTH_ONLY=25 bash deploy.sh health   # 只跑第 25 节（定时任务）
+
 # Helm
 helm lint springboot3/deploy/helm/opc
 helm template test springboot3/deploy/helm/opc -f values-dev.yaml | less
@@ -427,6 +454,7 @@ mvn -pl ruoyi-modules/opc-ai-core test -Dtest=RedTeamRunnerTest,PromptGuardHarde
 ## 文档索引
 
 ### 项目级
+- `CLAUDE.md` — **给 Claude 看的项目说明**（怎么跑 / 12 条踩过的坑 / 「不说假话」这条规矩）
 - `init.md` — 原始需求（业务场景 / 9 类）
 - `OPC-MVP-DELIVERY.md` — MVP 交付总结
 - `OPC-W1-TASK-BREAKDOWN.md` — W1 任务拆分（8 Task / 25 Sub-task）
@@ -436,10 +464,18 @@ mvn -pl ruoyi-modules/opc-ai-core test -Dtest=RedTeamRunnerTest,PromptGuardHarde
 - `OPC-SECURITY-REPORT-v0.1.md` — **Task #8 完整安全报告**（必读）
 
 ### 部署 / DevOps
-- `springboot3/deploy/nacos/` — Nacos 配置管理
-- `springboot3/deploy/helm/opc/` — K8s Helm Chart
+- `springboot3/deploy/README.md` — 部署文档（31 个服务清单 / **健康检查的 25 节** / rebuild 入口）
+- `springboot3/deploy/RECOVERY.md` — 灾难恢复 + 各服务 runbook（17 节）
+- `springboot3/deploy/scripts/health-check.sh` — **25 节 / 184 项断言**（`bash deploy.sh health`）
+- `springboot3/deploy/nacos/README.md` — Nacos 配置管理（`tenant=` 参数陷阱 / 限流规则真相源）
+- `springboot3/deploy/helm/opc/` — K8s Helm Chart（**没有调度器**，见「状态」一节）
 - `springboot3/Jenkinsfile` — CI 流水线
 - `vue3-typescript/package.json` — 前端依赖与脚本
+
+### 计划与审计
+- `docs/superpowers/plans/` — 9 份实施计划（**checkbox 已逐条审计过，别当待办队列**）
+- `docs/superpowers/plans/audit/` — 逐份审计报告 + 总索引
+- `docs/verification/` — 历史 VERIFICATION 报告索引
 
 ### 演示数据
 - `springboot3/sql/seed/opc_demo_ecommerce_seed.sql` — OPC 全模块演示数据（13 模块 / 33 页面）
@@ -462,9 +498,44 @@ mvn -pl ruoyi-modules/opc-ai-core test -Dtest=RedTeamRunnerTest,PromptGuardHarde
 
 ---
 
-## 近期开发（2026-10-21 ~ 10-23）
+## 近期开发（2026-10-24 ~ 11-02）：把演示环境说的话变成真的
 
-### OPC 菜单注册补齐
+主题还是那一条：**别对外说自己并不支持的事**。
+这一轮每改一处，都配了一条**会红的健康检查断言** —— 25 节 / 184 项，
+2026-10-30 全绿（`bash deploy.sh health`）。
+
+### 之前在说的假话，和现在的样子
+
+| # | 以前对外说的 | 真相 | 现在的断言 |
+|---|---|---|---|
+| 1 | 限流规则表「有 17 条」 | 4 条规则挂在**不存在的路由**上，一条都没生效 | 现在 **18 条 ↔ 网关 18 条路由**，逐条对表（§23.4） |
+| 2 | 被限流的请求「返回 429」 | 返回的是 **HTTP 200** | 现在真 429（`SentinelFallbackHandlerTest` + §23） |
+| 3 | 记忆系统「能记事」 | `embed()` 返回的是 **`Math.random()`** | 现在真记事（§23） |
+| 4 | Nacos「配置中心在管事」 | 命名空间**从没建过**，10 份配置躺在没人读的 tenant | 命名空间建对、配置真在 `opc-dev`、回读用 `tenant=` 不再自欺（§22） |
+| 5 | Sentinel 控制台「能看到限流规则」 | 它**从不连 Nacos**，且网关的心跳只解析一次 → 永远「零节点零规则」 | 控制台真从网关取到 18 条（§24） |
+| 6 | 定时任务「每天 09:00 自动跑」 | **一次都没跑过** —— 没有容器、没有路由、`sys_job_log` 0 行 | 真的接上了（`aiopc-job`，9203），会真触发一次（§25） |
+| 7 | 两个菜单都叫「智能体市场」 | 一个平台自营、一个开发者上架 | 改名「官方数字员工」/「开发者集市」+ 徽标（§19） |
+| 8 | 卡片上 823 次浏览 / 4.8 分 | 全是编的 | 每个数字都能从真实表推出来（§19.2/19.3） |
+| 9 | 装完功能模块「安装成功」 | 只写一行 `mp_install`，模块社区那边**一个数都没涨** | 真装、真通知社区、两处计数同口径（§20） |
+| 10 | 商品有「订阅数」 | `incrementSubscriptionCount` **零调用方** —— 订阅从没实现过 | 订阅成了真动作（建表 + 按钮 + 计数）（§20） |
+| 11 | CRM 的「AI 打分」 | 分数和理由是手写死的 | 会**真的调一次 LLM**，分数和理由同生共死（§21） |
+| 12 | Prometheus 在监控全栈 | 全仓 **0 个 pom 声明 micrometer**，`/actuator/prometheus` 从未注册 | 7 个服务真的在收指标 |
+| 13 | 菜单里有 4 个控制台入口 | 指向**访客本机**的 localhost；其中 9100 端口上**什么都没有** | 3 个隐藏 + 1 个删除，README 写 SSH 端口转发（§25.8） |
+| 14 | 多公司用户「只有第一家公司能进」 | 切租户链路断在中间 | 端到端打通（§18） |
+| 15 | LLM 用量「有计量」 | 缓存命中不记 / 工作流无归属 / 内部调用丢归属，三处断链 | 三处都补上（§17） |
+
+### 顺带修掉的老问题
+
+- **跨租户读写（IDOR）**：ERP / HR / Finance 的 `companyId` 由客户端 query 传入且零校验
+  → 现在 `TenantCompanyFilter` 在参数解析前把 query 里的 `companyId` **改写成服务端判定的作用域**
+  （§13 / §14 / §16 是回归护栏）。
+- **`GET`/`PUT /opc/user/company/{id}` 无归属校验** → 现在走 `requireCompanyAccess(company)`。
+- **业务端口外露** → 全部收敛到 `127.0.0.1`，对外只剩前端 8079（§15）。
+- **`opc_community_module` 的评分/安装数是编的** → 按 `opc_community_rating` 的真实评分重算。
+
+### 之前（2026-10-21 ~ 10-23）
+
+#### OPC 菜单注册补齐
 
 之前 OPC 的页面在前端 `constantRoutes` 里硬编码，菜单表 `sys_menu` 里没有对应
 行 —— 表现是「能访问 URL，但没有菜单入口」，且刷新即丢。
@@ -477,7 +548,7 @@ mvn -pl ruoyi-modules/opc-ai-core test -Dtest=RedTeamRunnerTest,PromptGuardHarde
 
 完成后：`sys_role_menu` 里 48 个 OPC 菜单挂在 `role_id=1`（超级管理员）下。
 
-### 部署与运行时修复
+#### 部署与运行时修复
 
 | 提交 | 问题 | 影响 |
 |---|---|---|
@@ -487,7 +558,7 @@ mvn -pl ruoyi-modules/opc-ai-core test -Dtest=RedTeamRunnerTest,PromptGuardHarde
 | `1124103` | `opc-insight` 4 个 controller 把 `user_id` 当 `company_id` 用 | 数据洞察 4 个页面必然空屏，且 admin 能看到所有公司数据 |
 | `e701ca7` | 跨模块 Feign 返回类型声明成 `Map` 而非 `R<T>` | 市场安装必然失败，且每次失败留一条孤儿 Agent 实例 |
 
-### 编码问题
+#### 编码问题
 
 - `a184c4c` / `6f04093` — 9 个含中文 INSERT 的脚本漏 `SET NAMES utf8mb4`，
   数据双重编码入库。全库扫描定位 30 表 42 列 / 309 处，已修复并复扫归零
@@ -499,16 +570,25 @@ mvn -pl ruoyi-modules/opc-ai-core test -Dtest=RedTeamRunnerTest,PromptGuardHarde
 - **MVP**：已上线（参考 `OPC-MVP-DELIVERY.md`）
 - **W1**：8 Task / 25 Sub-task 全部完成（2026-09-06）
 - **W80 市场**：演示数据已就绪，`opctest` 账号可跑通 13 模块 / 33 页面
-- **已知问题**：
-  - ERP / HR / Finance 的 `companyId` 由客户端 query 传入且**零校验**，改 URL 即可跨租户读写（20+ 处，IDOR）
-  - `GET`/`PUT /opc/user/company/{id}` 无归属校验，`update` 可写 `verified`/`status`，可自刷实名认证
+- **已知问题**（2026-11-02 核对）：
+  - ⚠️ **Helm chart 里没有调度器** —— `helm/opc/` 有 14 个 deployment，
+    但**没有 `ruoyi-job`**。K8s 那条路径上 `sys_job` 里的 cron 不会自动跑
+    （compose 路径有）。这是已知差异，不是「装好了」。
+  - ⚠️ **Prometheus 只覆盖 7 个服务**（gateway / system / ai-core / user-center /
+    agent-hub / billing / finance）；其余 8 个业务模块的 pom 里没有
+    `micrometer-registry-prometheus`，它们**不产生指标**。
+  - `QRTZ_*` 那 11 张表是**空的** —— 这是 RAMJobStore 的**预期状态**
+    （RuoYi 自己的注释就建议单机部署删掉 qrtz 表），不是调度器坏了。
   - JWT 签名密钥硬编码在 `TokenConstants.SECRET`，可伪造任意 `user_id` 的 token
   - `opc_erp_return` 明细不落库（`OpcErpReturnServiceImpl:134`），退货单详情页无明细
   - `opc_finance_voucher.aggregateDaily` 引用不存在的列 `direction_via_total_credit`（当前无调用点）
   - ERP 快照 job 硬编码 `companyId=1` 且只生成「昨天」，多租户下只有 company 1 有日报
   - 内容看板的 `seven_day_trend` 是代码硬编码 `List.of(0,0,0,0,0,0,0)`，补数据也救不了
+  - `opc_prompt_template` 表建了但**没有一行代码读写它** —— 「Prompt 版本化 / 红队评测 / AB 测试」
+    目前是表结构，不是功能
+  - compose 里有 `rabbitmq` 容器、也有服务拿到了 `RABBITMQ_HOST`，但**全仓没有一行代码用它**
 - **下一阶段**：W2 待规划
 
 ---
 
-> 最后更新：2026-10-23 · 维护者：OPC Team
+> 最后更新：2026-11-02 · 维护者：OPC Team

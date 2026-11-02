@@ -10,6 +10,18 @@
 </p>
 
 > **OPC 定制说明**：本目录 (`vue3-typescript/`) 是 OPC 项目的前端模块集。基线是 RuoYi-Cloud-Vue3-TypeScript；OPC 在其基础上扩展了 OPC 业务页面（AI、CRM、HR、Insight、Notification、Community 等），并保留了若依的内置页面（系统管理、监控、代码生成等）。OPC 扩展内容以 MIT 协议发布，详见 `LICENSE` 文件。
+>
+> ⚠️ **本文件是 RuoYi 上游 README**，后面的模块清单、截图、「在线体验 admin/admin123」
+> 都是上游演示站，**不是本栈的现状**。本栈的真实状态见：
+> - `../README.md`「模块布局」/「演示账号与测试数据」（演示账号是 `opctest`，不是 admin）
+> - `../springboot3/deploy/README.md`「健康检查的 25 节」—— 每个功能有没有真的在管事，都有断言
+> - `../CLAUDE.md` §四 —— 12 条踩过的坑
+>
+> 两个容易认错的地方（2026-10-30 改的名）：
+> - `/opc/agent/market` = **官方数字员工**（平台自营）
+> - `/opc/marketplace/index` = **开发者集市**（开发者上架）
+> - 「定时任务」菜单（`/monitor/job`）2026-10-30 之前点进去**全是 404** ——
+>   因为调度器当时根本没被部署；现在网关有 `/schedule/**` 路由了，能用。
 
 ## 平台简介
 

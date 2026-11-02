@@ -14,6 +14,7 @@ OPC（One-Person Company）= 一人公司 + N 个 AI 数字员工。
 springboot3/           后端（Maven 多模块）
   ruoyi-gateway/       网关 8080          ruoyi-auth/      认证 9200
   ruoyi-system/        系统 9201          ruoyi-modules/   13 个 OPC 业务模块
+                                                   + ruoyi-job(调度器 9203，2026-10-30 才真正部署，见坑 #9)
   ruoyi-common/        共享库（含租户守卫） opc-common/     OPC 共享库
   deploy/              compose + helm + 健康检查 + 运维脚本
   sql/                 迁移与种子
@@ -32,7 +33,8 @@ docs/superpowers/      9 份实施计划 + 逐份审计报告（plans/audit/）
 过去踩的坑几乎全是这一类：
 
 - 配置中心「在管事」—— 实际 9 份配置躺在没人读的 tenant 里；
-- 限流规则表「有 17 条」—— 实际 resource 挂在 4 条不存在的路由上，一条都没生效；
+- 限流规则表「有 17 条」—— 实际 resource 挂在 4 条不存在的路由上，一条都没生效
+  （**这条已修好**：现在是 18 条 ↔ 网关 18 条路由，2026-10-30 接 `ruoyi-job` 时补的第 18 条）；
 - 被限流的请求「返回 429」—— 实际返回 HTTP 200；
 - 记忆系统「能记事」—— 实际 `embed()` 返回 `Math.random()`；
 - 「两个市场页」都叫智能体市场 —— 一个是平台自营，一个是开发者上架；
@@ -116,7 +118,9 @@ npx vitest run src/views/opc/marketplace/detail.spec.ts
 ### 3. Sentinel 限流规则挂的是路由 id
 
 `resourceMode=0` 对的是 `route.getId()`（比如 `opc-ai-core`），**不是 URL 路径**。
-规则表真相源是 `springboot3/deploy/nacos/sentinel-ruoyi-gateway.json`（17 条 ↔ 网关 17 条路由）。
+规则表真相源是 `springboot3/deploy/nacos/sentinel-ruoyi-gateway.json`（**18 条 ↔ 网关 18 条路由**）。
+加一条网关路由就**必须**在规则表里加对应的一条 —— 健康检查第 23.4 节会把这张表和
+`ruoyi-gateway/src/main/resources/application.yml` 里真实存在的路由 id 逐条对表，缺一条报 FAIL。
 网关命中限流时报 `ParamFlowException`，**返回 429**（以前返回的是 200）。
 
 ### 4. Sentinel 控制台不连 Nacos

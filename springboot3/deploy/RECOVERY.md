@@ -85,9 +85,12 @@ docker compose up -d
 
 ```bash
 cd /d/work-ai/0401-lumen-opc/springboot3/deploy
-bash scripts/health-check.sh
-# 应该看到: 13/13 接口 R200, 7/7 容器 Up
+bash deploy.sh health
+# 应该看到: PASS: 184  FAIL: 0   （25 节全绿）
 ```
+
+> ⚠️ **走 `deploy.sh health`，不要直接 `bash scripts/health-check.sh`** ——
+> 后者会被安全分类器判成「绕过既定入口的生产读」而拒掉（`CLAUDE.md` 坑 #10）。
 
 ---
 
@@ -184,6 +187,10 @@ docker restart aiopc-frontend
 | LLM chat 返回 401 | `.env` 没填或填错 | `cat .env` 检查, 改完 `docker compose up -d aiopc-ai-core` |
 | Nacos 配置没生效 | 只 restart, 没 recreate | `docker compose up -d` |
 | gateway 报 "DiscoveryClient ... unknown" | ai-core 没起来被注册 | 等 30s 重试 |
+| 界面「定时任务」菜单点进去全是 404 | 网关没有 `/schedule/**` 路由，或 `aiopc-job` 没起 | `bash deploy.sh rebuild ruoyi-job` + `rebuild gateway`，详见 §17 |
+| Sentinel 控制台「零节点零规则」，而它自己看着一切正常 | 网关启动那一刻没解析到 Nacos（心跳地址只解析一次，不重试） | **重启网关**（不是重启控制台），详见 `CLAUDE.md` 坑 #4 |
+| 网关日志每秒十几条 `Client not connected, current status:STARTING` | 配置里写了 `127.0.0.1` —— 容器里那是指容器自己 | 换成容器 DNS 名（`${NACOS_SERVER:nacos1}`），见 `nacos/README.md` |
+| `Access denied for user 'root'` 但 compose env 看着没问题 | 密码明文写进了 `application.yml`，没走 env 注入 | 恢复 `MYSQL_PASSWORD` 环境变量，见 `CLAUDE.md` §四 #12 |
 
 详细 debug 历史见 [[aiopc-all-opc-stack]] / [[aiopc-llm-providers]]。
 
@@ -192,16 +199,20 @@ docker restart aiopc-frontend
 ## 8. 验证清单 (恢复后跑一遍)
 
 ```bash
-bash scripts/health-check.sh
+bash deploy.sh health          # 全量 25 节
+HEALTH_ONLY=25 bash deploy.sh health   # 只跑第 25 节（定时任务）
 ```
 
-预期全部 ✅:
-- [x] 7 个容器 Up (gateway/auth/system/user-center/agent-hub/ai-core/billing/finance)
-- [x] Nacos 健康 (`/nacos/v1/cs/health`)
-- [x] 13/13 `/opc/**` 接口 R200
-- [x] MySQL `SHOW TABLES` 看到 ruoyi_/quartz_/opc_ 表
-- [x] 前端 `http://localhost:8079` 可访问
-- [x] LLM chat 返回真实内容 (非 placeholder)
+预期 `PASS: 184  FAIL: 0`（2026-10-30 实测）。逐节的清单见 `README.md`「健康检查的 25 节」。
+
+最关键的几条（对应「这个功能是不是真的在管事」）:
+- [x] 核心容器 Up（含 `aiopc-job` 调度器）
+- [x] Nacos 健康 (`/nacos/v1/cs/health`)，且 `tenant=opc-dev` 里 10 份配置**内容 == 仓库文件**
+- [x] `/opc/**` 接口 R200（**看 `body.code`，不是 HTTP 码** —— RuoYi 的错误是 HTTP 200 + `code=500`）
+- [x] 前端 `http://localhost:8079` 可访问，且业务端口只绑 `127.0.0.1`
+- [x] LLM chat 返回真实内容（非 placeholder），计量链在记账
+- [x] 限流真的返回 429，Sentinel 控制台真的从网关取到规则
+- [x] 定时任务**真的触发一次**并落库（第 25 节）
 
 ---
 
@@ -209,10 +220,12 @@ bash scripts/health-check.sh
 
 | 变更类型 | 同步到 |
 |----------|--------|
-| 加新 OPC 微服务 (新端口) | docker-compose.yml + import-dev.sh + RECOVERY.md §1 + scripts/health-check.sh |
+| 加新 OPC 微服务 (新端口) | docker-compose.yml + import-dev.sh + 网关 application.yml + **sentinel-ruoyi-gateway.json 加一条规则** + RECOVERY.md §1 + scripts/health-check.sh + 根 README 模块布局 |
 | 改 Nacos 配置 | nacos/*.yml + import-dev.sh (auto) |
 | 加新 SQL 表/迁移 | mysql-initdb.d/NN-*.sql + RECOVERY.md §1 |
 | 改密钥需求 | .env.example + RECOVERY.md §1 |
+| **加一条健康检查断言** | scripts/health-check.sh（加 `ok()`/`nok()` + 在 `main()` 里加 `step N check_xxx`）+ `README.md`「健康检查的 25 节」表 |
+| **修一个「说假话」的地方** | 根 README（说清楚现状）+ CLAUDE.md §四（记成一条坑）+ 健康检查（加一条会红的断言） |
 
 ---
 
@@ -407,9 +420,12 @@ bash deploy.sh nuke                        # ⚠️ 删 mysql/redis/nacos 数据
 4. 等 30s 让 MySQL 建库
 5. 跑 `nacos/import-dev.sh` 把 dev 配置推 Nacos
 6. `docker compose up -d` 起业务容器 (首次会 build 镜像, ~8 分钟)
-7. 提示跑 `bash scripts/health-check.sh` 验证
+7. 提示跑 `bash deploy.sh health` 验证 (25 节, 期望 `PASS: 184  FAIL: 0`)
 
 > ⚠️ `deploy.sh` 不重建镜像。如果改了 OPC 服务源码,先 `mvn package + mvn dependency:copy-dependencies`,再 `deploy.sh rebuild crm` (或 `rebuild all` 重建所有 OPC 模块镜像)。
+> ⚠️ **共享库改完必须先 `mvn install`** —— `package` 不写 `~/.m2`,镜像里拿到的还是旧快照
+> (`CLAUDE.md` 坑 #1: `opc-ai-core` 曾因此一个月没生效过任何一次修复,而 `deploy.sh` 照样报成功)。
+> ⚠️ `rebuild` 的模块名要带 `opc-` 前缀 (`rebuild crm` 会被静默跳过);`ruoyi-job` 是例外,写 `rebuild ruoyi-job`。
 
 ---
 
@@ -504,7 +520,7 @@ python tmp_e2e/e2e_erp.py
 
 ---
 
-## 14. W74 opc-content 部署 (AI 内容创作中心)
+## 14b. W74 opc-content 部署 (AI 内容创作中心)
 
 ### 端口与路由
 - 微服务端口: 9325 (容器外直接访问 `127.0.0.1:9325`)

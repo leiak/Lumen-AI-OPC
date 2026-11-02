@@ -9,7 +9,18 @@
 	<a href="https://gitee.com/y_project/RuoYi-Cloud/blob/master/LICENSE"><img src="https://img.shields.io/github/license/mashape/apistatus.svg"></a>
 </p>
 
-> **OPC 定制说明**：本目录 (`springboot3/`) 是 OPC 项目的后端模块集。基线是 RuoYi-Cloud v3.6.8 的 Spring Boot 3 分支；OPC 在其基础上扩展了 6 个 `opc-*` 业务模块（AI 核心、用户中心、Agent 调度、计费、财务、洞察、通知、CRM、HR、社区等），并保留了 5 个 RuoYi 内置模块（gateway、auth、system、job、file）。OPC 扩展内容以 MIT 协议发布，详见 `LICENSE` 文件。
+> **OPC 定制说明**：本目录 (`springboot3/`) 是 OPC 项目的后端模块集。基线是 RuoYi-Cloud v3.6.8 的 Spring Boot 3 分支；OPC 在其基础上扩展了 **13 个 `opc-*` 业务模块**（AI 核心、用户中心、Agent 调度、计费、财务、数据洞察、通知、CRM、ERP、模块社区、开发者集市、HR、内容创作），并保留了 5 个 RuoYi 内置模块（gateway、auth、system、**job**、file）。OPC 扩展内容以 MIT 协议发布，详见 `LICENSE` 文件。
+>
+> ⚠️ **本文件是 RuoYi 上游 README**，模块清单、端口、架构图都是上游的，**不是本栈的现状**。
+> 本栈的真实清单见：
+> - `../README.md`「模块布局」—— 13 个业务服务 + 4 个 RuoYi 内置 + 12 个基础设施，端口以 `deploy/docker-compose.yml` 为准
+> - `deploy/README.md`「全栈服务清单」—— 31 个 compose 服务逐条列出
+> - `deploy/README.md`「健康检查的 25 节」—— 每个「这个功能是不是真的在管事」都有断言
+> - `../CLAUDE.md` §四 —— 12 条踩过的坑
+>
+> 其中 `ruoyi-job`（定时任务）以前**只是躺在仓库里的代码**，2026-10-30 才真的被部署起来
+> （容器 `aiopc-job`，9203）；`ruoyi-file` / `ruoyi-gen` 本栈不单独起容器。
+> 「在线体验 admin/admin123」是上游演示站，不是本栈的演示账号。
 
 ## 平台简介
 

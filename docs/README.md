@@ -6,6 +6,8 @@
 
 | 我想看... | 文档 |
 |----------|------|
+| **怎么跑 / 踩过的坑** | [`CLAUDE.md`](../CLAUDE.md) ← 先看这页 |
+| **功能是不是真的在管事** | `bash deploy.sh health`（25 节 / 184 项断言）|
 | 项目从 0 到 1 是什么 | [`init.md`](../init.md) |
 | 13 周 MVP 怎么交付 | [`OPC-MVP-DELIVERY.md`](../OPC-MVP-DELIVERY.md) |
 | W1 8 项任务的拆分 | [`OPC-W1-TASK-BREAKDOWN.md`](../OPC-W1-TASK-BREAKDOWN.md) |
@@ -24,6 +26,7 @@
 | 文件 | 主题 | 说明 |
 |------|------|------|
 | `README.md` | 项目门面 | 仓库入口 |
+| `CLAUDE.md` | **项目说明 + 12 条踩过的坑** | 「不说假话」这条规矩写在这里 |
 | `init.md` | 项目规格 | 13 周 MVP 原始需求, 业务场景/技术选型 |
 | `OPC-MVP-DELIVERY.md` | 交付总览 | 13 周 MVP 落地清单 + 7 人团队接手指南 |
 | `OPC-W1-TASK-BREAKDOWN.md` | W1 任务拆分 | 8 Task / 25 sub-task, W1 迭代排期 |
@@ -49,10 +52,11 @@
 
 | 文件 | 主题 |
 |------|------|
-| `springboot3/README.md` | 后端基座 README |
-| `springboot3/deploy/README.md` | Docker 部署 README |
-| `springboot3/deploy/RECOVERY.md` | 灾难恢复 (W48.7 固化) |
-| `springboot3/deploy/nacos/README.md` | Nacos 配置操作 |
+| `springboot3/README.md` | 后端基座 README（RuoYi 上游原文 + OPC 定制说明） |
+| `springboot3/deploy/README.md` | Docker 部署 README（31 服务清单 / **健康检查 25 节** / rebuild 入口） |
+| `springboot3/deploy/RECOVERY.md` | 灾难恢复 + 各服务 runbook（17 节） |
+| `springboot3/deploy/scripts/health-check.sh` | **25 节 / 184 项断言** —— 唯一被放行的线上验证入口 |
+| `springboot3/deploy/nacos/README.md` | Nacos 配置操作（`tenant=` 参数陷阱 / 限流规则真相源） |
 | `springboot3/deploy/helm/opc/README.md` | Helm chart README |
 | `springboot3/deploy/runbooks/incident-response.md` | F-01..F-07 故障手册 |
 
@@ -66,10 +70,12 @@
 
 | 文件 | 主题 |
 |------|------|
-| `plans/2026-09-08-opc-insight-mvp.md` | Insight MVP 实施计划 |
-| `plans/2026-09-09-frontend-docker-integration.md` | 前端 Docker 化计划 |
-| `specs/2026-09-08-opc-insight-mvp-design.md` | Insight MVP 设计 spec |
-| `specs/2026-09-09-frontend-docker-integration-design.md` | 前端 Docker 化 spec |
+| `plans/` | **9 份实施计划**（2026-09-08 ~ 2026-10-20）|
+| `plans/audit/` | **9 份逐条审计报告 + 总索引** —— checkbox 已核实（565 勾 / 175 明确写没做）|
+| `specs/` | 11 份设计 spec |
+
+> ⚠️ **别把计划里没勾的 checkbox 当待办队列** —— 175 个没勾里有 127 个只是
+> 「跑一次看输出」，证据不在仓库里。判定口径见 `plans/audit/README.md`。
 
 ## 6. E2E 测试报告 (`tmp_e2e/`)
 
@@ -85,8 +91,11 @@
 
 | 变更 | 同步到 |
 |------|--------|
-| 加 OPC 微服务 / 新端口 | `OPC-MVP-DELIVERY.md` 仓库结构图 + `springboot3/deploy/README.md` |
+| 加 OPC 微服务 / 新端口 | `docker-compose.yml` + 网关 `application.yml` + **`nacos/sentinel-ruoyi-gateway.json` 加一条规则** + `springboot3/deploy/README.md` 服务清单 + 根 `README.md` 模块布局 + `RECOVERY.md` §1 |
+| **加一条健康检查断言** | `scripts/health-check.sh`（加 `ok()`/`nok()` + `main()` 里加 `step N check_xxx`）+ `deploy/README.md`「健康检查的 25 节」表 |
+| **修一个「说假话」的地方** | 根 `README.md`（说清现状）+ `CLAUDE.md` §四（记成一条坑）+ 健康检查（加一条会红的断言）|
 | W*N* 完成验证 | 新增 `docs/verification/week-N/OPC-W*N*-VERIFICATION-*.md` + 在 `docs/verification/README.md` 索引 |
 | 加新 OPC 里程碑 | `docs/verification/milestones/<name>/` 子目录 |
 | 加新部署脚本 | `springboot3/deploy/RECOVERY.md` |
 | 加新 AI 安全策略 | `OPC-SECURITY-REPORT-v*.md` (新建版本号) |
+| 改 Nacos 配置 / 限流规则 | `deploy/nacos/*.yml` 或 `sentinel-ruoyi-gateway.json` + `import-dev.sh` 重推 |

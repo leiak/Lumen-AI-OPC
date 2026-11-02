@@ -8,7 +8,7 @@
 #   bash deploy.sh status                   # 容器清单
 #   bash deploy.sh stop                     # 停所有容器,保留 host 数据
 #   bash deploy.sh nuke                     # ⚠️ 删 mysql/redis 数据卷重新初始化
-#   bash deploy.sh rebuild crm              # 重建镜像(改完 OPC 源码后)
+#   bash deploy.sh rebuild opc-crm          # 重建镜像(改完 OPC 源码后; 模块名要带 opc- 前缀)
 #   bash deploy.sh rebuild ruoyi-job        # 只重建定时任务服务 (改完 ruoyi-job 后)
 #   bash deploy.sh rebuild gateway          # 只重建网关 (改完 ruoyi-gateway 后)
 #   bash deploy.sh rebuild auth             # 只重建认证服务 (改完 ruoyi-auth 后)
@@ -162,7 +162,7 @@ cmd_rebuild() {
   require_docker
   local target="${1:-}"
   if [[ -z "${target}" ]]; then
-    fail "用法: deploy.sh rebuild <svc-name|all|gateway|auth|frontend>     (e.g. crm / notification / ai-core / ruoyi-job / gateway / auth / frontend / all)"
+    fail "用法: deploy.sh rebuild <svc-name|all|gateway|auth|frontend>     (e.g. opc-crm / opc-notification / opc-ai-core / ruoyi-job / gateway / auth / frontend / all)"
   fi
 
   # 共享模块必须**先 install 进本地仓库** ——
@@ -317,7 +317,7 @@ cmd_rebuild() {
   else
     build_one "${target}"
   fi
-  log "rebuild 完成,跑 bash scripts/health-check.sh 验证"
+  log "rebuild 完成,跑 bash deploy.sh health 验证 (25 节; 别直接跑 scripts/health-check.sh)"
 }
 
 # 网关: fat jar(-jar 启动), 跟业务服务的 thin jar 流程不一样 ——
@@ -395,15 +395,15 @@ Commands:
   status                   docker compose ps
   stop                     停所有容器,保留 host 数据
   nuke                     ⚠️  清 mysql/redis/nacos 数据卷
-  rebuild <svc|all|gateway|auth|frontend>  重建指定服务镜像 (e.g. crm / notification / ruoyi-job / gateway / auth / frontend / all)
+  rebuild <svc|all|gateway|auth|frontend>  重建指定服务镜像 (e.g. opc-crm / opc-notification / ruoyi-job / gateway / auth / frontend / all)
   snapshot                 跑全栈状态快照
-  health                   跑健康检查 (36+ 项)
+  health                   跑健康检查 (25 节 / 184 项断言)
   help                     显示本帮助
 
 示例:
   bash deploy.sh                       # -> 等价 deploy.sh help
   bash deploy.sh up
-  bash deploy.sh rebuild crm
+  bash deploy.sh rebuild opc-crm
   bash deploy.sh rebuild gateway
   bash deploy.sh rebuild auth
   bash deploy.sh rebuild frontend

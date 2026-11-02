@@ -1,7 +1,8 @@
-# OPC 部署文档 (Deploy README) — W74 更新
+# OPC 部署文档 (Deploy README)
 
-> **最后更新**: 2026-09-14 (W74 opc-content 上线 + 全栈部署固化)
-> **覆盖服务**: 8 OPC 微服务 + 5 RuoYi 内置 (gateway/auth/system) + 6 基础设施
+> **最后更新**: 2026-11-02
+> **覆盖范围**: `docker-compose.yml` 里 **31 个服务**（13 个 OPC 业务 + 4 个 RuoYi 内置
+> gateway/auth/system/job + 前端 + 12 个基础设施 + 1 个网络）
 
 ## 一键启动 (本地开发 · 推荐)
 
@@ -15,14 +16,15 @@ cd springboot3/deploy
 docker compose up -d nacos1 mysql redis
 sleep 60                                # 等 nacos 起来 (健康检查 60s)
 
-# 3. 导入 Nacos 配置 (W74: 含 opc-content-dev.yml)
+# 3. 导入 Nacos 配置 (10 份: 9 份 dev yml + Sentinel 规则表)
 cd nacos && bash import-dev.sh && cd ..
 
-# 4. 启动后端 (gateway/auth/system/ai-core/agent-hub/billing/finance/user-center/notification/crm/community/hr/erp/content)
-docker compose up -d aiopc-gateway aiopc-auth aiopc-system \
+# 4. 启动后端 (gateway/auth/system/job + 13 个 OPC 业务服务)
+docker compose up -d aiopc-gateway aiopc-auth aiopc-system aiopc-job \
                    aiopc-ai-core aiopc-user-center aiopc-agent-hub \
                    aiopc-billing aiopc-finance aiopc-notification \
-                   aiopc-crm aiopc-community aiopc-hr aiopc-erp aiopc-content
+                   aiopc-crm aiopc-community aiopc-hr aiopc-erp \
+                   aiopc-content aiopc-insight aiopc-marketplace
 
 # 5. 启动前端 (W51 教训: 上游 IP 漂移后必须显式 rebuild)
 docker compose build aiopc-frontend && docker compose up -d aiopc-frontend
@@ -31,39 +33,51 @@ docker compose build aiopc-frontend && docker compose up -d aiopc-frontend
 # W74 实践: 本地 dist/ 已存在时, 用 Python proxy 替代 nginx 容器
 python C:/Users/wma19/AppData/Local/Temp/frontend_proxy.py  # 后台跑, 端口 8079
 
-# 6. 健康检查 (W48.7 风格 22+ 项 + W74 opc-content 10 项)
-bash scripts/health-check.sh
+# 6. 健康检查 —— 25 节, 184 项断言
+bash deploy.sh health          # ← 走这个入口, 见下方「健康检查的 25 节」
 
 # 7. e2e 验证 (W74 新增 opc-content)
 cd ../tmp_e2e && OPC_GATEWAY=http://127.0.0.1:8080 python e2e_content.py
 ```
 
-## 全栈服务清单 (W74)
+## 全栈服务清单 (2026-11-02 对过 compose)
 
 | 服务 | 端口 | 命名空间 | 路由前缀 | 说明 |
 |------|------|---------|---------|------|
-| **基础设施** |||||
-| nacos1 | 8848 | - | - | 注册/配置中心 |
+| **基础设施 (12)** |||||
+| nacos1 | 8848 | - | - | 注册/配置中心（命名空间 `opc-dev`） |
 | mysql | 3306 (容器内) | - | - | 数据库 (容器外 3308) |
 | redis | 6379 | - | - | 缓存 |
-| **RuoYi 内置** |||||
-| aiopc-gateway | 8080 | - | - | Spring Cloud Gateway (8080) |
+| rabbitmq | 5672 | - | - | ⚠️ **没有一行代码用它**（见根 README） |
+| qdrant | 6333 / 6334 | - | - | 向量库（Agent 长期记忆，http / grpc） |
+| minio | 9000 | - | - | 对象存储 |
+| elasticsearch | 9200 | - | - | 检索 |
+| prometheus | 9090 | - | - | 指标采集（2026-10-29 起真的收到指标） |
+| grafana | 3000 | - | - | 看板 |
+| sentinel-dashboard | 8718 | - | - | Sentinel 控制台（网关限流规则可视化） |
+| skywalking-oap | 11800 / 12800 | - | - | APM 后端（gRPC / HTTP）|
+| skywalking-ui | 8081 | - | - | APM 界面 |
+| **RuoYi 内置 (4)** |||||
+| aiopc-gateway | 8080 | - | 全部路由 | Spring Cloud Gateway + Sentinel 流控（**18 条路由**） |
 | aiopc-auth | 9200 → 19200 | - | /login /auth | RuoYi 认证 (19200 外部) |
 | aiopc-system | 9201 | - | /system | 用户/角色/菜单/字典 |
-| **OPC 8 大业务** |||||
+| **aiopc-job** | **9203** | opc-dev | **/schedule** | **Quartz 调度器 —— 2026-10-30 才真的部署起来** |
+| **OPC 业务 (13)** |||||
 | aiopc-ai-core | 9301 | opc-dev | /opc/llm | LLM 网关 (DeepSeek + MiniMax) |
 | aiopc-user-center | 9302 | opc-dev | /opc/user /opc/company /opc/invitation | 用户中心 |
-| aiopc-agent-hub | 9303 | opc-dev | /opc/agent | Agent 工作流 (W52 Quartz cron) |
+| aiopc-agent-hub | 9303 | opc-dev | /opc/agent | Agent 工作流（官方数字员工目录在这里） |
 | aiopc-billing | 9304 | opc-dev | /opc/billing | 计费 |
 | aiopc-finance | 9305 | opc-dev | /opc/finance | 财务 (凭证/银行流水/税报) |
+| aiopc-insight | 9306 | opc-dev | /opc/insight | 数据洞察（日报/驾驶舱/异常预警） |
 | aiopc-notification | 9310 | opc-dev | /opc/notification | 通知中心 (REST + WS) |
-| aiopc-crm | 9312 | opc-dev | /opc/crm | CRM (客户/商机/合同/订单) |
-| aiopc-community | 9316 | opc-dev | /opc/community | 模块市场 (W52) |
-| aiopc-hr | 9322 | opc-dev | /opc/hr | 招聘管理 (W51/73) |
 | aiopc-erp | 9311 | opc-dev | /opc/erp | 进销存 (W72) |
-| **aiopc-content (W74 NEW)** | **9325** | **opc-dev** | **/opc/content** | **AI 内容创作中心** |
-| aiopc-frontend | 8079 | - | - | Vue 3 + TS (nginx 反向代理) |
-| aiopc-sentinel-dashboard | 8718 | - | - | Sentinel 控制台 (网关限流规则可视化) |
+| aiopc-crm | 9312 | opc-dev | /opc/crm | CRM (客户/商机/合同/订单/LLM 打分) |
+| aiopc-community | 9316 | opc-dev | /opc/community | 模块社区（模块目录 + 评分 + 安装计数） |
+| aiopc-marketplace | 9317 | opc-dev | /opc/marketplace | 开发者集市（上架/安装/评价/订阅） |
+| aiopc-hr | 9322 | opc-dev | /opc/hr | 招聘管理 (W51/73) |
+| aiopc-content | 9325 | opc-dev | /opc/content | AI 内容创作中心 (W74) |
+| **前端** |||||
+| aiopc-frontend | 8079 | - | - | Vue 3 + TS (nginx 反向代理) —— **唯一对外开放的端口** |
 
 ### Sentinel 控制台
 
@@ -89,19 +103,81 @@ Nacos(sentinel-ruoyi-gateway, tenant=opc-dev)
 
 ## 关键文件
 
-| 文件 | 作用 | W74 状态 |
+| 文件 | 作用 | 现状 |
 |------|------|---------|
-| `docker-compose.yml` | 24 个服务编排 | ✅ 已加 aiopc-content |
-| `mysql-initdb.d/16-opc-content-schema.sql` | 4 表 DDL | ✅ 已修 `ry-cloud`→`ry-vue-opc` |
-| `mysql-initdb.d/98-opc-content-seed.sql` | dev seed (3+1+1+1) | ✅ |
-| `nacos/opc-content-dev.yml` | dev 配置 (38 项) | ✅ 已修 `ENC(占位)`→明文占位 |
-| `nacos/import-dev.sh` | 7 个 yml 批量推送 | ✅ 已加 opc-content |
-| `scripts/health-check.sh` | 22+10 端点检查 | ✅ check_content() 10/10 |
-| `tmp_e2e/e2e_content.py` | 10 端点 e2e | ✅ 8/10 PASS (2 失败是后端校验) |
-| `../docs/verification/week-74/OPC-W74-VERIFICATION-opc-content.md` | VERIFICATION 报告 | ✅ |
-| `../docs/superpowers/plans/2026-09-14-opc-content-impl.md` | 16-Task 实施计划 | ✅ |
+| `docker-compose.yml` | **31 个服务**编排 | ✅ 含 `aiopc-job` / `aiopc-marketplace` / `aiopc-insight` |
+| `scripts/health-check.sh` | **25 节 / 184 项断言** | ✅ 每次部署后必跑 |
+| `deploy.sh` | `rebuild` / `health` / `snapshot` 入口 | ✅ 线上验证走它，不手搓 curl |
+| `nacos/import-dev.sh` | 推 10 份配置 + 按 `tenant=` 回读逐行比对 | ✅ 不对就 `[FAIL]` 退出 1 |
+| `nacos/sentinel-ruoyi-gateway.json` | 限流规则**真相源**（18 条 ↔ 网关 18 条路由） | ✅ 加路由必须同步加 |
+| `nacos/create-namespace.sh` | 补 `tenant_info` 那行「户口本」 | ✅ |
+| `mysql-initdb.d/` | 新环境建库建表（**14 个 schema + 9 个 seed**） | ✅ |
+| `../sql/migrations/V20261033__opc_scheduler_truth.sql` | 调度器的三处假话 + 隐藏 4 个死外链菜单 | ✅ 已上线 |
+| `../docs/superpowers/plans/audit/` | 9 份实施计划的逐条审计 | ✅ |
+| `RECOVERY.md` | 灾难恢复 + 各服务 runbook（17 节） | ✅ |
 
-## 关键修复 (W74 部署阶段发现)
+## 健康检查的 25 节
+
+**这是本仓库的核心资产**：每个「这个功能是不是真的在管事」都变成一条会红的断言。
+新增功能时按同样方式加一节 —— 写法见 `CLAUDE.md` §二。
+
+| 节 | 断言的是什么 |
+|---|---|
+| 1 | 核心容器状态 |
+| 2 | Nacos 健康 |
+| 3 | `/opc/**` 接口验证（需先登录） |
+| 4 | 前端 nginx |
+| 5 | MySQL 抽查 |
+| 6 | opc-notification 健康检查 |
+| 7 | opc-crm 健康检查 |
+| 8 | opc-hr 健康检查 |
+| 9 | opc-erp 健康检查 |
+| 10 | opc-content 健康检查 |
+| 11 | opc-marketplace 健康检查 |
+| 12 | 网关白名单 method 限定（3c 回归护栏） |
+| 13 | 租户守卫 + LLM 计量（3b / 3a 回归护栏） |
+| 14 | CRM 归属守卫（per-user IDOR 回归护栏） |
+| 15 | 端口收敛护栏（业务端口不得外露） |
+| 16 | 请求体租户归属 + OAuth state 签名（3b 回归护栏） |
+| 17 | LLM 计量链（3c 回归护栏） |
+| 18 | 多公司切租户（3d 回归护栏） |
+| 19 | 市场页改名 + 数字真实性 + 监控 |
+| 20 | 第 2 轮的动作是真的（订阅 + MODULE 装完真的通知社区） |
+| 21 | CRM 的 AI 评分是真的（分数和理由同生共死） |
+| 22 | Nacos 配置中心是真的在管事 |
+| 23 | 记忆系统记事 + Sentinel 限流真的在限 |
+| 24 | Sentinel 控制台是真的在管事 |
+| 25 | 定时任务是真的在跑（真触发一次 + 落库对账） |
+
+```bash
+bash deploy.sh health            # 全量 (25 节)
+HEALTH_ONLY=25 bash deploy.sh health   # 只跑第 25 节
+```
+
+> ⚠️ **必须走 `deploy.sh health`**，不要直接 `bash scripts/health-check.sh` ——
+> 后者会被安全分类器判成「绕过既定入口的生产读」而拦掉（`CLAUDE.md` 坑 #10）。
+
+## rebuild 入口
+
+改完代码后重建服务，**统一走这里**（`deploy.sh` 会自己探测 JDK 17、区分 fat jar / 普通 jar）：
+
+```bash
+bash deploy.sh rebuild ruoyi-job        # 调度器（fat jar）
+bash deploy.sh rebuild gateway          # 网关
+bash deploy.sh rebuild auth             # 认证服务
+bash deploy.sh rebuild opc-agent-hub    # OPC 业务模块（opc- 前缀必带）
+bash deploy.sh rebuild frontend         # 前端
+bash deploy.sh rebuild all              # 全部
+```
+
+> 共享库（`ruoyi-common-*` / `opc-common` / `opc-ai-core`）改完必须先 `mvn install`
+> 把快照推进 `~/.m2`，否则镜像里还是旧包 —— 见 `CLAUDE.md` 坑 #1。
+
+## 关键修复 (W74 部署阶段发现，存档)
+
+> 这一节是 W74 那次上线时的记录，**原样保留**当经验用。
+> 之后修过的坑不在这儿 —— 看 `RECOVERY.md`（17 节，按服务/场景分），
+> 以及 `CLAUDE.md` §四「踩过的坑」（12 条，是最新的那一份）。
 
 ### 1. initdb 数据库名错位
 - `16-opc-content-schema.sql` 原本 `CREATE DATABASE ry-cloud`,但容器实际只有 `ry-vue-opc`
@@ -215,8 +291,19 @@ kubectl delete deployment opc-ai-core-old
 
 | 文档 | 路径 | 说明 |
 |------|------|------|
-| **RECOVERY** | `RECOVERY.md` | 9 节一键恢复 (前置/步骤/范围/备份/位置/Nacos/前端/坑/清单) |
+| **CLAUDE.md** | `../../CLAUDE.md` | 给 Claude 看的项目说明 + **12 条踩过的坑**（最新的一份） |
+| **RECOVERY** | `RECOVERY.md` | 灾难恢复 + 各服务 runbook（**17 节**） |
+| **健康检查** | `scripts/health-check.sh` | **25 节 / 184 项断言**（2026-10-30 实测全绿） |
+| **Nacos 配置** | `nacos/README.md` | 命名空间 / `tenant=` 参数陷阱 / 限流规则表真相源 |
+| **计划审计** | `../docs/superpowers/plans/audit/README.md` | 9 份实施计划的 checkbox 逐条核实（565 勾 / 175 明确写没做） |
+| **根 README** | `../../README.md` | 项目门面：模块布局、部署架构、端口转发 |
 | **W74 VERIFICATION** | `../docs/verification/week-74/OPC-W74-VERIFICATION-opc-content.md` | opc-content 收官报告 |
 | **W74 实施计划** | `../docs/superpowers/plans/2026-09-14-opc-content-impl.md` | 16-Task 实施 plan |
 | **W74 设计 spec** | `../docs/superpowers/specs/2026-09-14-opc-content-design.md` | opc-content 设计 |
 | **历史 VERIFICATION** | `../docs/verification/README.md` | 索引 (week-1..12 + milestones) |
+
+### Helm chart 的一个已知差异
+
+`helm/opc/` 里有 **14 个 deployment**，**没有调度器**（`ruoyi-job`）——
+K8s 那条路径上 `sys_job` 里的 cron 不会自动跑。compose 路径（演示环境）有。
+这是**已知差异**，不是「装好了」—— 见 `CLAUDE.md` 坑 #9 与 `RECOVERY.md` §17。
