@@ -16,6 +16,7 @@ import com.ruoyi.opc.agent.service.IOpcAgentDefinitionService;
 import com.ruoyi.opc.agent.service.IOpcAgentInstanceService;
 import com.ruoyi.opc.agent.service.IOpcAgentTaskService;
 import com.ruoyi.opc.agent.service.IOpcTokenUsageService;
+import com.ruoyi.opc.agent.tools.FinanceTools;
 import com.ruoyi.opc.agent.workflow.WorkflowEngine;
 import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.system.api.model.LoginUser;
@@ -138,6 +139,18 @@ class OpcAgentControllerMvcTest {
      */
     @MockBean
     private WorkflowEngine workflowEngine;
+
+    /**
+     * 断掉 {@code FinanceTools} 这条链 —— 它在 {@code com.ruoyi.opc.agent.tools} 包里,
+     * 被 {@code OpcAgentHubApplication} 的 {@code @ComponentScan({"com.ruoyi.opc", ...})}
+     * 一起扫进来。它要注入两个 {@code @FeignClient}(finance / billing),而
+     * {@code @WebMvcTest} 切片<b>不启</b> Feign 自动装配 → 容器里没有
+     * {@code FeignClientFactory} → context 起不来(19 条用例全红)。
+     * <p>
+     * 直接把工具本身占位 —— 断在链条入口,两个 Feign client 都不必存在。
+     */
+    @MockBean
+    private FinanceTools financeTools;
 
     /**
      * 最后一片叶子。{@code @ComponentScan({"com.ruoyi.opc"})} 会把 opc-ai-core jar 里的

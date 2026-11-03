@@ -10,6 +10,7 @@ import com.ruoyi.opc.agent.mapper.OpcAgentTokenUsageMapper;
 import com.ruoyi.opc.agent.mapper.OpcAgentWorkflowMapper;
 import com.ruoyi.opc.agent.mapper.OpcAgentWorkflowRunMapper;
 import com.ruoyi.opc.agent.service.IWorkflowTriggerService;
+import com.ruoyi.opc.agent.tools.FinanceTools;
 import com.ruoyi.opc.agent.workflow.WorkflowEngine;
 import com.ruoyi.opc.common.exception.OpcException;
 import org.junit.jupiter.api.DisplayName;
@@ -86,6 +87,12 @@ class OpcWorkflowTriggerControllerMvcTest {
     @MockBean private OpcAgentWorkflowRunMapper agentWorkflowRunMapper;
     @MockBean private WorkflowEngine workflowEngine;
     @MockBean private RedisService redisService;
+
+    // 财务工具(FinanceTools)在 com.ruoyi.opc.agent.tools 包里,被启动类的
+    // @ComponentScan 扫进来;它要注入两个 @FeignClient,而 @WebMvcTest 切片不启
+    // Feign 自动装配(容器里没有 FeignClientFactory)→ context 起不来。
+    // 断在链条入口:把工具本身占位,两个 Feign client 都不必存在。
+    @MockBean private FinanceTools financeTools;
 
     private static final String WORKFLOW_CODE = "finance_daily_report_v1";
     private static final String TRIGGER_SOURCE = "quartz:test";

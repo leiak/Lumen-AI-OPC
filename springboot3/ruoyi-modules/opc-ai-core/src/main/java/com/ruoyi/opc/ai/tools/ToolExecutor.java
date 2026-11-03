@@ -30,11 +30,14 @@ public class ToolExecutor {
         }
 
         Map<String, Object> context = new HashMap<>();
+        // 顺序不能反:先把调用方塞进来的 context 铺平,再写身份字段。
+        // 反过来的话,调用方在 req.getContext() 里塞一个 "companyId": 999 就能
+        // 覆盖掉注入的 companyId,工具会去查别的租户 —— 跨租户在工具层就漏了。
+        if (req.getContext() != null) context.putAll(req.getContext());
         context.put("companyId", req.getCompanyId());
         context.put("userId", req.getUserId());
         context.put("instanceId", req.getInstanceId());
         context.put("taskId", req.getTaskId());
-        if (req.getContext() != null) context.putAll(req.getContext());
 
         try {
             log.info("[ToolExecutor] 执行工具 tool={} instance={}", toolName, req.getInstanceId());

@@ -2,6 +2,18 @@
 spring:
   main:
     allow-bean-definition-overriding: true
+  # R-15:金额跨服务一跳不能从 BigDecimal 退化成 Double。
+  #
+  # 工具侧 Feign 声明的是 R<Map<String,Object>> —— 无类型数字,Jackson 默认解成
+  # Double,51892.00 一跳就变成 51892.0(精度掉了,scale 也掉了)。
+  # 开了这个开关,远端返回的金额保持 BigDecimal,工具再序列化回去时
+  # 仍然是 51892.00 —— 「日报里的数字跟库里那行对得上」这句话才立得住。
+  #
+  # 为什么改本地 application.yml 就够:Nacos 的 opc-dev 下没有
+  # opc-agent-hub-dev.yml(那 10 份 dataId 里没有它)→ agent-hub 只吃这份本地配置。
+  jackson:
+    deserialization:
+      use-big-decimal-for-floats: true
   cloud:
     # Spring Cloud OpenFeign 的 FeignClient 注册跑在 bootstrap 阶段,优先于
     # spring.main.allow-bean-definition-overriding 加载,所以这里必须独立声明。
