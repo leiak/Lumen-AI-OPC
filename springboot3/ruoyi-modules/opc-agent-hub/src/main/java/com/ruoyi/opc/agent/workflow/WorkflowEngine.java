@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -174,7 +175,9 @@ public class WorkflowEngine {
             ctx.llmModel = res.getModel();
             ctx.outputs.put(nodeId, res.getContent());
         } catch (Exception e) {
-            // 软失败：捕 Exception（不只是 OpcException）—— 超时、序列化…都会走到这。
+            // 软失败：捕 Exception（**不只是 OpcException**）—— 超时、NPE、序列化…都会走到这。
+            // 收窄成 catch (OpcException) 会让「provider 超时」把整条 run 打死，
+            // 已经取到的真实数据白取 —— R-21 明文要求，测试也钉住了这条。
             log.warn("LLM 节点 {} 失败，转为降级继续: {}", nodeId, e.getMessage());
             ctx.partial = true;
             ctx.llmError = e.getMessage();
@@ -214,28 +217,36 @@ public class WorkflowEngine {
         for (JsonNode t : toolsNode) {
             String toolName = t.asText();
             String result = toolExecutor.execute(toolName, argsJson, req);
+            // 先解析再落产出 —— 解析失败就抛，**不能**把读不出来的返回当成「0 笔」。
+            Map<String, Object> parsed = parseToolResult(toolName, result);
             ctx.outputs.put(nodeId + "." + toolName, result);
-            merged.put(toolName, parseToolResult(result));
+            merged.put(toolName, parsed);
         }
         ctx.outputs.put(nodeId, objectMapper.writeValueAsString(merged));
     }
 
     /**
      * 工具返回值 → Map（保留 BigDecimal 的 scale，见 {@link #objectMapper}）。
-     * 不是 JSON 对象时原样包一层（不编内容）。
+     *
+     * <p><b>解析失败 → 抛异常</b>（硬失败）。不许把「读不出来」伪装成「0 笔」：
+     * 那样日报上会写着「共 0 笔，收 0，支 0」—— 那是一个<b>编出来的数字</b>。
+     * 工具的返回读不出来 = 这件事没做成 → 整条 run FAILED、产出物不落表。
+     *
+     * <p>注意与「<b>字段缺失</b>但解析成功」分得开：后者按 brief 的口径取 {@code 0}
+     * （见 {@link DeterministicAggregator}）—— 那不是编的，是「这个字段没有」。
+     *
+     * @param toolName 工具名（只进错误信息，便于定位）
+     * @param result   工具返回的原始 JSON 字符串
      */
-    private Map<String, Object> parseToolResult(String result) {
+    private Map<String, Object> parseToolResult(String toolName, String result) {
         if (result == null || result.isBlank()) {
-            return Map.of();
+            throw new OpcException("工具 " + toolName + " 没有返回内容 —— 不当成「0 笔」");
         }
         try {
             return objectMapper.readValue(result, new TypeReference<Map<String, Object>>() {
             });
         } catch (Exception e) {
-            log.warn("工具返回值不是 JSON 对象，按原文保留: {}", e.getMessage());
-            Map<String, Object> raw = new LinkedHashMap<>();
-            raw.put("rawText", result);
-            return raw;
+            throw new OpcException("工具 " + toolName + " 的返回值不是 JSON 对象: " + e.getMessage());
         }
     }
 
@@ -258,9 +269,11 @@ public class WorkflowEngine {
                 continue;
             }
             if (key.endsWith(".query_bank_flow")) {
-                parts.add(DeterministicAggregator.bankFlowSummary(parseToolResult(text), yesterday));
+                parts.add(DeterministicAggregator.bankFlowSummary(
+                        parseToolResult("query_bank_flow", text), yesterday));
             } else if (key.endsWith(".query_voucher")) {
-                parts.add(DeterministicAggregator.voucherSummary(parseToolResult(text), yesterday));
+                parts.add(DeterministicAggregator.voucherSummary(
+                        parseToolResult("query_voucher", text), yesterday));
             }
         }
         if (parts.isEmpty()) {
@@ -271,13 +284,41 @@ public class WorkflowEngine {
     }
 
     /**
+     * 业务时区。容器 JVM 是 UTC —— 用 {@code systemDefault()} 会差一天。
+     *
+     * <p><b>为什么差一天这么要紧</b>：北京时间 16:00–24:00 之间，UTC 的「今天」比北京**少一天**
+     * → {@code ${yesterday}} 渲染成**今天**、{@code ${monthAgo}} 整体偏移一天
+     * → 工具查错区间、日报写错日期，<b>而没有任何一条测试会红</b>。
+     */
+    static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
+
+    /**
+     * 业务「今天」：{@code clock} 决定「此刻」，{@link #BUSINESS_ZONE} 决定「哪一天」。
+     *
+     * <p>抽成静态方法是为了让「用哪个时区」成为<b>可断言的事实</b>：
+     * 传一个固定时钟进来，就能断言它算出来的是北京的那一天。
+     */
+    static LocalDate businessToday(Clock clock) {
+        return LocalDate.now(clock.withZone(BUSINESS_ZONE));
+    }
+
+    /**
+     * 业务时钟 —— <b>子类可覆盖</b>（测试用固定时钟把「今天」钉成可复现的事实）。
+     *
+     * <p>为什么不是构造参数：{@code @InjectMocks} 的既有测试会因为多一个构造参数而拿到 null。
+     */
+    protected Clock clock() {
+        return Clock.systemDefaultZone();
+    }
+
+    /**
      * 内置日期变量 —— 北京时间口径。
      *
      * <p>容器 JVM 是 UTC（实测 {@code NOW()} 与宿主机差 8 小时），
-     * {@code LocalDate.now()} 会差 8 小时 → 显式用 {@code Asia/Shanghai}。
+     * {@code LocalDate.now()} 会差 8 小时 → 显式用 {@link #BUSINESS_ZONE}。
      */
     private Map<String, Object> builtinVars() {
-        LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
+        LocalDate today = businessToday(clock());
         Map<String, Object> vars = new HashMap<>();
         vars.put("today", today.toString());
         vars.put("yesterday", today.minusDays(1).toString());

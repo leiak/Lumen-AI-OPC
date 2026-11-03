@@ -13,6 +13,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Map;
@@ -35,12 +37,26 @@ import static org.mockito.Mockito.when;
  * <p>这些用例把「真的调了工具」「数字口径没变」「LLM 挂了不拖垮整条 run」
  * 三件事钉成会红的断言。
  *
+ * <p><b>修复轮 1</b>：补上三条护栏 ——
+ * F1（catch 必须是 {@code Exception}，不能只 catch {@code OpcException}）、
+ * F2（业务时区必须是 Asia/Shanghai，不能用 {@code systemDefault()}）、
+ * F3（工具返回解析失败 → 硬失败，不许伪装成「0 笔」）。
+ *
  * @author OAC
  */
 @MockitoSettings(strictness = Strictness.LENIENT)
 @ExtendWith(MockitoExtension.class)
 @DisplayName("WorkflowEngine TOOL 节点 + 内置日期变量 单测")
 class WorkflowEngineToolNodeTest {
+
+    /**
+     * 固定业务时钟：{@code 2026-03-07T16:30Z} → UTC 是 <b>03-07</b>，北京是 <b>03-08</b>。
+     *
+     * <p>刻意挑一个「按 UTC 算和按北京算差一天」的瞬间 ——
+     * 这样「实现到底用了哪个时区」就成了可断言的事实，而不是同义反复。
+     */
+    private static final Clock FIXED_CLOCK =
+            Clock.fixed(Instant.parse("2026-03-07T16:30:00Z"), ZoneId.of("UTC"));
 
     /** finance 端 {@code query_bank_flow} 的真实返回形状（金额是 scale 2 的 BigDecimal）。 */
     private static final String BANK_FLOW_JSON = """
@@ -85,6 +101,29 @@ class WorkflowEngineToolNodeTest {
 
     @InjectMocks
     private WorkflowEngine engine;
+
+    /**
+     * 把业务时钟钉死的引擎 —— 让「今天」在测试里成为<b>可复现的事实</b>，
+     * 而不是「用和实现一模一样的表达式算出来的同义反复」。
+     */
+    private static final class FixedClockEngine extends WorkflowEngine {
+
+        private final Clock clock;
+
+        FixedClockEngine(AgentRuntime agentRuntime, ToolExecutor toolExecutor, Clock clock) {
+            super(agentRuntime, toolExecutor);
+            this.clock = clock;
+        }
+
+        @Override
+        protected Clock clock() {
+            return clock;
+        }
+    }
+
+    private WorkflowEngine engineWithFixedClock() {
+        return new FixedClockEngine(agentRuntime, toolExecutor, FIXED_CLOCK);
+    }
 
     private void stubTools() throws Exception {
         when(toolExecutor.execute(eq("query_bank_flow"), anyString(), any())).thenReturn(BANK_FLOW_JSON);
@@ -162,41 +201,48 @@ class WorkflowEngineToolNodeTest {
     }
 
     @Test
-    @DisplayName("args 里的 ${monthAgo} 被渲染成真实日期（北京时间口径），不留下原样占位符")
+    @DisplayName("args 里的 ${monthAgo} 被渲染成真实日期（业务时区口径），不留下原样占位符")
     void toolNode_rendersDateVariablesInArgs() throws Exception {
         stubTools();
 
-        engine.run(def(DAG_TOOL), Map.of());
+        engineWithFixedClock().run(def(DAG_TOOL), Map.of());
 
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
         verify(toolExecutor).execute(eq("query_bank_flow"), captor.capture(), any());
         String argsJson = captor.getValue();
 
-        String expectedMonthAgo = LocalDate.now(ZoneId.of("Asia/Shanghai")).minusDays(30).toString();
+        // 固定时钟的业务「今天」= 2026-03-08 → monthAgo = 2026-02-06
         assertThat(argsJson).doesNotContain("${");
-        assertThat(argsJson).contains(expectedMonthAgo);
+        assertThat(argsJson).contains("2026-02-06");
     }
 
     @Test
-    @DisplayName("LLM 节点的 prompt 里注入内置日期变量（today/yesterday/weekAgo/monthAgo）+ companyId")
+    @DisplayName("F2：内置日期变量按业务时区算 —— 同一个此刻，UTC 是 03-07，北京是 03-08")
     void toolNode_injectsBuiltinDateVariables() throws Exception {
         stubTools();
         stubLlm();
 
-        engine.run(def(DAG_TOOL_AND_LLM), Map.of());
+        engineWithFixedClock().run(def(DAG_TOOL_AND_LLM), Map.of());
 
         ArgumentCaptor<AgentRuntime.AgentTaskRequest> captor =
                 ArgumentCaptor.forClass(AgentRuntime.AgentTaskRequest.class);
         verify(agentRuntime).run(captor.capture());
         String prompt = captor.getValue().getUserInput();
 
-        LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
-        assertThat(prompt).doesNotContain("${");
-        assertThat(prompt).contains(today.toString());
-        assertThat(prompt).contains(today.minusDays(1).toString());
-        assertThat(prompt).contains(today.minusDays(7).toString());
-        assertThat(prompt).contains(today.minusDays(30).toString());
-        assertThat(prompt).contains("公司 2");
+        assertThat(prompt).isEqualTo("昨天 2026-03-07，今天 2026-03-08，"
+                + "一周前 2026-03-01，一月前 2026-02-06，公司 2");
+    }
+
+    @Test
+    @DisplayName("F2：businessToday 认业务时区，不认 JVM 默认时区")
+    void businessToday_usesBusinessZoneNotSystemDefault() {
+        // 2026-11-02T16:30Z → UTC 是 11-02，北京是 11-03（差一天）
+        Clock fixed = Clock.fixed(Instant.parse("2026-11-02T16:30:00Z"), ZoneId.of("UTC"));
+
+        assertThat(WorkflowEngine.BUSINESS_ZONE.getId()).isEqualTo("Asia/Shanghai");
+        assertThat(WorkflowEngine.businessToday(fixed)).isEqualTo(LocalDate.of(2026, 11, 3));
+        // 对照：同一个此刻按 UTC 算是 11-02 —— 少一天正是要防的那件事
+        assertThat(LocalDate.now(fixed)).isEqualTo(LocalDate.of(2026, 11, 2));
     }
 
     @Test
@@ -219,6 +265,40 @@ class WorkflowEngineToolNodeTest {
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getErrorMessage()).contains("工具炸了");
+    }
+
+    @Test
+    @DisplayName("F3：工具返回的不是 JSON → 整条 run 失败，不许聚合出「0 笔」")
+    void toolNode_unparsableResult_failsRunWithoutFakeZeros() throws Exception {
+        when(toolExecutor.execute(eq("query_bank_flow"), anyString(), any())).thenReturn("这不是 JSON");
+        when(toolExecutor.execute(eq("query_voucher"), anyString(), any())).thenReturn(VOUCHER_JSON);
+        // LLM 节点也失败 —— 这样「若 TOOL 节点没硬失败」的话，
+        // 确定性摘要就会拿「解析不出来」的数据去聚合，聚合器会写出「共 0 笔」。
+        when(agentRuntime.run(any())).thenThrow(new RuntimeException("provider 超时"));
+
+        WorkflowEngine.WorkflowResult result = engine.run(def(DAG_TOOL_AND_LLM), Map.of());
+
+        // 先查「不许出现编出来的零」—— 这条守的是「解析失败却把 run 放过去、
+        // 让聚合器拿空数据写出『共 0 笔』」的那种回归。
+        result.getOutputs().values()
+                .forEach(v -> assertThat(String.valueOf(v)).doesNotContain("0 笔"));
+        assertThat(result.getOutputs()).doesNotContainKey("n1");
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorMessage()).contains("不是 JSON 对象");
+    }
+
+    @Test
+    @DisplayName("F3：工具返回的是合法 JSON 但字段缺失 → 仍按 0 处理（与「解析失败」分得开）")
+    void toolNode_missingFields_stillParses() throws Exception {
+        when(toolExecutor.execute(eq("query_bank_flow"), anyString(), any()))
+                .thenReturn("{\"source\":\"opc_finance_bank_flow\",\"companyId\":2}");
+        when(toolExecutor.execute(eq("query_voucher"), anyString(), any())).thenReturn(VOUCHER_JSON);
+
+        WorkflowEngine.WorkflowResult result = engine.run(def(DAG_TOOL), Map.of());
+
+        assertThat(result.isSuccess()).isTrue();
+        String merged = (String) result.getOutputs().get("n1");
+        assertThat(merged).contains("query_bank_flow").contains("query_voucher");
     }
 
     @Test
@@ -259,7 +339,7 @@ class WorkflowEngineToolNodeTest {
     }
 
     @Test
-    @DisplayName("R-21：LLM 挂了就降级继续 —— 整条 run 不死，摘要用工具返回里的真实数字")
+    @DisplayName("R-21：LLM 挂了（OpcException）就降级继续 —— 整条 run 不死，摘要用工具返回里的真实数字")
     void llmNode_failure_becomesPartialWithDeterministicSummary() throws Exception {
         stubTools();
         when(agentRuntime.run(any())).thenThrow(new OpcException("请求被安全策略拒绝：疑似提示注入"));
@@ -274,6 +354,24 @@ class WorkflowEngineToolNodeTest {
         assertThat(summary).isNotBlank();
         assertThat(summary).startsWith("[自动聚合·未走 LLM]");
         assertThat(summary).contains("51892.00").contains("32430.00");
+    }
+
+    @Test
+    @DisplayName("F1：LLM 抛的不是 OpcException（provider 超时）也一样软失败 —— catch 不能只 catch OpcException")
+    void llmNode_failureWithPlainRuntimeException_becomesPartial() throws Exception {
+        stubTools();
+        when(agentRuntime.run(any())).thenThrow(new RuntimeException("provider 超时"));
+
+        WorkflowEngine.WorkflowResult result = engine.run(def(DAG_TOOL_AND_LLM), Map.of());
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.isPartial()).isTrue();
+        assertThat(result.getLlmError()).contains("provider 超时");
+
+        String summary = (String) result.getOutputs().get("n2");
+        assertThat(summary).isNotBlank();
+        assertThat(summary).startsWith("[自动聚合·未走 LLM]");
+        assertThat(summary).contains("51892.00");
     }
 
     @Test
