@@ -80,10 +80,20 @@ public class OpcInsightDailyReport implements Serializable {
     private String reportStatus;
 
     /**
-     * 谁写的这一行：{@code AGENT_WORKFLOW}（数字员工/工作流）/
-     * {@code MANUAL}（公开接口手工生成）/ {@code SEED}（种子）。
+     * 谁写的这一行：只有两个取值 ——
+     * {@code AGENT_WORKFLOW}（数字员工/工作流写出来的，
+     * {@code DailyReportServiceImpl.SOURCE_AGENT_WORKFLOW}）/
+     * {@code MANUAL}（公开接口 {@code POST /opc/insight/daily/generate} 手工生成，
+     * {@code DailyReportServiceImpl.SOURCE_MANUAL}）。
      *
-     * <p>这张表有三个写入方，都往同一个 {@code (company_id, period)} 上写 ——
+     * <p>代码里实际写的就这两个常量，没有第三个。</p>
+     *
+     * <p><b>种子日报不占这个取值</b>：演示种子里那 7 行日报不是这套代码写出来的，
+     * Task 8 会把它们连同种子文件里那段 INSERT 一起整段删掉（R-133 / R-137）——
+     * 表里不该留「来源不明」的日报。剩下的历史行（旧代码里手工点「生成日报」写出来的）
+     * 由 Task 8 的回填统一标成 {@code MANUAL}（R-134）。</p>
+     *
+     * <p>这张表有两个写入方，都往同一个 {@code (company_id, period)} 上写 ——
      * 没有这一列就分不清是谁写的。</p>
      */
     private String reportSource;
