@@ -125,8 +125,9 @@ public class FinanceTools {
     /**
      * 取 companyId —— <b>只从 context 取</b>，args 里的 companyId 一律不读。
      *
-     * <p>context 缺失 / 为 0 → 抛异常。宁可工具失败，也不能在租户不明的情况下
-     * 拿一个「大概是 0」的 companyId 去查库。
+     * <p>context 缺失 / companyId &lt;= 0（含负数）→ 抛异常。宁可工具失败，也不能在
+     * 租户不明的情况下拿一个「大概是 0」的 companyId 去查库；负数同理 ——
+     * 放行的话查不到记录会表现为「查到了 0 条」，而不是明确失败。
      */
     private Long requireCompanyId(Map<String, Object> context) {
         if (context == null) {
@@ -146,7 +147,7 @@ public class FinanceTools {
                 throw new OpcException("工具上下文的 companyId 非法: " + raw);
             }
         }
-        if (companyId == null || companyId == 0L) {
+        if (companyId == null || companyId <= 0L) {
             throw new OpcException("工具上下文缺少 companyId");
         }
         return companyId;
@@ -184,9 +185,9 @@ public class FinanceTools {
      */
     private String toJson(String source, Long companyId, Map<String, Object> data) {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("source", source);
         out.putAll(data);
-        // source 永远由工具自己写死 —— 远端响应里就算带了 source 也不算数
+        // source 永远由工具自己写死 —— 远端响应里就算带了 source 也不算数。
+        // 这一行是【唯一】覆盖 source 的地方：放在 putAll 之后，远端说了不算。
         out.put("source", source);
         // companyId：远端返回的优先（putIfAbsent 语义）
         out.putIfAbsent("companyId", companyId);

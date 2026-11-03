@@ -4,6 +4,9 @@ import com.ruoyi.common.core.domain.R;
 import com.ruoyi.common.security.annotation.InnerAuth;
 import com.ruoyi.opc.ai.tools.ToolRegistry;
 import com.ruoyi.opc.ai.tools.ToolSpec;
+import com.ruoyi.opc.agent.tools.BillingToolClient;
+import com.ruoyi.opc.agent.tools.FinanceToolClient;
+import com.ruoyi.opc.agent.tools.FinanceTools;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,6 +41,13 @@ class OpcToolRegistryControllerTest {
 
     @Mock
     private ToolRegistry registry;
+
+    /** 真注册表测试里用 —— 注册过程不调它们，只是构造 FinanceTools 需要 */
+    @Mock
+    private FinanceToolClient financeClient;
+
+    @Mock
+    private BillingToolClient billingClient;
 
     private OpcToolRegistryController controller;
 
@@ -76,15 +86,26 @@ class OpcToolRegistryControllerTest {
     }
 
     @Test
-    @DisplayName("list — 不含任何假工具（健康检查第 26.5 条断言的就是这个）")
+    @DisplayName("list — 不含任何假工具（健康检查第 26.5 条断言的就是这个）—— 用【真注册表】守")
     void tools_doesNotListFakeTools() {
-        stubRegistry();
-        R<List<Map<String, Object>>> r = controller.list();
+        // 这一条必须用真的 ToolRegistry —— 之前拿 @Mock ToolRegistry，
+        // 把 names() 直接 stub 成 3 个名字，那条断言【不可能失败】：
+        // 它只守住了「controller 不硬塞假名字」，守不住「注册表里真的没有假工具」。
+        // 现在是真的注册一遍，再从端点往外看。
+        ToolRegistry realRegistry = new ToolRegistry();
+        new FinanceTools(realRegistry, financeClient, billingClient).register();
+        OpcToolRegistryController realController = new OpcToolRegistryController(realRegistry);
+
+        R<List<Map<String, Object>>> r = realController.list();
 
         Set<String> names = namesOf(r);
         for (String fake : List.of("query_daily_report", "create_voucher", "extract_voucher")) {
-            assertFalse(names.contains(fake), "假工具 " + fake + " 不该出现在注册表里");
+            assertFalse(names.contains(fake),
+                    "假工具 " + fake + " 不该出现在注册表里 —— 实际注册表: " + names);
         }
+        // 而且恰好是那 3 个真工具 —— 「假工具下线」不是「少几个」，是「恰好这几个」
+        assertEquals(Set.copyOf(NAMES), names,
+                "真注册表里应当恰好是这 3 个真工具，实际: " + names);
     }
 
     @Test

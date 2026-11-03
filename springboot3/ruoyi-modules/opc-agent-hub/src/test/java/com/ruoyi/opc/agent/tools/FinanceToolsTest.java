@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -84,6 +85,9 @@ class FinanceToolsTest {
         m.put("yesterdayIn", new BigDecimal("0.00"));
         m.put("yesterdayOut", new BigDecimal("0.00"));
         m.put("items", List.of());
+        // 模拟「远端乱说来源」—— 来源表名由工具自己写死,远端说了不算。
+        // 这个键是 F1 的关键:没有它,「source 永远覆盖」这条语义就没测试守着。
+        m.put("source", "opc_wrong_table");
         return m;
     }
 
@@ -164,6 +168,22 @@ class FinanceToolsTest {
     }
 
     @Test
+    @DisplayName("querySource — source 由工具写死，远端乱说的来源表名不算数（F1）")
+    void querySource_toolAlwaysOverridesRemoteSource() throws Exception {
+        // fixture 里 source = "opc_wrong_table" —— 模拟远端 VO 以后带上了 source 字段
+        when(financeClient.flows(2L, null, null)).thenReturn(R.ok(flowData()));
+        when(financeClient.vouchers(2L, null, null)).thenReturn(R.ok(voucherData()));
+
+        Map<String, Object> flow = parse(tools.queryBankFlow("{}", Map.of("companyId", 2L)));
+        Map<String, Object> voucher = parse(tools.queryVoucher("{}", Map.of("companyId", 2L)));
+
+        assertEquals("opc_finance_bank_flow", flow.get("source"),
+                "银行流水的来源表名由工具自己写死 —— 远端说的 opc_wrong_table 不算数");
+        assertEquals("opc_finance_voucher", voucher.get("source"),
+                "凭证的来源表名由工具自己写死 —— 远端说的 opc_wrong_table 不算数");
+    }
+
+    @Test
     @DisplayName("queryBankFlow — fromDate/toDate 原样传给 Feign；不传就不传")
     void queryBankFlow_passesFromToFromArgs() {
         when(financeClient.flows(2L, "2026-10-07", "2026-11-01")).thenReturn(R.ok(flowData()));
@@ -188,6 +208,46 @@ class FinanceToolsTest {
                 () -> tools.queryBankFlow("{}", Map.of("companyId", 2L)));
         assertTrue(ex.getMessage().contains("opc-finance 不可用"),
                 "异常里应当带上远端的失败原因，实际: " + ex.getMessage());
+    }
+
+    // ==================== requireData 的三个失败分支 ====================
+    // 「绝不返回空 JSON 冒充成功」是本 Task 的招牌承诺 ——
+    // requireData() 有三个失败分支（r == null / code != SUCCESS / data == null），
+    // 三条都得有测试守着，少一条这条承诺就只是嘴上说。
+
+    @Test
+    @DisplayName("requireData — 远端 code=200 但 data=null 时抛 OpcException（不冒充「查到了 0 条」）")
+    void requireData_nullData_throws() {
+        when(financeClient.flows(2L, null, null))
+                .thenReturn(R.<Map<String, Object>>ok(null));
+
+        OpcException ex = assertThrows(OpcException.class,
+                () -> tools.queryBankFlow("{}", Map.of("companyId", 2L)));
+        assertTrue(ex.getMessage().contains("数据为空"),
+                "异常消息应当说明「数据为空」，实际: " + ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("requireData — 远端整个响应是 null 时抛 OpcException（不冒充成功）")
+    void requireData_nullResponse_throws() {
+        when(financeClient.flows(2L, null, null)).thenReturn(null);
+
+        OpcException ex = assertThrows(OpcException.class,
+                () -> tools.queryBankFlow("{}", Map.of("companyId", 2L)));
+        assertTrue(ex.getMessage().contains("空响应"),
+                "异常消息应当说明「空响应」，实际: " + ex.getMessage());
+    }
+
+    // ==================== requireCompanyId 的护栏 ====================
+
+    @Test
+    @DisplayName("requireCompanyId — companyId 是负数时抛 OpcException（不拿它去查库）")
+    void requireCompanyId_negativeCompanyId_throws() {
+        OpcException ex = assertThrows(OpcException.class,
+                () -> tools.queryBankFlow("{}", Map.of("companyId", -1L)));
+        assertTrue(ex.getMessage().contains("companyId"),
+                "异常消息应当点名 companyId，实际: " + ex.getMessage());
+        verifyNoInteractions(financeClient);
     }
 
     // ==================== query_voucher ====================
