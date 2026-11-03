@@ -71,6 +71,14 @@ public final class OpcConstants {
     public static final String TASK_RUNNING = "RUNNING";
     public static final String TASK_SUCCESS = "SUCCESS";
     public static final String TASK_FAILED = "FAILED";
+    /**
+     * 部分降级 —— 数字是真的，但缺了 LLM 解读。
+     *
+     * <p>工作流取到数、LLM 写文案失败时用这个状态：<b>产出物照样落表</b>
+     * （{@code report_status='PARTIAL'}），整条 run 不报废。
+     * 以前这种情形整条链一起死，已经取到的真实数据被一起丢掉。</p>
+     */
+    public static final String TASK_PARTIAL = "PARTIAL";
     public static final String TASK_REVIEW = "REVIEW";
 
     /** 订单类型 */

@@ -99,6 +99,14 @@ class WorkflowEngineToolNodeTest {
     @Mock
     private ToolExecutor toolExecutor;
 
+    /**
+     * Task 5 起引擎多了 {@link WorkflowPersistHandler} 构造依赖 —— 不给 mock 的话
+     * Mockito 构造注入会传 null（这里这些用例的 dag 都没有 persist 声明，
+     * 引擎不会碰它，但别留隐患）。
+     */
+    @Mock
+    private WorkflowPersistHandler persistHandler;
+
     @InjectMocks
     private WorkflowEngine engine;
 
@@ -110,8 +118,9 @@ class WorkflowEngineToolNodeTest {
 
         private final Clock clock;
 
-        FixedClockEngine(AgentRuntime agentRuntime, ToolExecutor toolExecutor, Clock clock) {
-            super(agentRuntime, toolExecutor);
+        FixedClockEngine(AgentRuntime agentRuntime, ToolExecutor toolExecutor,
+                        WorkflowPersistHandler persistHandler, Clock clock) {
+            super(agentRuntime, toolExecutor, persistHandler);
             this.clock = clock;
         }
 
@@ -122,7 +131,7 @@ class WorkflowEngineToolNodeTest {
     }
 
     private WorkflowEngine engineWithFixedClock() {
-        return new FixedClockEngine(agentRuntime, toolExecutor, FIXED_CLOCK);
+        return new FixedClockEngine(agentRuntime, toolExecutor, persistHandler, FIXED_CLOCK);
     }
 
     private void stubTools() throws Exception {

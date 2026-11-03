@@ -86,9 +86,16 @@ public class WorkflowTriggerServiceImpl implements IWorkflowTriggerService {
             // 不显式带上 companyId, LLM 节点的 token/成本就记不进任何账。
             def.setCompanyId(workflow.getCompanyId() == null ? 0L : workflow.getCompanyId());
             def.setUserId(resolveTriggerUserId());
+            // 运行记录 id —— 产出物落表时要带上它（溯源）。
+            // 必须在 runMapper.insert(run) **之后**取：MyBatis 的 useGeneratedKeys
+            // 是 insert 时才把主键回填到 run 对象上（裁定 R-100）。
+            def.setRunId(run.getId());
             WorkflowEngine.WorkflowResult result = workflowEngine.run(def, Collections.emptyMap());
 
-            run.setStatus(result.isSuccess() ? OpcConstants.TASK_SUCCESS : OpcConstants.TASK_FAILED);
+            // 三态：成功 / 部分降级（数字是真的但缺 LLM 解读，产出物已落表）/ 失败
+            run.setStatus(result.isSuccess()
+                    ? (result.isPartial() ? OpcConstants.TASK_PARTIAL : OpcConstants.TASK_SUCCESS)
+                    : OpcConstants.TASK_FAILED);
             run.setOutputResult(toJson(result.getOutputs()));
             run.setStepLogs(toJson(result.getStepLogs()));
             run.setErrorMessage(result.getErrorMessage());

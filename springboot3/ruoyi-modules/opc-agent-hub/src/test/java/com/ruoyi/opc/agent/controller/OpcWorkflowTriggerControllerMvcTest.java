@@ -12,6 +12,7 @@ import com.ruoyi.opc.agent.mapper.OpcAgentWorkflowRunMapper;
 import com.ruoyi.opc.agent.service.IWorkflowTriggerService;
 import com.ruoyi.opc.agent.tools.FinanceTools;
 import com.ruoyi.opc.agent.workflow.WorkflowEngine;
+import com.ruoyi.opc.agent.workflow.WorkflowPersistHandler;
 import com.ruoyi.opc.common.exception.OpcException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -93,6 +94,11 @@ class OpcWorkflowTriggerControllerMvcTest {
     // Feign 自动装配(容器里没有 FeignClientFactory)→ context 起不来。
     // 断在链条入口:把工具本身占位,两个 Feign client 都不必存在。
     @MockBean private FinanceTools financeTools;
+
+    // Task 5 新增的 @Component（工作流产出物落表）：它要注入 RemoteInsightService
+    // （一个 @FeignClient），而 @WebMvcTest 切片不启 Feign 自动装配
+    // → 容器里没有 FeignClientFactory → context 起不来。断在链条入口。
+    @MockBean private WorkflowPersistHandler persistHandler;
 
     private static final String WORKFLOW_CODE = "finance_daily_report_v1";
     private static final String TRIGGER_SOURCE = "quartz:test";

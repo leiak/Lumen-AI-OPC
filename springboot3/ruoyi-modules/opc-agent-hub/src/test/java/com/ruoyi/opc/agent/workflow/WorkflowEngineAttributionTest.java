@@ -51,6 +51,13 @@ class WorkflowEngineAttributionTest {
     @Mock
     private ToolExecutor toolExecutor;
 
+    /**
+     * Task 5 起引擎多了 {@link WorkflowPersistHandler} 构造依赖 —— 不给 mock 的话
+     * Mockito 构造注入会传 null（这里只跑 LLM 节点，用不到，但别留隐患）。
+     */
+    @Mock
+    private WorkflowPersistHandler persistHandler;
+
     @InjectMocks
     private WorkflowEngine engine;
 

@@ -46,6 +46,15 @@ public class WorkflowEngine {
     private final ToolExecutor toolExecutor;
 
     /**
+     * persist 处理器 —— 节点跑完后把产出物交给它落进业务表。
+     *
+     * <p>以前产出物只躺在 {@code opc_agent_workflow_run.output_result} 里（运行日志），
+     * 业务上查日报的表跟工作流没有关系。现在 dag 里可以声明 {@code persist}，
+     * 引擎在节点循环之后<b>确定性地</b>执行落表 —— 落不成功，run 就不能记成功。</p>
+     */
+    private final WorkflowPersistHandler persistHandler;
+
+    /**
      * 引擎自己的 ObjectMapper —— <b>不</b>用 Spring 注入的那个。
      *
      * <p><b>为什么数字口径要钉住</b>：工具返回的 JSON 里金额是 {@code "totalIn":51892.00}
@@ -72,6 +81,9 @@ public class WorkflowEngine {
         // 工作流跑掉的 token/成本在账单里完全看不见。
         ctx.companyId = def.getCompanyId();
         ctx.userId = def.getUserId();
+        // 运行记录 id —— 产出物落表时要带上它（溯源：从日报能反查回那次运行）。
+        // 三处必须都接上（裁定 R-100）：WorkflowDefinition.runId → ctx.runId → body.sourceWorkflowRunId。
+        ctx.runId = def.getRunId();
 
         try {
             JsonNode dag = objectMapper.readTree(def.getDagJson());
@@ -104,6 +116,14 @@ public class WorkflowEngine {
                 if (!"CONDITION".equals(type)) {
                     current = findNextNode(edges, current);
                 }
+            }
+
+            // persist —— 节点跑完后把产出物落进业务表（确定性动作，不交给模型决定）。
+            // 抛异常 → 冒泡到下面的 catch → success=false → run 记 FAILED：
+            // 产出物没落表 = 这件事没做成，不能记成功（裁定 R-106）。
+            JsonNode persistNode = dag.get("persist");
+            if (persistNode != null && !persistNode.isNull()) {
+                persistHandler.persist(persistNode, ctx, buildVars(ctx));
             }
 
             return WorkflowResult.builder()
@@ -382,14 +402,14 @@ public class WorkflowEngine {
         return null;
     }
 
+    /**
+     * 渲染 {@code ${...}} 占位符 —— 委托 {@link WorkflowTemplate}。
+     *
+     * <p>渲染逻辑只有一份（裁定 R-99）：persist 处理器也要渲染
+     * {@code ${yesterday}}，两份实现两份口径，迟早会漂。</p>
+     */
     private String renderTemplate(String template, Map<String, Object> vars) {
-        if (template == null) return "";
-        String result = template;
-        for (Map.Entry<String, Object> e : vars.entrySet()) {
-            result = result.replace("${" + e.getKey() + "}",
-                    String.valueOf(e.getValue()));
-        }
-        return result;
+        return WorkflowTemplate.render(template, vars);
     }
 
     @lombok.Data
@@ -423,6 +443,11 @@ public class WorkflowEngine {
         private Long companyId;
         /** 触发者（来自 {@link WorkflowDefinition#getUserId()}）。 */
         private Long userId;
+        /**
+         * 运行记录 id（来自 {@link WorkflowDefinition#getRunId()}）——
+         * 产出物落表时要带上它（{@code source_workflow_run_id}）。
+         */
+        private Long runId;
         /** LLM 节点实际用的模型名；LLM 没跑成功时为 null。 */
         private String llmModel;
         /** 是否有节点降级（LLM 失败 → 走确定性聚合）。 */

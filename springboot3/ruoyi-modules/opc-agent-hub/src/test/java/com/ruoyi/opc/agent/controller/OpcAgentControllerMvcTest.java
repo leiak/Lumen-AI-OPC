@@ -18,6 +18,7 @@ import com.ruoyi.opc.agent.service.IOpcAgentTaskService;
 import com.ruoyi.opc.agent.service.IOpcTokenUsageService;
 import com.ruoyi.opc.agent.tools.FinanceTools;
 import com.ruoyi.opc.agent.workflow.WorkflowEngine;
+import com.ruoyi.opc.agent.workflow.WorkflowPersistHandler;
 import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.system.api.model.LoginUser;
 import org.junit.jupiter.api.AfterEach;
@@ -151,6 +152,18 @@ class OpcAgentControllerMvcTest {
      */
     @MockBean
     private FinanceTools financeTools;
+
+    /**
+     * 断掉 {@code WorkflowPersistHandler} 这条链 —— Task 5 新增的 {@code @Component}
+     * （工作流产出物落表），它要注入 {@code RemoteInsightService}（一个
+     * {@code @FeignClient}），而 {@code @WebMvcTest} 切片不启 Feign 自动装配
+     * → 容器里没有 {@code FeignClientFactory} → context 起不来。
+     * <p>
+     * 跟 {@code FinanceTools} 一样断在链条入口：把处理器本身占位，
+     * Feign client 就不必存在。
+     */
+    @MockBean
+    private WorkflowPersistHandler persistHandler;
 
     /**
      * 最后一片叶子。{@code @ComponentScan({"com.ruoyi.opc"})} 会把 opc-ai-core jar 里的

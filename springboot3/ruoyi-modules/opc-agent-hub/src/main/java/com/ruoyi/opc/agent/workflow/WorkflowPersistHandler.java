@@ -1,0 +1,194 @@
+package com.ruoyi.opc.agent.workflow;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ruoyi.common.core.domain.R;
+import com.ruoyi.opc.agent.feign.RemoteInsightService;
+import com.ruoyi.opc.common.exception.OpcException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * 工作流的 persist 处理器 —— 把引擎的产出物<b>确定性地</b>交给 insight 落表。
+ *
+ * <p><b>为什么要有这一步</b>：以前工作流跑完，产出物只躺在
+ * {@code opc_agent_workflow_run.output_result} 里 —— 那是<b>运行日志</b>，
+ * 不是业务表。业务上「昨天的日报」是在 {@code opc_insight_daily_report} 里查的，
+ * 而那张表跟工作流没有任何关系。于是工作流取到的真实流水/凭证，
+ * 业务侧<b>一条都看不到</b>。</p>
+ *
+ * <p><b>为什么落表是确定性的</b>：产出物从哪个节点取、写成什么字段，
+ * 全部由 dag 里的 {@code persist} 声明决定，<b>不交给模型决定</b>。
+ * 模型只负责写文案（summary），数字一律来自工具的返回值。</p>
+ *
+ * <p><b>kpi_json 一字不改</b>（裁定 R-104）：引擎的 {@code ctx.outputs[<nodeId>]}
+ * 就是 {@code {"query_bank_flow":{...},"query_voucher":{...}}} ——
+ * 直接原样送出去，<b>不重算、不改口径、不裁剪</b>。数字的来源只有一处
+ * （工具的返回值），任何加工都会让健康检查 26.3 的逐笔对账失真。</p>
+ *
+ * <p><b>为什么落表失败要抛</b>：产出物没落表 = 这件事没做成 →
+ * 引擎 catch → 整条 run 记 FAILED。不能让 run 记成功。</p>
+ *
+ * @author OAC
+ */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class WorkflowPersistHandler {
+
+    /** 支持的落表目标 —— 目前只有日报。 */
+    private static final String TARGET_DAILY_REPORT = "daily_report";
+
+    /** report_status：LLM 也参与了（数字是真的 + 有解读）。 */
+    private static final String REPORT_STATUS_FULL = "FULL";
+
+    /** report_status：数字是真的，但缺了 LLM 解读。 */
+    private static final String REPORT_STATUS_PARTIAL = "PARTIAL";
+
+    /**
+     * {@code llm_used} 列在「LLM 根本没参与」时的取值。
+     *
+     * <p><b>注意跟 report_status 的 "PARTIAL" 分得开</b>（裁定 R-96）：
+     * {@code llm_used} 列的语义是「生成使用的 LLM 模型 ID」，
+     * 往里塞状态是把状态塞进模型 ID 列。
+     * {@code "FALLBACK"} = LLM 根本没参与；{@code report_status="PARTIAL"} =
+     * 数字是真的、但缺了 LLM 解读。工作流路径<b>永远不写</b>
+     * {@code report_status="FALLBACK"}。</p>
+     */
+    private static final String LLM_USED_FALLBACK = "FALLBACK";
+
+    /** 只用来校验 kpi_json 是不是合法 JSON —— 不重新序列化（重新序列化会改数字的形态）。 */
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    private final RemoteInsightService insightService;
+
+    /**
+     * 执行一次 persist 声明。
+     *
+     * @param persistNode dag 里的 {@code persist} 节点
+     * @param ctx         工作流上下文（产出物、归属、LLM 成败）
+     * @param vars        模板变量（引擎的 {@code buildVars(ctx)}，已含内置日期变量）
+     * @return 落表结果（行 id）
+     */
+    public PersistOutcome persist(JsonNode persistNode, WorkflowEngine.WorkflowContext ctx,
+                                   Map<String, Object> vars) {
+        if (persistNode == null || persistNode.isNull()) {
+            throw new OpcException("persist 声明为空");
+        }
+        String target = persistNode.path("target").asText("");
+        if (!TARGET_DAILY_REPORT.equals(target)) {
+            throw new OpcException("不支持的 persist 目标: " + target);
+        }
+
+        // ${yesterday} 等占位符由引擎的 vars 渲染 —— handler 不自己算日期（裁定 R-99）
+        String date = WorkflowTemplate.render(persistNode.path("date").asText(""), vars);
+        if (date.isBlank()) {
+            throw new OpcException("persist 声明缺少 date");
+        }
+
+        String kpiFrom = persistNode.path("kpiFrom").asText("");
+        String summaryFrom = persistNode.path("summaryFrom").asText("");
+
+        String kpiJson = requireKpiJson(ctx, kpiFrom);
+        String summary = requireSummary(ctx, summaryFrom);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("companyId", ctx.getCompanyId());
+        body.put("period", date);
+        body.put("summaryMd", summary);
+        body.put("adviceMd", null);              // 本轮没有独立的建议节点
+        body.put("kpiJson", kpiJson);            // 工具节点的原始 JSON —— 一字不改
+        body.put("llmUsed", llmUsed(ctx));
+        body.put("reportStatus", ctx.isPartial() ? REPORT_STATUS_PARTIAL : REPORT_STATUS_FULL);
+        // 注意：body 里**没有** reportSource —— 来源由接收侧按端点身份写死（裁定 R-97）
+        body.put("sourceWorkflowRunId", ctx.getRunId());
+
+        R<Long> r;
+        try {
+            r = insightService.upsertDailyReport(body);
+        } catch (Exception e) {
+            throw new OpcException("日报落表失败: " + e.getMessage());
+        }
+        // HTTP 200 不代表成功（CLAUDE.md 坑 #8）—— 必须查 body.code
+        if (r == null) {
+            throw new OpcException("日报落表失败: insight 没有返回结果");
+        }
+        if (r.getCode() != R.SUCCESS) {
+            throw new OpcException("日报落表失败: " + r.getMsg());
+        }
+        log.info("[workflow-persist] 日报已落表 companyId={} period={} runId={} rowId={}",
+                ctx.getCompanyId(), date, ctx.getRunId(), r.getData());
+        return new PersistOutcome(true, r.getData());
+    }
+
+    /**
+     * {@code llm_used} —— 模型名，或 {@code "FALLBACK"}（LLM 根本没参与）。
+     *
+     * <p>写成状态（{@code "PARTIAL"}）是把状态塞进模型 ID 列（裁定 R-96）。</p>
+     */
+    private String llmUsed(WorkflowEngine.WorkflowContext ctx) {
+        String model = ctx.getLlmModel();
+        return (model == null || model.isBlank()) ? LLM_USED_FALLBACK : model;
+    }
+
+    /**
+     * 取 kpi 节点的产出 —— 必须是<b>合法 JSON 的字符串</b>。
+     *
+     * <p>取值失败 / 不是字符串 / 不是合法 JSON → 一律抛。
+     * 别把坏 JSON 送出去等对方报错，也别把读不出来伪装成「0 笔」。</p>
+     */
+    private String requireKpiJson(WorkflowEngine.WorkflowContext ctx, String kpiFrom) {
+        Object raw = output(ctx, kpiFrom, "kpi");
+        if (!(raw instanceof String text)) {
+            throw new OpcException("persist 声明的 kpi 节点产出不是字符串: " + kpiFrom);
+        }
+        JsonNode parsed;
+        try {
+            parsed = JSON.readTree(text);
+        } catch (Exception e) {
+            throw new OpcException("persist 声明的 kpi 节点产出不是合法 JSON: " + kpiFrom);
+        }
+        if (parsed == null || parsed.isMissingNode()) {
+            throw new OpcException("persist 声明的 kpi 节点产出不是合法 JSON: " + kpiFrom);
+        }
+        return text;
+    }
+
+    /**
+     * 取 summary 节点的产出 —— LLM 成功时是文案，LLM 软失败时是引擎的确定性聚合摘要
+     * （<b>非空</b>，见 {@code WorkflowEngine#runLlm}）。
+     */
+    private String requireSummary(WorkflowEngine.WorkflowContext ctx, String summaryFrom) {
+        Object raw = output(ctx, summaryFrom, "summary");
+        if (!(raw instanceof String text)) {
+            throw new OpcException("persist 声明的 summary 节点产出不是字符串: " + summaryFrom);
+        }
+        return text;
+    }
+
+    /** 取节点产出；没有产出 → 抛（跟「产出是空串」分得开）。 */
+    private Object output(WorkflowEngine.WorkflowContext ctx, String nodeId, String kind) {
+        Map<String, Object> outputs = ctx.getOutputs();
+        if (nodeId == null || nodeId.isBlank()) {
+            throw new OpcException("persist 声明缺少 " + kind + "From");
+        }
+        if (outputs == null || !outputs.containsKey(nodeId)) {
+            throw new OpcException("persist 声明的 " + kind + " 节点没有产出: " + nodeId);
+        }
+        return outputs.get(nodeId);
+    }
+
+    /**
+     * 落表结果。
+     *
+     * @param ok    是否落表成功（现在要么成功要么抛异常，所以恒为 true）
+     * @param rowId 落表后的行 id（来自 {@code R<Long>.getData()}）
+     */
+    public record PersistOutcome(boolean ok, Long rowId) {
+    }
+
+}
