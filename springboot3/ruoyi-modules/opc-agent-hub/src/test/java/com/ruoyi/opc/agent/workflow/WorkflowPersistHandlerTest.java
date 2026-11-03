@@ -14,8 +14,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -44,7 +42,6 @@ import static org.mockito.Mockito.when;
  * @author OAC
  */
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("WorkflowPersistHandler 单测")
 class WorkflowPersistHandlerTest {
 
@@ -219,6 +216,91 @@ class WorkflowPersistHandlerTest {
         verify(insightService, never()).upsertDailyReport(any());
     }
 
+    @Test
+    @DisplayName("R-154：kpi 是合法 JSON 但不是对象 → 抛（kpi_json 的形状是对象）")
+    void persist_kpiJsonNotObject_throws() {
+        WorkflowEngine.WorkflowContext ctx = ctx();
+        ctx.getOutputs().put("n1", "\"abc\"");
+        ctx.getOutputs().put("n2", "今日小结");
+
+        assertThatThrownBy(() -> handler.persist(node(PERSIST_DECL), ctx, VARS))
+                .isInstanceOf(OpcException.class)
+                .hasMessageContaining("不是 JSON 对象");
+
+        verify(insightService, never()).upsertDailyReport(any());
+    }
+
+    @Test
+    @DisplayName("R-154：kpi 是合法 JSON 但后面还跟着另一个 JSON → 抛（FAIL_ON_TRAILING_TOKENS）")
+    void persist_kpiJsonTrailingGarbage_throws() {
+        WorkflowEngine.WorkflowContext ctx = ctx();
+        // 两个 JSON 文档拼在一起 —— 前面那个本身合法，尾巴要靠 FAIL_ON_TRAILING_TOKENS 拦
+        ctx.getOutputs().put("n1", "{\"query_bank_flow\":{}} {\"query_voucher\":{}}");
+        ctx.getOutputs().put("n2", "今日小结");
+
+        assertThatThrownBy(() -> handler.persist(node(PERSIST_DECL), ctx, VARS))
+                .isInstanceOf(OpcException.class)
+                .hasMessageContaining("尾巴");
+
+        verify(insightService, never()).upsertDailyReport(any());
+    }
+
+    @Test
+    @DisplayName("R-155：summary 是空白串 → 抛（空的东西不默默存进 summary_md）")
+    void persist_blankSummary_throws() {
+        WorkflowEngine.WorkflowContext ctx = ctx();
+        ctx.getOutputs().put("n1", KPI_JSON);
+        ctx.getOutputs().put("n2", "   ");
+
+        assertThatThrownBy(() -> handler.persist(node(PERSIST_DECL), ctx, VARS))
+                .isInstanceOf(OpcException.class)
+                .hasMessageContaining("summary 节点产出是空的");
+
+        verify(insightService, never()).upsertDailyReport(any());
+    }
+
+    @Test
+    @DisplayName("R-156：persist 声明没有 date → 抛，且不调 insight")
+    void persist_missingDate_throws() {
+        WorkflowEngine.WorkflowContext ctx = ctx();
+        ctx.getOutputs().put("n1", KPI_JSON);
+        ctx.getOutputs().put("n2", "今日小结");
+
+        assertThatThrownBy(() -> handler.persist(
+                node("{\"target\":\"daily_report\",\"kpiFrom\":\"n1\",\"summaryFrom\":\"n2\"}"), ctx, VARS))
+                .isInstanceOf(OpcException.class)
+                .hasMessageContaining("缺少 date");
+
+        verify(insightService, never()).upsertDailyReport(any());
+    }
+
+    @Test
+    @DisplayName("R-156：persist 声明没有 summaryFrom → 抛，且不调 insight")
+    void persist_missingSummaryFrom_throws() {
+        WorkflowEngine.WorkflowContext ctx = ctx();
+        ctx.getOutputs().put("n1", KPI_JSON);
+
+        assertThatThrownBy(() -> handler.persist(
+                node("{\"target\":\"daily_report\",\"date\":\"${yesterday}\",\"kpiFrom\":\"n1\"}"), ctx, VARS))
+                .isInstanceOf(OpcException.class)
+                .hasMessageContaining("缺少 summaryFrom");
+
+        verify(insightService, never()).upsertDailyReport(any());
+    }
+
+    @Test
+    @DisplayName("R-156 / R-105：summaryFrom 指向没有产出的节点 → 抛，且不调 insight")
+    void persist_missingSummaryNode_throws() {
+        WorkflowEngine.WorkflowContext ctx = ctx();
+        ctx.getOutputs().put("n1", KPI_JSON);
+
+        assertThatThrownBy(() -> handler.persist(node(PERSIST_DECL), ctx, VARS))
+                .isInstanceOf(OpcException.class)
+                .hasMessageContaining("summary 节点没有产出");
+
+        verify(insightService, never()).upsertDailyReport(any());
+    }
+
     // ==================== 远端失败 → 抛 ====================
 
     @Test
@@ -247,6 +329,23 @@ class WorkflowPersistHandlerTest {
         assertThatThrownBy(() -> handler.persist(node(PERSIST_DECL), ctx, VARS))
                 .isInstanceOf(OpcException.class)
                 .hasMessageContaining("日报落表失败");
+    }
+
+    @Test
+    @DisplayName("R-157：Feign 调用本身抛异常 → 消息里带异常类名（别把 cause 弄丢了）")
+    void persist_remoteThrows_carriesExceptionClassName() {
+        when(insightService.upsertDailyReport(any()))
+                .thenThrow(new IllegalStateException("连接被拒"));
+
+        WorkflowEngine.WorkflowContext ctx = ctx();
+        ctx.getOutputs().put("n1", KPI_JSON);
+        ctx.getOutputs().put("n2", "今日小结");
+
+        assertThatThrownBy(() -> handler.persist(node(PERSIST_DECL), ctx, VARS))
+                .isInstanceOf(OpcException.class)
+                .hasMessageContaining("日报落表失败")
+                .hasMessageContaining("IllegalStateException")
+                .hasMessageContaining("连接被拒");
     }
 
     // ==================== 引擎接线 ====================

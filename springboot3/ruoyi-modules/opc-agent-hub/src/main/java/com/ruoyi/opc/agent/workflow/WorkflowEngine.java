@@ -121,6 +121,10 @@ public class WorkflowEngine {
             // persist —— 节点跑完后把产出物落进业务表（确定性动作，不交给模型决定）。
             // 抛异常 → 冒泡到下面的 catch → success=false → run 记 FAILED：
             // 产出物没落表 = 这件事没做成，不能记成功（裁定 R-106）。
+            //
+            // 不接返回值（PersistOutcome）：落表成功与否在 DB 里可反查 ——
+            // opc_insight_daily_report.source_workflow_run_id 指向这条 run（落表成功）；
+            // persist 抛异常 → 整条 run 记 FAILED（没落表）。
             JsonNode persistNode = dag.get("persist");
             if (persistNode != null && !persistNode.isNull()) {
                 persistHandler.persist(persistNode, ctx, buildVars(ctx));
@@ -473,7 +477,13 @@ public class WorkflowEngine {
         private Map<String, Object> outputs;
         private List<StepLog> stepLogs;
         private long costMs;
-        /** 是否有节点降级 —— true 表示「结果是真的，但不是 LLM 写的」。 */
+        /**
+         * 是否有节点降级 —— true 表示「本次运行<b>有节点降级</b>」（LLM 软失败 → 走了确定性聚合）。
+         *
+         * <p><b>它不代表产出物落过表</b> —— 产出物落不落表取决于 dag 有没有
+         * {@code persist} 声明。没有 persist 声明的 dag 记 {@code PARTIAL} 时，
+         * 业务表（{@code opc_insight_daily_report}）里<b>一行都没有</b>。</p>
+         */
         private boolean partial;
         /** LLM 失败的原因（降级时非空）；没降级时为 null。 */
         private String llmError;

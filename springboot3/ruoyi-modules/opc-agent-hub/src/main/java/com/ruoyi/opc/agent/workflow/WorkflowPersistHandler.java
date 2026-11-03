@@ -1,7 +1,9 @@
 package com.ruoyi.opc.agent.workflow;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import com.ruoyi.common.core.domain.R;
 import com.ruoyi.opc.agent.feign.RemoteInsightService;
 import com.ruoyi.opc.common.exception.OpcException;
@@ -61,8 +63,17 @@ public class WorkflowPersistHandler {
      */
     private static final String LLM_USED_FALLBACK = "FALLBACK";
 
-    /** 只用来校验 kpi_json 是不是合法 JSON —— 不重新序列化（重新序列化会改数字的形态）。 */
-    private static final ObjectMapper JSON = new ObjectMapper();
+    /**
+     * 只用来校验 kpi_json 是不是合法 JSON —— <b>不重新序列化</b>（重新序列化会改数字的形态）。
+     *
+     * <p><b>比接收侧严一点是对的</b>：产出侧知道自己的形状（kpi_json 是个对象），
+     * 而接收侧的 {@code validateKpiJson} 用的是宽松的 {@code readTree}。
+     * 这里开 {@code FAIL_ON_TRAILING_TOKENS} —— 默认它是关的，
+     * 于是 {@code {"a":1} {"b":2}}（两个 JSON 文档拼在一起）会被当成合法 JSON 放过去。</p>
+     */
+    private static final ObjectReader STRICT_JSON = new ObjectMapper()
+            .reader()
+            .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
     private final RemoteInsightService insightService;
 
@@ -111,7 +122,10 @@ public class WorkflowPersistHandler {
         try {
             r = insightService.upsertDailyReport(body);
         } catch (Exception e) {
-            throw new OpcException("日报落表失败: " + e.getMessage());
+            // OpcException 没有 (String, Throwable) 构造器（共享库 opc-common 的现状，
+            // 不为本 Task 改它）→ 至少把**异常类名**拼进消息，
+            // 否则「连接被拒」这类故障在 run 记录里只剩一行说不清的消息。
+            throw new OpcException("日报落表失败(" + e.getClass().getSimpleName() + "): " + e.getMessage());
         }
         // HTTP 200 不代表成功（CLAUDE.md 坑 #8）—— 必须查 body.code
         if (r == null) {
@@ -129,6 +143,13 @@ public class WorkflowPersistHandler {
      * {@code llm_used} —— 模型名，或 {@code "FALLBACK"}（LLM 根本没参与）。
      *
      * <p>写成状态（{@code "PARTIAL"}）是把状态塞进模型 ID 列（裁定 R-96）。</p>
+     *
+     * <p><b>它是「最后一次成功的 LLM 节点用的模型名」</b>：
+     * {@code ctx.llmModel} 由引擎在每个 LLM 节点成功时写入，后写的覆盖先写的。
+     * 一条 dag 上有多个 LLM 节点时，它<b>只代表最后一个成功的那一个</b> ——
+     * 比如 n1 成功、n2 失败，那 {@code llm_used} 是 n1 的模型名，
+     * 而 {@code report_status} 是 {@code PARTIAL}。
+     * 读这一列的时候别以为整份文案都是这个模型写的。</p>
      */
     private String llmUsed(WorkflowEngine.WorkflowContext ctx) {
         String model = ctx.getLlmModel();
@@ -136,10 +157,10 @@ public class WorkflowPersistHandler {
     }
 
     /**
-     * 取 kpi 节点的产出 —— 必须是<b>合法 JSON 的字符串</b>。
+     * 取 kpi 节点的产出 —— 必须是<b>合法 JSON 的对象</b>。
      *
-     * <p>取值失败 / 不是字符串 / 不是合法 JSON → 一律抛。
-     * 别把坏 JSON 送出去等对方报错，也别把读不出来伪装成「0 笔」。</p>
+     * <p>取值失败 / 不是字符串 / 不是合法 JSON / 是 JSON 但不是对象 / JSON 后面还有尾巴
+     * → 一律抛。别把坏 JSON 送出去等对方报错，也别把读不出来伪装成「0 笔」。</p>
      */
     private String requireKpiJson(WorkflowEngine.WorkflowContext ctx, String kpiFrom) {
         Object raw = output(ctx, kpiFrom, "kpi");
@@ -148,12 +169,20 @@ public class WorkflowPersistHandler {
         }
         JsonNode parsed;
         try {
-            parsed = JSON.readTree(text);
+            parsed = STRICT_JSON.readTree(text);
         } catch (Exception e) {
-            throw new OpcException("persist 声明的 kpi 节点产出不是合法 JSON: " + kpiFrom);
+            // 分清两种坏法：根本不是 JSON / 是 JSON 但后面还跟着多余的东西
+            String detail = (e.getMessage() != null && e.getMessage().contains("Trailing token"))
+                    ? "JSON 后面还有多余的尾巴"
+                    : "不是合法 JSON";
+            throw new OpcException("persist 声明的 kpi 节点产出" + detail + ": " + kpiFrom);
         }
         if (parsed == null || parsed.isMissingNode()) {
             throw new OpcException("persist 声明的 kpi 节点产出不是合法 JSON: " + kpiFrom);
+        }
+        if (!parsed.isObject()) {
+            throw new OpcException("persist 声明的 kpi 节点产出不是 JSON 对象"
+                    + "（kpi_json 的形状是对象）: " + kpiFrom);
         }
         return text;
     }
@@ -161,11 +190,17 @@ public class WorkflowPersistHandler {
     /**
      * 取 summary 节点的产出 —— LLM 成功时是文案，LLM 软失败时是引擎的确定性聚合摘要
      * （<b>非空</b>，见 {@code WorkflowEngine#runLlm}）。
+     *
+     * <p>空白摘要也挡掉：空的东西默默存进 {@code summary_md}，
+     * 页面上就是一张没有正文的日报 —— 「读不出来」和「是空的」要分得开。</p>
      */
     private String requireSummary(WorkflowEngine.WorkflowContext ctx, String summaryFrom) {
         Object raw = output(ctx, summaryFrom, "summary");
         if (!(raw instanceof String text)) {
             throw new OpcException("persist 声明的 summary 节点产出不是字符串: " + summaryFrom);
+        }
+        if (text.isBlank()) {
+            throw new OpcException("persist 声明的 summary 节点产出是空的: " + summaryFrom);
         }
         return text;
     }

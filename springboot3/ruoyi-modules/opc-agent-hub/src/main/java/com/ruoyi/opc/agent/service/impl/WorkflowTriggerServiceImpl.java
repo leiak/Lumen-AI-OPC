@@ -92,7 +92,9 @@ public class WorkflowTriggerServiceImpl implements IWorkflowTriggerService {
             def.setRunId(run.getId());
             WorkflowEngine.WorkflowResult result = workflowEngine.run(def, Collections.emptyMap());
 
-            // 三态：成功 / 部分降级（数字是真的但缺 LLM 解读，产出物已落表）/ 失败
+            // 三态：成功 / 部分降级（本次运行有节点降级）/ 失败
+            // 注意：产出物是否落表**取决于 dag 有没有 persist 声明** ——
+            // 没有 persist 的 dag 记 PARTIAL 时，业务表里不会有任何行。
             run.setStatus(result.isSuccess()
                     ? (result.isPartial() ? OpcConstants.TASK_PARTIAL : OpcConstants.TASK_SUCCESS)
                     : OpcConstants.TASK_FAILED);
