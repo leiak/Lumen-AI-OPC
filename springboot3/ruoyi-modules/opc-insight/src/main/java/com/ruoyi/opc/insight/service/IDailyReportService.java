@@ -1,5 +1,6 @@
 package com.ruoyi.opc.insight.service;
 
+import com.ruoyi.opc.insight.vo.DailyReportUpsertRequest;
 import com.ruoyi.opc.insight.vo.DailyReportVo;
 
 import java.time.LocalDate;
@@ -43,4 +44,21 @@ public interface IDailyReportService {
      * 按主键查询单条日报。{@code id} 不存在时抛 {@code OpcException}。
      */
     DailyReportVo getById(Long id);
+
+    /**
+     * 工作流写入路径 —— 把工作流产出的日报 upsert 进 {@code opc_insight_daily_report}。
+     *
+     * <p><b>与 {@link #generate(Long, String)} 的区别</b>：{@code generate} 是手工路径，
+     * 自己去取 KPI、调 LLM、落库，来源写死 {@code "MANUAL"}；本方法是工作流路径，
+     * 内容由调用方（引擎）算好传进来，来源写死 {@code "AGENT_WORKFLOW"}。
+     * 两条路径落到同一张表的同一行上 —— 所以才有 {@code report_source} 这一列，
+     * 让事后能分清是谁写的。</p>
+     *
+     * <p>校验失败抛 {@code OpcException}（400）；已有同 {@code (company_id, period)}
+     * 的行则先删旧再插新（snapshot 语义，与 {@code generate} 一致）。</p>
+     *
+     * @param req 工作流产出的日报内容
+     * @return 落库后的行 id
+     */
+    Long upsertFromWorkflow(DailyReportUpsertRequest req);
 }

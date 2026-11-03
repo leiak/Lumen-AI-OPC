@@ -38,6 +38,15 @@ public class DailyReportVo implements Serializable {
     private String adviceMd;
     private String llmUsed;
 
+    /** 写到哪一步：FULL / PARTIAL / FALLBACK */
+    private String reportStatus;
+
+    /** 谁写的这一行：AGENT_WORKFLOW / MANUAL */
+    private String reportSource;
+
+    /** 产出该日报的工作流运行记录 id（手工生成时为 null） */
+    private Long sourceWorkflowRunId;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
 }

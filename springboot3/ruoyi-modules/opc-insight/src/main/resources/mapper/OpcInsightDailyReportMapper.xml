@@ -12,6 +12,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="kpiJson" column="kpi_json" />
         <result property="adviceMd" column="advice_md" />
         <result property="llmUsed" column="llm_used" />
+        <result property="reportStatus" column="report_status" />
+        <result property="reportSource" column="report_source" />
+        <result property="sourceWorkflowRunId" column="source_workflow_run_id" />
         <result property="createTime" column="create_time" />
     </resultMap>
 
@@ -20,9 +23,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO opc_insight_daily_report (
             company_id, period, summary_md, kpi_json, advice_md, llm_used,
+            report_status, report_source, source_workflow_run_id,
             create_by, create_time, update_by, update_time
         ) VALUES (
             #{companyId}, #{period}, #{summaryMd}, #{kpiJson}, #{adviceMd}, #{llmUsed},
+            #{reportStatus}, #{reportSource}, #{sourceWorkflowRunId},
             #{createBy},
             COALESCE(#{createTime}, CURRENT_TIMESTAMP),
             #{updateBy}, CURRENT_TIMESTAMP
@@ -32,7 +37,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectById" resultMap="VoResultMap">
         SELECT id, company_id,
                DATE_FORMAT(period, '%Y-%m-%d') AS period,
-               summary_md, kpi_json, advice_md, llm_used, create_time
+               summary_md, kpi_json, advice_md, llm_used,
+               report_status, report_source, source_workflow_run_id,
+               create_time
         FROM opc_insight_daily_report
         WHERE id = #{id}
     </select>
@@ -40,7 +47,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectByCompanyAndDateRange" resultMap="VoResultMap">
         SELECT id, company_id,
                DATE_FORMAT(period, '%Y-%m-%d') AS period,
-               summary_md, kpi_json, advice_md, llm_used, create_time
+               summary_md, kpi_json, advice_md, llm_used,
+               report_status, report_source, source_workflow_run_id,
+               create_time
         FROM opc_insight_daily_report
         WHERE company_id = #{companyId}
           AND period &gt;= #{from}
@@ -54,7 +63,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectByCompanyAndDate" resultMap="VoResultMap">
         SELECT id, company_id,
                DATE_FORMAT(period, '%Y-%m-%d') AS period,
-               summary_md, kpi_json, advice_md, llm_used, create_time
+               summary_md, kpi_json, advice_md, llm_used,
+               report_status, report_source, source_workflow_run_id,
+               create_time
         FROM opc_insight_daily_report
         WHERE company_id = #{companyId}
           AND period = #{period}

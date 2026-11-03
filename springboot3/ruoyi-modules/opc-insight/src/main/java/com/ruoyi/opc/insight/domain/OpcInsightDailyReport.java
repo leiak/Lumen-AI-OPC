@@ -26,6 +26,9 @@ import java.time.LocalDateTime;
  *   kpi_json    JSON
  *   advice_md   MEDIUMTEXT
  *   llm_used    VARCHAR(64)
+ *   report_status        VARCHAR(16)  FULL/PARTIAL/FALLBACK
+ *   report_source        VARCHAR(32)  AGENT_WORKFLOW/MANUAL
+ *   source_workflow_run_id BIGINT     产出该日报的工作流运行记录 id
  *   create_by   VARCHAR(64) DEFAULT NULL
  *   create_time DATETIME DEFAULT CURRENT_TIMESTAMP
  *   update_by   VARCHAR(64) DEFAULT NULL
@@ -67,6 +70,26 @@ public class OpcInsightDailyReport implements Serializable {
 
     /** 生成使用的 LLM 模型 ID；LLM 失败时存 "FALLBACK" */
     private String llmUsed;
+
+    /**
+     * 写到哪一步：{@code FULL} / {@code PARTIAL} / {@code FALLBACK}。
+     *
+     * <p>FULL = 数据完整且 LLM 成功；PARTIAL = 数据降级（partial）或部分产出；
+     * FALLBACK = LLM 挂了，只有数字摘要。</p>
+     */
+    private String reportStatus;
+
+    /**
+     * 谁写的这一行：{@code AGENT_WORKFLOW}（数字员工/工作流）/
+     * {@code MANUAL}（公开接口手工生成）/ {@code SEED}（种子）。
+     *
+     * <p>这张表有三个写入方，都往同一个 {@code (company_id, period)} 上写 ——
+     * 没有这一列就分不清是谁写的。</p>
+     */
+    private String reportSource;
+
+    /** 产出该日报的工作流运行记录 id（手工生成时为 null）—— 用来从日报反查回那次运行 */
+    private Long sourceWorkflowRunId;
 
     /** 创建人（系统自动跑时固定为 "system"） */
     private String createBy;

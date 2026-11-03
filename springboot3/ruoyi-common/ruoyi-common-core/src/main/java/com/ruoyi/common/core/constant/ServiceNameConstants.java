@@ -41,4 +41,9 @@ public class ServiceNameConstants
      * OPC 用户中心服务（M4 INSIGHT 拉取公司档案）
      */
     public static final String USER_CENTER_SERVICE = "opc-user-center";
+
+    /**
+     * OPC 数据洞察服务（数字员工的工作流产出物落在这里）
+     */
+    public static final String INSIGHT_SERVICE = "opc-insight";
 }
