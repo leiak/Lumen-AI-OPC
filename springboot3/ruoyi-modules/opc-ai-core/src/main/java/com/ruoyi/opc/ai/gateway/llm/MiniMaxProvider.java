@@ -58,7 +58,20 @@ public class MiniMaxProvider implements ChatModelProvider {
                     .success(true)
                     .rawJson(raw)
                     .build();
+        } catch (LlmHttpException e) {
+            // 有状态码 → 上层能判断该不该重试（429/4xx 不重试，5xx 重试）。
+            // catch 顺序：LlmHttpException 必须在 Exception 前面（它是子类）。
+            log.error("[MiniMax] 调用失败 httpStatus={}", e.getStatusCode(), e);
+            return ChatResponse.builder()
+                    .model(modelName)
+                    .success(false)
+                    .httpStatus(e.getStatusCode())
+                    .errorMessage("MiniMax 调用失败(HTTP " + e.getStatusCode() + "): " + e.getMessage())
+                    .latencyMs(System.currentTimeMillis() - start)
+                    .build();
         } catch (Exception e) {
+            // 网络错 / 超时 / 解析错 → httpStatus 留 null → 上层按「可重试」处理。
+            // 不要设 0 或 -1：isRetryable 判的是 status == null。
             log.error("[MiniMax] 调用失败", e);
             return ChatResponse.builder()
                     .model(modelName)

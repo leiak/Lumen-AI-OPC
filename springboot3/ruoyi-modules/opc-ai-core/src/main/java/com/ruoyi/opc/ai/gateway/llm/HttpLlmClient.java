@@ -78,9 +78,16 @@ public class HttpLlmClient {
         try {
             HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (resp.statusCode() / 100 != 2) {
-                throw new RuntimeException("HTTP " + resp.statusCode() + " from " + baseUrl + ": " + resp.body());
+                // 非 2xx → 抛带状态码的异常，让上层能判断「该不该重试」。
+                // 状态码必须是结构化字段，不能只拼进消息字符串（CLAUDE.md 坑 #8 同构病）。
+                throw new LlmHttpException(resp.statusCode(),
+                        "HTTP " + resp.statusCode() + " from " + baseUrl + ": " + resp.body());
             }
             return resp.body();
+        } catch (LlmHttpException e) {
+            // 顺序反了就白改：LlmHttpException 是 RuntimeException 的子类，
+            // 被后面的 catch(Exception) 接住再包一层，状态码就又只剩字符串了。
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("LLM HTTP call failed: " + e.getMessage(), e);
         }

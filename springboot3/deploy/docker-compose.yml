@@ -233,6 +233,16 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: "5672"
       SERVER_PORT: "9306"
+      # LLM provider 凭证 —— insight 依赖 opc-ai-core,里面就有 LlmGateway 与各 provider。
+      # 以前这里**一个 LLM env 都没有** → 两个 provider 的 enabled() 恒为 false
+      # → insight 根本没有可用的 LLM → 它那 12 条产出全是 FALLBACK
+      # (界面上写着「AI 数据洞察」,实际一条都不是 AI 生成的)。
+      # 默认值是**空**:key 没配 → 该 provider 不启用,拿假 key 去撞 401 只是白等。
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+      # 降级链开关 —— 放在环境变量里,改开关不用重建镜像,重启容器即可。
+      OPC_LLM_DEEPSEEK_ENABLED: "${OPC_LLM_DEEPSEEK_ENABLED:-true}"
+      OPC_LLM_MINIMAX_ENABLED: "${OPC_LLM_MINIMAX_ENABLED:-true}"
     depends_on:
       - nacos1
       - mysql
@@ -478,8 +488,14 @@ services:
       # 直连 provider, 不走 Feign, 所以 agent-hub 自己得有一份 key。
       # 以前这里一个 key 都没有 → 所有 provider 的 enabled() 恒为 false
       # → 工作流只要带 LLM 节点就必然失败。
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-sk-placeholder}
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-ey-placeholder}
+      # 默认值改成**空**：key 没配 → enabled() = enabled && apiKey 非空 → false →
+      # 该 provider 不参与。拿 sk-placeholder / ey-placeholder 这种假 key 去撞 401
+      # 只是换一种方式说假话,而且会白白消耗重试次数,把真正的故障掩盖掉。
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+      # 降级链开关 —— 放在环境变量里,改开关不用重建镜像,重启容器即可。
+      OPC_LLM_DEEPSEEK_ENABLED: "${OPC_LLM_DEEPSEEK_ENABLED:-true}"
+      OPC_LLM_MINIMAX_ENABLED: "${OPC_LLM_MINIMAX_ENABLED:-true}"
     depends_on:
       - nacos1
       - mysql
@@ -524,8 +540,13 @@ services:
       SPRING_AI_OPENAI_API_KEY: sk-placeholder-deepseek
       SPRING_AI_ZHIPUAI_API_KEY: placeholder
       # W48.6: 真实 LLM provider key (DeepSeek + MiniMax)
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-sk-placeholder}
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-ey-placeholder}
+      # 默认值是**空**而不是假 key —— key 没配就等于该 provider 不启用,
+      # 拿占位符去撞 401 会白白消耗重试次数,把真正的故障掩盖掉。
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+      # 降级链开关 —— 放在环境变量里,改开关不用重建镜像,重启容器即可。
+      OPC_LLM_DEEPSEEK_ENABLED: "${OPC_LLM_DEEPSEEK_ENABLED:-true}"
+      OPC_LLM_MINIMAX_ENABLED: "${OPC_LLM_MINIMAX_ENABLED:-true}"
     depends_on:
       - nacos1
       - mysql

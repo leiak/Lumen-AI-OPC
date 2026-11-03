@@ -101,13 +101,27 @@ public class PromptGuard {
                 Pattern.CASE_INSENSITIVE));
     }
 
-    /** 工具调用白名单 */
+    /**
+     * 工具调用白名单 —— 「模型能调什么」的<b>真相源</b>。
+     *
+     * <p>以前这里挂着 11 个名字，其中<b>9 个全仓从来没有任何工具实现</b>
+     * （{@code extract_voucher} / {@code create_voucher} / {@code query_daily_report} /
+     * {@code search_product} / {@code query_inventory} / {@code query_customer} /
+     * {@code create_follow_up} / {@code parse_resume} / {@code schedule_interview}），
+     * 而真实存在的 {@code query_bank_flow} 反而<b>不在</b>名单里 ——
+     * 也就是白名单放行了 9 个不存在的工具、拦住了 1 个真实存在的工具。
+     * 留着不存在的名字等于对外说「这个能力有」，那是本仓库最讨厌的那类假话。</p>
+     *
+     * <p><b>现在恰好 3 个，与 {@code FinanceTools} 注册的 3 个工具一一对应</b>。</p>
+     *
+     * <p><b>将来要加第 4 个真工具，必须在同一个 commit 里</b>：
+     * ① 改 {@code FinanceTools} 的 {@code registry.register(...)}，
+     * ② 改这里的 {@code ALLOWED_TOOLS}，
+     * ③ 改 {@code PromptGuardHardeningTest} 的断言。
+     * 只做 ① 不做 ② → 新工具被自己的护栏拦住；只做 ② 不做 ① → 又一次对外说假话。</p>
+     */
     private static final List<String> ALLOWED_TOOLS = List.of(
-            "extract_voucher", "create_voucher", "query_voucher",
-            "query_daily_report", "query_balance",
-            "search_product", "query_inventory",
-            "query_customer", "create_follow_up",
-            "parse_resume", "schedule_interview"
+            "query_bank_flow", "query_voucher", "query_balance"
     );
 
     /**

@@ -2,28 +2,63 @@ package com.ruoyi.opc.ai.gateway.llm;
 
 import com.ruoyi.opc.common.constant.OpcConstants;
 import com.ruoyi.opc.common.exception.OpcException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 /**
- * LLM 网关（多模型路由 + 失败 fallback + 缓存 + 计量埋点）
+ * LLM 网关（多模型路由 + 重试 + 失败 fallback + 缓存 + 计量埋点）
+ *
+ * <p><b>重试语义</b>：{@code opc.llm.max-retries} 的含义是「<b>每个 provider
+ * 最多尝试这么多次</b>」（不是「总共几次」）。一个 provider 的重试次数用尽后，
+ * 才降级到下一个 provider；全部 provider 都失败 → 抛 {@link OpcException}。</p>
+ *
+ * <p><b>两条失败路径必须分清</b>（混成一条就说不清该不该重试）：</p>
+ * <ul>
+ *   <li><b>抛异常</b>（{@code catch (Exception e)}）→ <b>无条件重试</b>。
+ *       抛异常意味着「没拿到 HTTP 响应」，无从判断是不是配额问题。</li>
+ *   <li><b>返回失败响应</b>（{@code success=false}）→ 由 {@link #isRetryable(ChatResponse)}
+ *       判断：429 与其它 4xx <b>不重试</b>（配额/鉴权问题重试只会再撞一次，白等），
+ *       5xx 与「没有状态码的未知错误」才重试。</li>
+ * </ul>
  *
  * @author OAC
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class LlmGateway {
+
+    /** {@code opc.llm.max-retries} 的默认值 —— 每个 provider 最多尝试 3 次。 */
+    public static final int DEFAULT_MAX_RETRIES = 3;
 
     private final List<ChatModelProvider> providers;
     private final TokenMeter tokenMeter;
     private final LlmCache cache;
+    private final int maxRetries;
 
     /**
-     * 统一聊天入口（带 fallback）
+     * 3 参构造器 —— 默认 {@link #DEFAULT_MAX_RETRIES} 次重试。
+     * 保留它是为了让既有测试（{@code new LlmGateway(providers, tokenMeter, cache)}）不用改。
+     */
+    public LlmGateway(List<ChatModelProvider> providers, TokenMeter tokenMeter, LlmCache cache) {
+        this(providers, tokenMeter, cache, DEFAULT_MAX_RETRIES);
+    }
+
+    @Autowired
+    public LlmGateway(List<ChatModelProvider> providers, TokenMeter tokenMeter, LlmCache cache,
+                      @Value("${opc.llm.max-retries:3}") int maxRetries) {
+        this.providers = providers;
+        this.tokenMeter = tokenMeter;
+        this.cache = cache;
+        // 配 0 或负数 → 至少试一次（不能一个都不试）。
+        this.maxRetries = Math.max(1, maxRetries);
+    }
+
+    /**
+     * 统一聊天入口（带重试 + fallback）
      */
     public ChatResponse chat(List<ChatMessage> messages, ChatModelProvider.ChatOptions options, ChatContext ctx) {
         // 1. 缓存命中
@@ -56,44 +91,73 @@ public class LlmGateway {
         // chatStream() 走 pickPrimary()（排序过），两条路的行为因此一直不一致。
         // 现在统一按 priority 升序遍历 —— 和 chatStream 对齐。
         ChatResponse lastError = null;
+        String lastProviderName = null;
         List<ChatModelProvider> ordered = providers.stream()
                 .sorted(java.util.Comparator.comparingInt(ChatModelProvider::priority))
                 .toList();
         for (ChatModelProvider provider : ordered) {
             if (!provider.enabled()) continue;
-            try {
-                long start = System.currentTimeMillis();
-                ChatResponse resp = provider.chat(messages, options);
-                long cost = System.currentTimeMillis() - start;
-                resp.setLatencyMs(cost);
-                if (resp.getSuccess() == null || !resp.getSuccess()) {
-                    lastError = resp;
-                    log.warn("[LLM] provider={} 调用失败：{}", provider.name(), resp.getErrorMessage());
-                    continue;
-                }
-                log.info("[LLM] provider={} 调用成功 cost={}ms tokens={}",
-                        provider.name(), cost, resp.getTokenTotal());
+            // 重试循环**只包住 provider.chat(...) 这一段** ——
+            // 缓存的查 / 写 / 计量三处在循环外面，位置与以前一致。
+            for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    long start = System.currentTimeMillis();
+                    ChatResponse resp = provider.chat(messages, options);
+                    long cost = System.currentTimeMillis() - start;
+                    resp.setLatencyMs(cost);
+                    if (resp.getSuccess() == null || !resp.getSuccess()) {
+                        // 失败响应：有状态码 → 由 isRetryable 判断该不该重试。
+                        lastError = resp;
+                        lastProviderName = provider.name();
+                        if (!isRetryable(resp)) {
+                            log.warn("[LLM] provider={} 第 {} 次失败（不重试）：{}",
+                                    provider.name(), attempt, resp.getErrorMessage());
+                            break;
+                        }
+                        log.warn("[LLM] provider={} 第 {} 次失败：{}",
+                                provider.name(), attempt, resp.getErrorMessage());
+                        continue;
+                    }
+                    log.info("[LLM] provider={} 调用成功 cost={}ms tokens={}",
+                            provider.name(), cost, resp.getTokenTotal());
 
-                // 3. Token 计量埋点
-                if (ctx != null) {
-                    tokenMeter.record(ctx, provider.model(), resp);
-                }
+                    // 3. Token 计量埋点
+                    if (ctx != null) {
+                        tokenMeter.record(ctx, provider.model(), resp);
+                    }
 
-                // 4. 写缓存
-                cache.put(cacheKey, resp, OpcConstants.PRICE_DEEPSEEK_OUTPUT);
-                return resp;
-            } catch (Exception e) {
-                log.warn("[LLM] provider={} 异常：{}", provider.name(), e.getMessage());
-                lastError = ChatResponse.builder()
-                        .model(provider.model())
-                        .success(false)
-                        .errorMessage(e.getMessage())
-                        .build();
+                    // 4. 写缓存（只在成功时写一次 —— 不许每次重试都写缓存）
+                    cache.put(cacheKey, resp, OpcConstants.PRICE_DEEPSEEK_OUTPUT);
+                    return resp;
+                } catch (Exception e) {
+                    // 抛异常 = 没拿到 HTTP 响应，无从判断是不是配额问题 → **无条件重试**。
+                    // （isRetryable 只作用于「返回了失败响应」的分支，两条路径别混成一条。）
+                    log.warn("[LLM] provider={} 第 {} 次异常：{}", provider.name(), attempt, e.getMessage());
+                    lastError = ChatResponse.builder()
+                            .model(provider.model())
+                            .success(false)
+                            .errorMessage(e.getMessage())
+                            .build();
+                    lastProviderName = provider.name();
+                }
             }
         }
 
-        throw new OpcException("所有 LLM provider 失败，最后错误：" +
+        throw new OpcException("所有 LLM provider 失败，最后错误（provider=" + lastProviderName + "）：" +
                 (lastError != null ? lastError.getErrorMessage() : "unknown"));
+    }
+
+    /**
+     * 429 与 4xx 不重试 —— 重试同样会撞，只是白等；5xx 与网络错才值得再试。
+     *
+     * <p>{@code httpStatus == null}（超时 / 连接错 / 解析错）算<b>可重试</b>：
+     * 未知错误 → 再试一次是合理的默认值。</p>
+     */
+    private boolean isRetryable(ChatResponse resp) {
+        Integer status = resp.getHttpStatus();
+        if (status == null) return true;      // 超时 / 连接错
+        if (status == 429) return false;      // 配额问题 —— 再撞一次也是 429
+        return status >= 500;                 // 5xx 才是服务端临时故障，值得再试
     }
 
     /** 流式调用 */

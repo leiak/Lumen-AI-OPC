@@ -93,12 +93,14 @@ opc:
     timeout-seconds: 60
     # 各 provider 配置（被各 Provider @Component 读取）
     deepseek:
-      enabled: false  # W48.6: 用户要求本轮测试只走 MiniMax，临时关
+      # 降级链开关：MiniMax 挂掉时退到 DeepSeek。开关闭住在环境变量里 →
+      # 改开关不用重建镜像，重启容器即可。
+      enabled: ${OPC_LLM_DEEPSEEK_ENABLED:false}
       api-key: ${DEEPSEEK_API_KEY:}
       base-url: https://api.deepseek.com/v1
       model: deepseek-chat
     minimax:
-      enabled: true
+      enabled: ${OPC_LLM_MINIMAX_ENABLED:true}
       api-key: ${MINIMAX_API_KEY:}
       base-url: https://api.minimaxi.com/v1
       model: MiniMax-Text-01

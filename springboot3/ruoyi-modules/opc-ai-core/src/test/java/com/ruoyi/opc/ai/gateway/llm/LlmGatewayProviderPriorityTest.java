@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -83,8 +84,8 @@ class LlmGatewayProviderPriorityTest {
     }
 
     @Test
-    @DisplayName("高优先级 provider 失败 → 回退到下一个")
-    void chat_fallsBackToNextProviderOnFailure() {
+    @DisplayName("高优先级 provider 重试满 3 次仍失败 → 回退到下一个")
+    void chat_retriesExhaustedThenFallsBackToNextProvider() {
         enable(highPriority, 5, "MiniMax-Text-01");
         enable(lowPriority, 10, "deepseek-v3");
         when(highPriority.chat(anyList(), any())).thenThrow(new RuntimeException("502 upstream"));
@@ -95,7 +96,9 @@ class LlmGatewayProviderPriorityTest {
         ChatResponse resp = gw.chat(List.of(ChatMessage.user("hi")), null, null);
 
         assertEquals("备模型的答案", resp.getContent());
-        verify(highPriority).chat(anyList(), any());
+        // 规格变更：max-retries=3 → 高优先级 provider 被调**恰好 3 次**才降级。
+        // 断言是「恰好 3 次」而不是「至少 1 次」—— 改坏成 2 次或 4 次都会红。
+        verify(highPriority, times(3)).chat(anyList(), any());
         verify(lowPriority).chat(anyList(), any());
     }
 
@@ -113,6 +116,9 @@ class LlmGatewayProviderPriorityTest {
         ChatResponse resp = gw.chat(List.of(ChatMessage.user("hi")), null, null);
 
         assertEquals("备模型的答案", resp.getContent());
+        // 失败响应没有 httpStatus → 未知错误算「可重试」→ 被调 3 次。
+        // 把这条口径钉成事实：以后谁把 isRetryable 改成「只有 5xx 才重试」，这里会红。
+        verify(highPriority, times(3)).chat(anyList(), any());
         verify(lowPriority).chat(anyList(), any());
     }
 

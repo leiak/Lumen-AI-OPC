@@ -95,7 +95,14 @@ class PromptGuardHardeningTest {
         assertThrows(OpcException.class, () -> guard.validateToolName("vault_store"));
         assertThrows(OpcException.class, () -> guard.validateToolName("update_database_credentials"));
         assertThrows(OpcException.class, () -> guard.validateToolName("drop_table"));
-        assertDoesNotThrow(() -> guard.validateToolName("extract_voucher"));
+        // extract_voucher 现在是下线工具（没有工具实现）→ 必须被拒绝。
+        // 这条断言是「把护栏转个方向」，不是删除 —— 留着不存在的名字等于对外说「这个能力有」。
+        assertThrows(OpcException.class, () -> guard.validateToolName("extract_voucher"));
+        // search_product 同样从没有过工具实现 → 必须被拒绝
+        assertThrows(OpcException.class, () -> guard.validateToolName("search_product"));
+        // 白名单里恰好是这 3 个真实存在的工具（FinanceTools 注册的那 3 个）→ 必须放行
         assertDoesNotThrow(() -> guard.validateToolName("query_balance"));
+        assertDoesNotThrow(() -> guard.validateToolName("query_bank_flow"));
+        assertDoesNotThrow(() -> guard.validateToolName("query_voucher"));
     }
 }

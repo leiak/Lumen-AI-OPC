@@ -58,6 +58,47 @@ jasypt:
   encryptor:
     password: ${JASYPT_PASSWORD:OpcEncrypt!2026}
 
+# ============================================================
+# LLM 供给层配置
+#
+# 这段以前**整个不存在** —— opc-insight 连一个 opc.llm 段都没有，
+# compose 里也没有一个 LLM key，两个 provider 的 enabled() 恒为 false
+# → insight 根本没有可用的 LLM → 它那 12 条产出全是 FALLBACK
+# （界面上写着「AI 数据洞察」，实际一条都不是 AI 生成的）。
+#
+# 下面这一段与 deploy/nacos/application-dev.yml 的 opc.llm **逐条一致**
+# —— 同一组键在四个服务里必须能逐行对表，否则就又变成「配置真相源有两份」。
+# ============================================================
+opc:
+  llm:
+    primary: MiniMax-Text-01  # MiniMax 优先 (priority=5)
+    fallback: deepseek-v3
+    enable-cache: true
+    cache-ttl: 3600
+    max-retries: 3
+    timeout-seconds: 60
+    # 各 provider 配置（被各 Provider @Component 读取）
+    deepseek:
+      # 降级链开关：MiniMax 挂掉时退到 DeepSeek。开关闭住在环境变量里 →
+      # 改开关不用重建镜像，重启容器即可。
+      enabled: ${OPC_LLM_DEEPSEEK_ENABLED:false}
+      api-key: ${DEEPSEEK_API_KEY:}
+      base-url: https://api.deepseek.com/v1
+      model: deepseek-chat
+    minimax:
+      enabled: ${OPC_LLM_MINIMAX_ENABLED:true}
+      api-key: ${MINIMAX_API_KEY:}
+      base-url: https://api.minimaxi.com/v1
+      model: MiniMax-Text-01
+      # 向量化模型与聊天模型是两回事：聊天用 MiniMax-Text-01，向量化用 embo-01
+      embedding-model: embo-01
+      embedding-dimension: 1536
+    openai:
+      enabled: false
+      api-key: ${OPENAI_API_KEY:}
+      base-url: https://api.openai.com/v1
+      model: gpt-4o-mini
+
 mybatis:
   mapper-locations: classpath*:mapper/**/*.xml
   type-aliases-package: com.ruoyi.opc.insight.domain

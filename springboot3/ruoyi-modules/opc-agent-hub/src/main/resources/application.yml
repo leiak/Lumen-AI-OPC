@@ -95,15 +95,22 @@ opc:
     max-retries: 3
     timeout-seconds: 60
     deepseek:
-      enabled: false
+      # 降级链开关：MiniMax 挂掉时退到 DeepSeek。开关闭住在环境变量里 →
+      # 改开关不用重建镜像，重启容器即可。
+      enabled: ${OPC_LLM_DEEPSEEK_ENABLED:false}
       api-key: ${DEEPSEEK_API_KEY:}
       base-url: https://api.deepseek.com/v1
       model: deepseek-chat
     minimax:
-      enabled: true
+      enabled: ${OPC_LLM_MINIMAX_ENABLED:true}
       api-key: ${MINIMAX_API_KEY:}
       base-url: https://api.minimaxi.com/v1
       model: MiniMax-Text-01
+      # 向量化模型与聊天模型是两回事：聊天用 MiniMax-Text-01，向量化用 embo-01
+      # （值与 MiniMaxEmbeddingProvider 的 @Value 默认值一致，补上是为了让
+      #   四份 yml 的 opc.llm 段能逐行对表）
+      embedding-model: embo-01
+      embedding-dimension: 1536
     openai:
       enabled: false
       api-key: ${OPENAI_API_KEY:}
