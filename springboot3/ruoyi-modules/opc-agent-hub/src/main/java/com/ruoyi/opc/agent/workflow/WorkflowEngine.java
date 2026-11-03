@@ -1,15 +1,23 @@
 package com.ruoyi.opc.agent.workflow;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.ruoyi.opc.ai.runtime.AgentRuntime;
+import com.ruoyi.opc.ai.tools.ToolExecutor;
 import com.ruoyi.opc.common.exception.OpcException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -34,7 +42,21 @@ import java.util.Map;
 public class WorkflowEngine {
 
     private final AgentRuntime agentRuntime;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ToolExecutor toolExecutor;
+
+    /**
+     * 引擎自己的 ObjectMapper —— <b>不</b>用 Spring 注入的那个。
+     *
+     * <p><b>为什么数字口径要钉住</b>：工具返回的 JSON 里金额是 {@code "totalIn":51892.00}
+     * （BigDecimal，scale 2）。解析时若解成 {@code Double}，再序列化出去就成了 {@code 51892.0} ——
+     * 落进 {@code kpi_json} 的数字跟工具返回的对不上，逐笔对账必失真。
+     * 所以这里开 {@code USE_BIG_DECIMAL_FOR_FLOATS}，并解析成 {@code Map}（<b>不</b>走
+     * {@code JsonNode}：Jackson 2.21 的 {@code STRIP_TRAILING_BIGDECIMAL_ZEROES} 默认开，
+     * {@code DecimalNode} 会把末尾的零裁掉）。
+     */
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+            .enable(SerializationFeature.WRITE_BIGDECIMAL_AS_PLAIN);
 
     public WorkflowResult run(WorkflowDefinition def, Map<String, Object> inputParams) {
         long start = System.currentTimeMillis();
@@ -67,7 +89,6 @@ public class WorkflowEngine {
                 if (nodeDef == null) break;
 
                 String type = nodeDef.path("type").asText("");
-                Map<String, Object> nodeCfg = objectMapper.convertValue(nodeDef.path("config"), Map.class);
                 ctx.steps.add(new StepLog(current, type));
 
                 switch (type) {
@@ -86,6 +107,8 @@ public class WorkflowEngine {
 
             return WorkflowResult.builder()
                     .success(true)
+                    .partial(ctx.partial)
+                    .llmError(ctx.llmError)
                     .outputs(ctx.outputs)
                     .stepLogs(ctx.steps)
                     .costMs(System.currentTimeMillis() - start)
@@ -94,36 +117,185 @@ public class WorkflowEngine {
             log.error("工作流执行失败", e);
             return WorkflowResult.builder()
                     .success(false)
+                    .partial(ctx.partial)
+                    .llmError(ctx.llmError)
                     .errorMessage(e.getMessage())
+                    .outputs(ctx.outputs)
                     .stepLogs(ctx.steps)
                     .costMs(System.currentTimeMillis() - start)
                     .build();
         }
     }
 
-    private void runLlm(JsonNode nodeDef, WorkflowContext ctx) throws Exception {
-        String prompt = nodeDef.path("prompt").asText("");
+    /**
+     * LLM 节点 —— <b>失败是软失败</b>。
+     *
+     * <p>LLM 会挂：超时、provider 故障、PromptGuard 403（{@code PromptGuard.sanitize}
+     * 命中注入模式就抛异常 —— 这是<b>正确</b>行为，别绕）。
+     * 以前这类失败直接把整条 run 打死，于是<b>前面 TOOL 节点已经取到的真实数据被一起丢掉</b>。
+     * 现在：标记 {@code partial}、记下错误、落一段<b>确定性</b>聚合摘要，继续往下走。
+     *
+     * <p>确定性摘要只由 {@link DeterministicAggregator} 从工具返回值里拼，
+     * 数字一个都不多 —— 界面能认出「这段没走 LLM」。
+     */
+    private void runLlm(JsonNode nodeDef, WorkflowContext ctx) {
+        String nodeId = nodeDef.path("id").asText();
+        try {
+            String prompt = nodeDef.path("prompt").asText("");
+            Map<String, Object> vars = buildVars(ctx);
+            String renderedPrompt = renderTemplate(prompt, vars);
+
+            // 节点级超时；没写就 null（走 AgentRuntime 的默认 30 秒）
+            Integer timeout = nodeDef.has("stepTimeoutSeconds")
+                    ? Integer.valueOf(nodeDef.path("stepTimeoutSeconds").asInt())
+                    : null;
+
+            AgentRuntime.AgentTaskRequest req = AgentRuntime.AgentTaskRequest.builder()
+                    .userInput(renderedPrompt)
+                    .sessionId("wf-" + nodeId + "-" + System.currentTimeMillis())
+                    .maxSteps(3)
+                    .stepTimeoutSeconds(timeout)
+                    // 归属必须一路带到 LLM 调用, 否则这次调用的 token/成本记不进账单
+                    .companyId(ctx.companyId)
+                    .userId(ctx.userId)
+                    .scene("workflow_llm")
+                    // 工作流的 prompt 里内联了整份财务 JSON（真流水、金额、对手方名）。
+                    // 走记忆的话这段数据会被写进长期记忆库 —— 以后同一租户的普通聊天
+                    // 可能检索到它，把「昨天日报的数字」当成历史事实说出来。
+                    .skipMemory(Boolean.TRUE)
+                    .build();
+            AgentRuntime.AgentTaskResult res = agentRuntime.run(req);
+            if (res == null) {
+                throw new OpcException("LLM 节点 " + nodeId + " 没有返回结果");
+            }
+            if (!res.isSuccess()) {
+                throw new OpcException("LLM 节点 " + nodeId + " 执行失败：" + res.getContent());
+            }
+            ctx.llmModel = res.getModel();
+            ctx.outputs.put(nodeId, res.getContent());
+        } catch (Exception e) {
+            // 软失败：捕 Exception（不只是 OpcException）—— 超时、序列化…都会走到这。
+            log.warn("LLM 节点 {} 失败，转为降级继续: {}", nodeId, e.getMessage());
+            ctx.partial = true;
+            ctx.llmError = e.getMessage();
+            ctx.outputs.put(nodeId, deterministicSummary(ctx));
+        }
+    }
+
+    /**
+     * TOOL 节点 —— 真的调 {@link ToolExecutor}。
+     *
+     * <p>产物存成两种 key：
+     * <ul>
+     *   <li>{@code <nodeId>} = {@code {"query_bank_flow":{...},"query_voucher":{...}}}
+     *       （按工具名<b>嵌套</b>的结构 —— persist 的 {@code kpi_json}、健康检查 26.3 的
+     *       对表、前端取数都按这个形状读，<b>三处必须一致</b>）；</li>
+     *   <li>{@code <nodeId>.<toolName>} = 工具返回的原始 JSON 字符串（单份）。</li>
+     * </ul>
+     *
+     * <p><b>TOOL 失败是硬失败</b> —— 取不到数就没有数字，落一份空日报比不落更糟。
+     */
+    private void runTool(JsonNode nodeDef, WorkflowContext ctx) throws Exception {
+        String nodeId = nodeDef.path("id").asText();
+        JsonNode toolsNode = nodeDef.path("tools");
+        if (toolsNode == null || !toolsNode.isArray() || toolsNode.isEmpty()) {
+            throw new OpcException("TOOL 节点 " + nodeId + " 没有声明 tools");
+        }
+        Map<String, Object> vars = buildVars(ctx);
+        AgentRuntime.AgentTaskRequest req = AgentRuntime.AgentTaskRequest.builder()
+                .companyId(ctx.companyId)
+                .userId(ctx.userId)
+                .sessionId("wf-" + nodeId + "-" + System.currentTimeMillis())
+                .build();
+        // args 是**节点级**的（同一节点的所有工具共用一份 args）—— 本轮 dag 里两个工具区间相同。
+        String argsJson = renderTemplate(nodeDef.path("args").toString(), vars);
+
+        Map<String, Object> merged = new LinkedHashMap<>();
+        for (JsonNode t : toolsNode) {
+            String toolName = t.asText();
+            String result = toolExecutor.execute(toolName, argsJson, req);
+            ctx.outputs.put(nodeId + "." + toolName, result);
+            merged.put(toolName, parseToolResult(result));
+        }
+        ctx.outputs.put(nodeId, objectMapper.writeValueAsString(merged));
+    }
+
+    /**
+     * 工具返回值 → Map（保留 BigDecimal 的 scale，见 {@link #objectMapper}）。
+     * 不是 JSON 对象时原样包一层（不编内容）。
+     */
+    private Map<String, Object> parseToolResult(String result) {
+        if (result == null || result.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(result, new TypeReference<Map<String, Object>>() {
+            });
+        } catch (Exception e) {
+            log.warn("工具返回值不是 JSON 对象，按原文保留: {}", e.getMessage());
+            Map<String, Object> raw = new LinkedHashMap<>();
+            raw.put("rawText", result);
+            return raw;
+        }
+    }
+
+    /**
+     * LLM 失败时的确定性摘要。
+     *
+     * <p>扫 {@code ctx.outputs} 里形如 {@code <nodeId>.query_bank_flow} /
+     * {@code <nodeId>.query_voucher} 的 key（<b>按 key 排序</b> → 顺序确定，
+     * 健康检查可以按字面断言），逐个解析后交给 {@link DeterministicAggregator}，
+     * 多行用换行拼接。
+     */
+    private String deterministicSummary(WorkflowContext ctx) {
+        String yesterday = (String) builtinVars().get("yesterday");
+        List<String> keys = new ArrayList<>(ctx.outputs.keySet());
+        Collections.sort(keys);
+        List<String> parts = new ArrayList<>();
+        for (String key : keys) {
+            Object value = ctx.outputs.get(key);
+            if (!(value instanceof String text) || text.isBlank()) {
+                continue;
+            }
+            if (key.endsWith(".query_bank_flow")) {
+                parts.add(DeterministicAggregator.bankFlowSummary(parseToolResult(text), yesterday));
+            } else if (key.endsWith(".query_voucher")) {
+                parts.add(DeterministicAggregator.voucherSummary(parseToolResult(text), yesterday));
+            }
+        }
+        if (parts.isEmpty()) {
+            // 没有工具数据可聚合 —— 但**不能留空**：下游 persist 要拿这段内容。
+            return DeterministicAggregator.PREFIX + " 未取到可聚合的工具数据。";
+        }
+        return String.join("\n", parts);
+    }
+
+    /**
+     * 内置日期变量 —— 北京时间口径。
+     *
+     * <p>容器 JVM 是 UTC（实测 {@code NOW()} 与宿主机差 8 小时），
+     * {@code LocalDate.now()} 会差 8 小时 → 显式用 {@code Asia/Shanghai}。
+     */
+    private Map<String, Object> builtinVars() {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("today", today.toString());
+        vars.put("yesterday", today.minusDays(1).toString());
+        vars.put("weekAgo", today.minusDays(7).toString());
+        vars.put("monthAgo", today.minusDays(30).toString());
+        return vars;
+    }
+
+    /** 模板变量：入参 + 上游产出 + 内置日期变量 + 只读的 companyId。 */
+    private Map<String, Object> buildVars(WorkflowContext ctx) {
         Map<String, Object> vars = new HashMap<>();
         vars.putAll(ctx.inputParams);
         vars.putAll(ctx.outputs);
-        String renderedPrompt = renderTemplate(prompt, vars);
-
-        AgentRuntime.AgentTaskRequest req = AgentRuntime.AgentTaskRequest.builder()
-                .userInput(renderedPrompt)
-                .sessionId("wf-" + System.currentTimeMillis())
-                .maxSteps(3)
-                // 归属必须一路带到 LLM 调用, 否则这次调用的 token/成本记不进账单
-                .companyId(ctx.companyId)
-                .userId(ctx.userId)
-                .scene("workflow_llm")
-                .build();
-        AgentRuntime.AgentTaskResult res = agentRuntime.run(req);
-        ctx.outputs.put(nodeDef.path("id").asText(), res.getContent());
-    }
-
-    private void runTool(JsonNode nodeDef, WorkflowContext ctx) {
-        // TODO: 调 ToolExecutor
-        ctx.outputs.put(nodeDef.path("id").asText(), "{}");
+        vars.putAll(builtinVars());
+        if (ctx.companyId != null) {
+            vars.put("companyId", ctx.companyId);
+        }
+        return vars;
     }
 
     private String runCondition(JsonNode nodeDef, WorkflowContext ctx) {
@@ -193,6 +365,12 @@ public class WorkflowEngine {
          * 触发者用户 ID。定时触发没有登录用户 → 0（系统）。
          */
         private Long userId;
+
+        /**
+         * 工作流运行记录 ID —— 调用方（触发服务）写完运行记录后回填，
+         * 产出物落表时要带上它（溯源）。
+         */
+        private Long runId;
     }
 
     @lombok.Data
@@ -204,6 +382,12 @@ public class WorkflowEngine {
         private Long companyId;
         /** 触发者（来自 {@link WorkflowDefinition#getUserId()}）。 */
         private Long userId;
+        /** LLM 节点实际用的模型名；LLM 没跑成功时为 null。 */
+        private String llmModel;
+        /** 是否有节点降级（LLM 失败 → 走确定性聚合）。 */
+        private boolean partial;
+        /** LLM 失败的原因；没失败时为 null。 */
+        private String llmError;
     }
 
     @lombok.Data
@@ -223,6 +407,10 @@ public class WorkflowEngine {
         private Map<String, Object> outputs;
         private List<StepLog> stepLogs;
         private long costMs;
+        /** 是否有节点降级 —— true 表示「结果是真的，但不是 LLM 写的」。 */
+        private boolean partial;
+        /** LLM 失败的原因（降级时非空）；没降级时为 null。 */
+        private String llmError;
     }
 
 }

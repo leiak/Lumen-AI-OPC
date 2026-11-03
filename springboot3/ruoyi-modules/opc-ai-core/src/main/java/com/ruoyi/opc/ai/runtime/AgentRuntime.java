@@ -47,6 +47,7 @@ public class AgentRuntime {
      */
     public AgentTaskResult run(AgentTaskRequest request) {
         long startTime = System.currentTimeMillis();
+        boolean skipMemory = skipMemory(request);
         List<ChatMessage> messages = buildInitialMessages(request);
         List<StepLog> stepLogs = new ArrayList<>();
 
@@ -86,7 +87,9 @@ public class AgentRuntime {
             }
 
             // 写入记忆
-            memory.appendShortTerm(request.getSessionId(), ChatMessage.assistant(resp.getContent()));
+            if (!skipMemory) {
+                memory.appendShortTerm(request.getSessionId(), ChatMessage.assistant(resp.getContent()));
+            }
 
             // 步骤 1：检查是否有 tool_calls
             if (resp.getToolCalls() != null && !resp.getToolCalls().isEmpty()) {
@@ -133,13 +136,18 @@ public class AgentRuntime {
 
             // 写长期记忆：这一问一答进向量库，下次同租户问相近的问题能被检索出来。
             // 写不进去也不影响本次回答 —— writeLongTerm 内部会记清楚失败原因。
-            memory.writeLongTerm(request.getSessionId(), companyIdOf(request),
-                    request.getUserInput() + "\n" + resp.getContent(),
-                    Map.of("instance_id", request.getInstanceId() == null ? 0L : request.getInstanceId()));
+            if (!skipMemory) {
+                memory.writeLongTerm(request.getSessionId(), companyIdOf(request),
+                        request.getUserInput() + "\n" + resp.getContent(),
+                        Map.of("instance_id", request.getInstanceId() == null ? 0L : request.getInstanceId()));
+            }
 
             return AgentTaskResult.builder()
                     .success(true)
                     .content(resp.getContent())
+                    // 模型名：llm_used 要记「这次真的调了哪个模型」，
+                    // 光记一个 true 说明不了问题（fallback 到哪个 provider 也算？）
+                    .model(resp.getModel())
                     .totalSteps(step)
                     .tokenInput(resp.getTokenInput())
                     .tokenOutput(resp.getTokenOutput())
@@ -163,36 +171,62 @@ public class AgentRuntime {
 
     private List<ChatMessage> buildInitialMessages(AgentTaskRequest request) {
         List<ChatMessage> list = new ArrayList<>();
+        boolean skipMemory = skipMemory(request);
         if (request.getSystemPrompt() != null && !request.getSystemPrompt().isEmpty()) {
             list.add(ChatMessage.system(request.getSystemPrompt()));
         }
 
-        // 检索长期记忆（同一租户此前会话里的相关经验）。
-        // 以前这段根本没有 —— 记忆系统不记事，多轮对话每次都从零开始。
-        List<String> recalled = memory.searchLongTerm(companyIdOf(request), request.getUserInput(), 5);
-        if (!recalled.isEmpty()) {
-            StringBuilder sb = new StringBuilder("【历史记忆】以下是同一租户此前会话里检索到的相关记录，可能有用：\n");
-            for (String r : recalled) {
-                sb.append("- ").append(r == null ? "" : r).append('\n');
+        if (!skipMemory) {
+            // 检索长期记忆（同一租户此前会话里的相关经验）。
+            // 以前这段根本没有 —— 记忆系统不记事，多轮对话每次都从零开始。
+            List<String> recalled = memory.searchLongTerm(companyIdOf(request), request.getUserInput(), 5);
+            if (!recalled.isEmpty()) {
+                StringBuilder sb = new StringBuilder("【历史记忆】以下是同一租户此前会话里检索到的相关记录，可能有用：\n");
+                for (String r : recalled) {
+                    sb.append("- ").append(r == null ? "" : r).append('\n');
+                }
+                list.add(ChatMessage.system(sb.toString()));
+                log.info("[AgentRuntime] 注入长期记忆 {} 条 session={}", recalled.size(), request.getSessionId());
             }
-            list.add(ChatMessage.system(sb.toString()));
-            log.info("[AgentRuntime] 注入长期记忆 {} 条 session={}", recalled.size(), request.getSessionId());
+
+            // 加载历史记忆（短期）
+            List<ChatMessage> history = memory.loadShortTerm(request.getSessionId(), 10);
+            list.addAll(history);
         }
 
-        // 加载历史记忆（短期）
-        List<ChatMessage> history = memory.loadShortTerm(request.getSessionId(), 10);
-        list.addAll(history);
-
         // v0.3：用户输入进入 LLM 之前先过 PromptGuard（注入 + 红队 5 类攻击模式）
+        // 注意：skipMemory 只关记忆，**不关安全校验** —— 工作流的内联数据同样可能是攻击载荷。
         String userInput = promptGuard.sanitize(request.getUserInput());
 
         // 用户这一句也要进短期记忆 —— 以前只存了 assistant 的回答，
         // 于是历史里全是「模型说了什么」，看不到「用户问了什么」，
         // 多轮上下文拼出来是残的。
-        memory.appendShortTerm(request.getSessionId(), ChatMessage.user(userInput));
+        if (!skipMemory) {
+            memory.appendShortTerm(request.getSessionId(), ChatMessage.user(userInput));
+        }
 
         list.add(ChatMessage.user(userInput));
         return list;
+    }
+
+    /**
+     * 是否跳过记忆读写。
+     *
+     * <p><b>为什么工作流要跳过</b>：工作流 LLM 节点的 {@code userInput} 是
+     * <b>渲染后的完整 prompt</b>，里面内联了整份财务 JSON（真流水明细、金额、对手方名）。
+     * 走记忆的话，这段数据会被写进 Qdrant 的长期记忆 ——
+     * 以后同一租户的<b>任何</b>普通聊天都可能检索到这段「历史记忆」，
+     * 把「昨天日报的数字」当成历史事实说出来。
+     *
+     * <p>短期记忆也一并跳过：工作流的 sessionId 每次都是新的（{@code wf-<nodeId>-<毫秒>}），
+     * 短期记忆对它零检索价值，却会把整份财务 JSON 写进 Redis 一个没人再读 的 key 里。
+     *
+     * <p>默认 {@code null} = 保持原行为（普通对话照常记事）。
+     *
+     * @author OAC
+     */
+    private boolean skipMemory(AgentTaskRequest request) {
+        return Boolean.TRUE.equals(request.getSkipMemory());
     }
 
     /**
@@ -220,6 +254,14 @@ public class AgentRuntime {
         private Integer stepTimeoutSeconds;
         private Double temperature;
         private Map<String, Object> context;
+
+        /**
+         * 是否跳过记忆（检索 + 写入）。
+         *
+         * <p>{@code null}（默认）= 保持原行为；{@code TRUE} = 长期/短期记忆<b>一次都不调</b>。
+         * 供工作流引擎使用 —— 它的 prompt 里内联了整份业务数据。
+         */
+        private Boolean skipMemory;
     }
 
     @lombok.Data
@@ -229,6 +271,8 @@ public class AgentRuntime {
     public static class AgentTaskResult {
         private boolean success;
         private String content;
+        /** 这次实际调用的模型名（失败/超步数时为 null） */
+        private String model;
         private int totalSteps;
         private Integer tokenInput;
         private Integer tokenOutput;

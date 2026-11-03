@@ -1,6 +1,7 @@
 package com.ruoyi.opc.agent.workflow;
 
 import com.ruoyi.opc.ai.runtime.AgentRuntime;
+import com.ruoyi.opc.ai.tools.ToolExecutor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,6 +43,13 @@ class WorkflowEngineAttributionTest {
 
     @Mock
     private AgentRuntime agentRuntime;
+
+    /**
+     * Task 3 起引擎多了 {@link ToolExecutor} 构造依赖 —— 不给 mock 的话
+     * Mockito 构造注入会传 null（这里只跑 LLM 节点，用不到，但别留隐患）。
+     */
+    @Mock
+    private ToolExecutor toolExecutor;
 
     @InjectMocks
     private WorkflowEngine engine;
