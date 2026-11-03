@@ -242,4 +242,47 @@ class LlmGatewayRetryTest {
         verify(primary, never()).chat(anyList(), any());
         verify(tokenMeter).record(eq(ctx), eq("deepseek-v3"), any(ChatResponse.class), eq(true));
     }
+
+    @Test
+    @DisplayName("4 参构造器传 max-retries=5 → provider 被调 5 次（证明这个键真的被读了）")
+    void chat_usesConfiguredMaxRetries() {
+        enable(primary, 5, "MiniMax-Text-01");
+        when(primary.chat(anyList(), any()))
+                .thenReturn(fail(503, "服务端临时故障"))
+                .thenReturn(fail(503, "服务端临时故障"))
+                .thenReturn(fail(503, "服务端临时故障"))
+                .thenReturn(fail(503, "服务端临时故障"))
+                .thenReturn(ok("第 5 次拿到的答案"));
+
+        // 4 参构造器 —— 5 是从构造器传进去的，不是写死的 3。
+        // 这样「opc.llm.max-retries 这个键真的被读了」才是一条能失败的检查。
+        LlmGateway gw = new LlmGateway(List.of(primary), tokenMeter, cache, 5);
+
+        ChatResponse resp = gw.chat(List.of(ChatMessage.user("hi")), null, null);
+
+        assertEquals("第 5 次拿到的答案", resp.getContent());
+        verify(primary, times(5)).chat(anyList(), any());
+    }
+
+    @Test
+    @DisplayName("max-retries=0 → 至少试一次，错误消息要带上 provider 名与原因")
+    void chat_maxRetriesZero_stillTriesOnce() {
+        enable(primary, 5, "MiniMax-Text-01");
+        when(primary.name()).thenReturn("minimax");
+        when(primary.chat(anyList(), any())).thenReturn(fail(503, "主模型挂了"));
+
+        LlmGateway gw = new LlmGateway(List.of(primary), tokenMeter, cache, 0);
+
+        OpcException e = assertThrows(OpcException.class,
+                () -> gw.chat(List.of(ChatMessage.user("hi")), null, null));
+
+        // Math.max(1, maxRetries) 是唯一的护栏：
+        // 少了它 → 循环一次都不进 → 消息变成「provider=null / unknown」，
+        // 用户看到的是一句没有信息量的错误，而不是真实原因。
+        verify(primary, times(1)).chat(anyList(), any());
+        assertTrue(e.getMessage().contains("minimax"),
+                "异常要带上最后一个失败的 provider 名：" + e.getMessage());
+        assertTrue(e.getMessage().contains("主模型挂了"),
+                "异常要带上最后一个 provider 的错误原因：" + e.getMessage());
+    }
 }

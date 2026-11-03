@@ -25,6 +25,11 @@ import java.util.List;
  *       5xx 与「没有状态码的未知错误」才重试。</li>
  * </ul>
  *
+ * <p><b>退避</b>：当前<b>没有退避</b> —— 两次重试之间<b>不等待</b>。
+ * 因此最坏耗时 = {@code max-retries × timeout-seconds × provider 数}
+ * （默认 3 × 60 × 2 = <b>6 分钟</b>），这是上线后的<b>实际表现</b>，
+ * 不写下来就等于对外说它不是这样。</p>
+ *
  * @author OAC
  */
 @Slf4j
