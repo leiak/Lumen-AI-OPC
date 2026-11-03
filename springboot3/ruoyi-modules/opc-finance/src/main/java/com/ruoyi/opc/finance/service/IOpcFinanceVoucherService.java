@@ -2,6 +2,7 @@ package com.ruoyi.opc.finance.service;
 
 import com.ruoyi.opc.finance.domain.OpcFinanceVoucher;
 import com.ruoyi.opc.finance.vo.VoucherAggVo;
+import com.ruoyi.opc.finance.vo.VoucherRangeVo;
 
 import java.util.List;
 
@@ -32,5 +33,22 @@ public interface IOpcFinanceVoucherService {
      * @throws com.ruoyi.opc.common.exception.OpcException 当 companyId 为空 / period 格式非法
      */
     VoucherAggVo aggregateByPeriod(Long companyId, String period);
+
+    /**
+     * 区间查询凭证（供数字员工经工具端点调用）。
+     *
+     * <p>闭区间 {@code [fromDate, toDate]}，日期格式 yyyy-MM-dd：
+     * <ul>
+     *   <li>{@code fromDate} 缺省 = 该公司最早一张凭证的日期</li>
+     *   <li>{@code toDate} 缺省 = 昨天（北京时间）</li>
+     * </ul>
+     *
+     * <p>口径：收入 = {@code SUM(total_credit)}（贷方），支出 = {@code SUM(total_debit)}（借方）。
+     *
+     * @return 明细 + 汇总 + 昨天子集，并回写实际使用的 fromDate / toDate
+     * @throws com.ruoyi.opc.common.exception.OpcException 当 companyId 为空 /
+     *         日期格式非法 / fromDate 晚于 toDate
+     */
+    VoucherRangeVo queryRange(Long companyId, String fromDate, String toDate);
 
 }

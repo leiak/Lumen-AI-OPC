@@ -1,12 +1,21 @@
 package com.ruoyi.opc.finance.service.impl;
 
+import com.ruoyi.opc.common.exception.OpcException;
 import com.ruoyi.opc.finance.domain.OpcFinanceBankFlow;
 import com.ruoyi.opc.finance.mapper.OpcFinanceBankFlowMapper;
 import com.ruoyi.opc.finance.service.IOpcFinanceBankFlowService;
 import com.ruoyi.opc.finance.vo.FlowAggVo;
+import com.ruoyi.opc.finance.vo.FlowRangeVo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -21,6 +30,7 @@ import java.util.Map;
  *   <li>listPending 强制 extracted=0，limit=null 时默认 20</li>
  *   <li>markExtracted 强制 extracted=1 + status=EXTRACTED；voucherId 可为 null（mapper XML 用
  *       {@code <if>} 跳过字段）</li>
+ *   <li>queryRange 的「今天/昨天」按北京时间算（容器 JVM 是 UTC）</li>
  * </ul>
  *
  * <p>flowCode 时间戳在同一批次内可能相同（System.currentTimeMillis 精度 1ms），
@@ -40,6 +50,20 @@ public class OpcFinanceBankFlowServiceImpl implements IOpcFinanceBankFlowService
 
     /** 上传后初始状态 */
     private static final String STATUS_IMPORTED = "IMPORTED";
+
+    /** 收入方向 */
+    private static final String DIRECTION_IN = "IN";
+
+    /** 支出方向 */
+    private static final String DIRECTION_OUT = "OUT";
+
+    /**
+     * 业务时区 —— 「今天/昨天」一律按北京时间算。
+     *
+     * <p>容器 JVM 是 UTC：直接 {@code LocalDate.now()} 会算成 UTC 的「昨天」，
+     * 和日报口径差 8 小时。</p>
+     */
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final OpcFinanceBankFlowMapper flowMapper;
 
@@ -94,6 +118,134 @@ public class OpcFinanceBankFlowServiceImpl implements IOpcFinanceBankFlowService
                 .flowCount(AggSupport.count(agg.get("flow_count")))
                 .extractedCount(AggSupport.count(agg.get("extracted_count")))
                 .build();
+    }
+
+    // ==================== 区间查询（数字员工工具端点） ====================
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>为什么 fromDate 缺省值是「最早一条记录的日期」而不是「30 天前」：
+     * 演示库最后一笔流水是 2026-10-21，固定 30 天窗口过了 2026-11-21 就空了，
+     * 下游的对账断言会退化成「两个空集相等」—— 永远绿，等于没有。</p>
+     */
+    @Override
+    public FlowRangeVo queryRange(Long companyId, String fromDate, String toDate) {
+        if (companyId == null) {
+            throw new OpcException("companyId 不能为空");
+        }
+        // today() 只取一次：跨零点调用两次会得到不同的「昨天」
+        LocalDate todayDate = today();
+        LocalDate to = parseDate(toDate, "toDate", todayDate.minusDays(1));
+        LocalDate from;
+        if (fromDate == null || fromDate.isBlank()) {
+            // 自有数据起算：该公司最早一条流水；一条都没有就回落成 toDate
+            String earliest = flowMapper.selectMinTradeDate(companyId);
+            from = (earliest == null || earliest.isBlank()) ? to : parseRequiredDate(earliest, "fromDate");
+        } else {
+            from = parseRequiredDate(fromDate, "fromDate");
+        }
+        if (from.isAfter(to)) {
+            throw new OpcException("fromDate 不能晚于 toDate");
+        }
+
+        List<OpcFinanceBankFlow> items = flowMapper.selectByCompanyAndDateRange(companyId, from, to);
+        if (items == null) {
+            items = List.of();
+        }
+        LocalDate yesterday = todayDate.minusDays(1);
+
+        // 汇总在 Java 侧算：明细最多几十条，也避免 SQL 口径与 Java 口径两处漂移
+        BigDecimal totalIn = BigDecimal.ZERO;
+        BigDecimal totalOut = BigDecimal.ZERO;
+        BigDecimal yesterdayIn = BigDecimal.ZERO;
+        BigDecimal yesterdayOut = BigDecimal.ZERO;
+        int yesterdayCount = 0;
+        for (OpcFinanceBankFlow flow : items) {
+            BigDecimal amount = flow.getAmount() == null ? BigDecimal.ZERO : flow.getAmount();
+            boolean in = DIRECTION_IN.equals(flow.getDirection());
+            boolean out = DIRECTION_OUT.equals(flow.getDirection());
+            if (in) {
+                totalIn = totalIn.add(amount);
+            } else if (out) {
+                totalOut = totalOut.add(amount);
+            }
+            if (yesterday.equals(wallDate(flow.getTradeTime()))) {
+                yesterdayCount++;
+                if (in) {
+                    yesterdayIn = yesterdayIn.add(amount);
+                } else if (out) {
+                    yesterdayOut = yesterdayOut.add(amount);
+                }
+            }
+        }
+
+        return FlowRangeVo.builder()
+                .companyId(companyId)
+                .fromDate(from.toString())
+                .toDate(to.toString())
+                .count(items.size())
+                .totalIn(totalIn)
+                .totalOut(totalOut)
+                .net(totalIn.subtract(totalOut))
+                .yesterdayCount(yesterdayCount)
+                .yesterdayIn(yesterdayIn)
+                .yesterdayOut(yesterdayOut)
+                .items(items)
+                .build();
+    }
+
+    /**
+     * 供测试覆盖的「今天」（北京时间）。
+     *
+     * <p>之所以做成可覆盖的方法而不是注入 {@code Clock}：注入 Clock 就要在每个模块
+     * 各加一个 {@code @Bean}，为「一个日期」付出 4 处配置不划算。</p>
+     */
+    protected LocalDate today() {
+        return LocalDate.now(BUSINESS_ZONE);
+    }
+
+    /**
+     * 解析 yyyy-MM-dd；null/空串用缺省值；格式非法抛 {@link OpcException}。
+     */
+    private static LocalDate parseDate(String value, String field, LocalDate fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        return parseRequiredDate(value, field);
+    }
+
+    /**
+     * 解析必有的 yyyy-MM-dd；格式非法抛 {@link OpcException}。
+     */
+    private static LocalDate parseRequiredDate(String value, String field) {
+        try {
+            return LocalDate.parse(value.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException e) {
+            throw new OpcException(field + " 格式非法，应为 yyyy-MM-dd: " + value);
+        }
+    }
+
+    /**
+     * 把 DATETIME 列读出来的 {@link Date} 换算回库里存的那个日期。
+     *
+     * <p>两个坑：</p>
+     * <ul>
+     *   <li>用 {@code getTime()} 而不是 {@code toInstant()}：MyBatis 的 DateTypeHandler
+     *       走 {@code rs.getTimestamp()}，返回的是 {@code java.sql.Timestamp}；
+     *       而 DATE 列可能读出 {@code java.sql.Date}，它重写了 {@code toInstant()}
+     *       直接抛 {@code UnsupportedOperationException}。</li>
+     *   <li>换算回<b>业务时区</b>而不是 JVM 默认时区：容器 JVM 是 UTC，而 JDBC URL 里
+     *       {@code serverTimezone=Asia/Shanghai} —— 驱动把库里的北京时间当成上海时间
+     *       解读，得到的瞬间比墙上时间早 8 小时。用 UTC 去取日期，凌晨 0~8 点的记录
+     *       会被算到前一天去。用业务时区换算，拿回来的就是库里存的那一天。</li>
+     * </ul>
+     */
+    private static LocalDate wallDate(Date date) {
+        if (date == null) {
+            return null;
+        }
+        return Instant.ofEpochMilli(date.getTime()).atZone(BUSINESS_ZONE).toLocalDate();
     }
 
 }

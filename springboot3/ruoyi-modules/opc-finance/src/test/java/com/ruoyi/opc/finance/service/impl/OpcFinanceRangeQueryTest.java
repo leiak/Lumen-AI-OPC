@@ -1,0 +1,306 @@
+package com.ruoyi.opc.finance.service.impl;
+
+import com.ruoyi.opc.common.exception.OpcException;
+import com.ruoyi.opc.finance.domain.OpcFinanceBankFlow;
+import com.ruoyi.opc.finance.domain.OpcFinanceVoucher;
+import com.ruoyi.opc.finance.mapper.OpcFinanceBankFlowMapper;
+import com.ruoyi.opc.finance.mapper.OpcFinanceVoucherMapper;
+import com.ruoyi.opc.finance.vo.FlowRangeVo;
+import com.ruoyi.opc.finance.vo.VoucherRangeVo;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Date;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+/**
+ * 财务侧「区间查询」单测 —— 数字员工拿真数据的入口。
+ *
+ * <p>覆盖 7 个口径：
+ * <ul>
+ *   <li>{@code fromDate} 缺省 → 该公司最早一条记录的日期（不是「30 天前」）</li>
+ *   <li>{@code toDate} 缺省 → 昨天（北京时间）</li>
+ *   <li>流水 in/out 按 {@code direction} 求和、net = in - out</li>
+ *   <li>昨天子集只统计落在昨天那一天的明细</li>
+ *   <li>凭证没有 amount 列：贷方 total_credit = 收入，借方 total_debit = 支出</li>
+ *   <li>空区间返回 0 / 空 list，<b>不是 null</b></li>
+ *   <li>{@code companyId} 为空 → 抛 {@link OpcException} 且不碰 mapper</li>
+ * </ul>
+ *
+ * <p>fixture 是演示库的实测值（company 2）：6 条流水 / 5 张凭证。
+ * 用 Mockito spy 覆盖 {@code today()} —— 生产口径固定北京时间，
+ * 容器 JVM 是 UTC，直接用 {@code LocalDate.now()} 会让「昨天」差 8 小时。
+ *
+ * @author OAC
+ */
+@MockitoSettings(strictness = Strictness.LENIENT)
+@ExtendWith(MockitoExtension.class)
+class OpcFinanceRangeQueryTest {
+
+    private static final Long COMPANY_ID = 2L;
+
+    /** 测试里固定的「今天」（北京时间） */
+    private static final LocalDate TODAY = LocalDate.of(2026, 11, 2);
+
+    /** 由 {@link #TODAY} 推出的「昨天」 */
+    private static final LocalDate YESTERDAY = LocalDate.of(2026, 11, 1);
+
+    /** 业务时区 —— 库里存的是北京时间 */
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
+
+    @Mock
+    private OpcFinanceBankFlowMapper flowMapper;
+
+    @Mock
+    private OpcFinanceVoucherMapper voucherMapper;
+
+    private OpcFinanceBankFlowServiceImpl flowService;
+
+    private OpcFinanceVoucherServiceImpl voucherService;
+
+    @BeforeEach
+    void setUp() {
+        // spy + doReturn 覆盖 today()：测试不该随日期漂移
+        flowService = spy(new OpcFinanceBankFlowServiceImpl(flowMapper));
+        voucherService = spy(new OpcFinanceVoucherServiceImpl(voucherMapper));
+        doReturn(TODAY).when(flowService).today();
+        doReturn(TODAY).when(voucherService).today();
+    }
+
+    // ==================== fixture（演示库实测值，company 2） ====================
+
+    private OpcFinanceBankFlow flow(long id, String date, String direction, String amount,
+                                    String status, String memo) {
+        OpcFinanceBankFlow f = new OpcFinanceBankFlow();
+        f.setId(id);
+        f.setCompanyId(COMPANY_ID);
+        // 库里存的是北京时间 —— 显式按业务时区构造，测试 JVM 在任何时区下结果都一样
+        f.setTradeTime(Date.from(LocalDate.parse(date).atTime(10, 0)
+                .atZone(BUSINESS_ZONE).toInstant()));
+        f.setDirection(direction);
+        f.setAmount(new BigDecimal(amount));
+        f.setStatus(status);
+        f.setMemo(memo);
+        return f;
+    }
+
+    /** company 2 的 6 条流水（2026-10-07 ~ 2026-10-21） */
+    private List<OpcFinanceBankFlow> sampleFlows() {
+        return List.of(
+                flow(27L, "2026-10-07", "OUT", "13200.00", "PROCESSED", "采购货款"),
+                flow(28L, "2026-10-10", "IN", "38450.00", "PROCESSED", "小店结算款"),
+                flow(29L, "2026-10-12", "OUT", "12150.00", "PROCESSED", "采购货款"),
+                flow(30L, "2026-10-15", "IN", "9860.00", "EXTRACTED", "家居专场结算"),
+                flow(31L, "2026-10-18", "OUT", "7080.00", "PROCESSED", "音箱采购货款"),
+                flow(32L, "2026-10-21", "IN", "3582.00", "IMPORTED", "零散订单")
+        );
+    }
+
+    private OpcFinanceVoucher voucher(long id, String date, String debit, String credit, String status) {
+        OpcFinanceVoucher v = new OpcFinanceVoucher();
+        v.setId(id);
+        v.setCompanyId(COMPANY_ID);
+        // DATE 列同样是北京时间，显式按业务时区构造
+        v.setVoucherDate(Date.from(LocalDate.parse(date).atStartOfDay(BUSINESS_ZONE).toInstant()));
+        v.setTotalDebit(new BigDecimal(debit));
+        v.setTotalCredit(new BigDecimal(credit));
+        v.setStatus(status);
+        return v;
+    }
+
+    /** company 2 的 5 张凭证（2026-10-07 ~ 2026-10-20） */
+    private List<OpcFinanceVoucher> sampleVouchers() {
+        return List.of(
+                voucher(25L, "2026-10-07", "13200.00", "0.00", "POSTED"),
+                voucher(26L, "2026-10-10", "0.00", "35400.00", "POSTED"),
+                voucher(27L, "2026-10-15", "12150.00", "0.00", "REVIEW"),
+                voucher(28L, "2026-10-19", "2600.00", "0.00", "REVIEW"),
+                voucher(29L, "2026-10-20", "1800.00", "0.00", "REJECTED")
+        );
+    }
+
+    // ==================== fromDate / toDate 缺省语义 ====================
+
+    @Test
+    @DisplayName("queryRange — fromDate 缺省 → 该公司最早一条流水的日期（不是「30 天前」）")
+    void queryRange_fromDateOmitted_usesEarliestRecordDate() {
+        when(flowMapper.selectMinTradeDate(COMPANY_ID)).thenReturn("2026-10-07");
+        when(flowMapper.selectByCompanyAndDateRange(eq(COMPANY_ID), any(), any())).thenReturn(sampleFlows());
+
+        FlowRangeVo vo = flowService.queryRange(COMPANY_ID, null, null);
+
+        assertEquals("2026-10-07", vo.getFromDate(),
+                "fromDate 缺省时用 mapper 查到的最早流水日期");
+        ArgumentCaptor<LocalDate> from = ArgumentCaptor.forClass(LocalDate.class);
+        ArgumentCaptor<LocalDate> to = ArgumentCaptor.forClass(LocalDate.class);
+        verify(flowMapper).selectByCompanyAndDateRange(eq(COMPANY_ID), from.capture(), to.capture());
+        assertEquals(LocalDate.of(2026, 10, 7), from.getValue());
+        assertEquals(YESTERDAY, to.getValue());
+    }
+
+    @Test
+    @DisplayName("queryRange — toDate 缺省 → 昨天（北京时间，today=2026-11-02 时是 2026-11-01）")
+    void queryRange_toDateOmitted_defaultsToYesterday() {
+        when(flowMapper.selectMinTradeDate(COMPANY_ID)).thenReturn("2026-10-07");
+        when(flowMapper.selectByCompanyAndDateRange(eq(COMPANY_ID), any(), any())).thenReturn(sampleFlows());
+
+        FlowRangeVo vo = flowService.queryRange(COMPANY_ID, null, null);
+
+        assertEquals("2026-11-01", vo.getToDate(),
+                "toDate 缺省时是「昨天」——今天的数据不进日报");
+        // 显式传 toDate 时以调用方为准
+        FlowRangeVo explicit = flowService.queryRange(COMPANY_ID, "2026-10-07", "2026-10-31");
+        assertEquals("2026-10-31", explicit.getToDate());
+    }
+
+    // ==================== 汇总口径 ====================
+
+    @Test
+    @DisplayName("queryRange — 流水按 direction 求和：IN=51892.00 OUT=32430.00 net=19462.00")
+    void queryRange_sumsInAndOutByDirection() {
+        when(flowMapper.selectMinTradeDate(COMPANY_ID)).thenReturn("2026-10-07");
+        when(flowMapper.selectByCompanyAndDateRange(eq(COMPANY_ID), any(), any())).thenReturn(sampleFlows());
+
+        FlowRangeVo vo = flowService.queryRange(COMPANY_ID, null, null);
+
+        assertEquals(6, vo.getCount());
+        assertEquals(new BigDecimal("51892.00"), vo.getTotalIn());
+        assertEquals(new BigDecimal("32430.00"), vo.getTotalOut());
+        assertEquals(new BigDecimal("19462.00"), vo.getNet());
+        assertNotNull(vo.getItems());
+        assertEquals(6, vo.getItems().size());
+    }
+
+    @Test
+    @DisplayName("queryRange — 昨天子集只统计落在昨天那一天的明细（fixture 里昨天没数据 → 0）")
+    void queryRange_yesterdaySubsetCountsOnlyYesterday() {
+        when(flowMapper.selectMinTradeDate(COMPANY_ID)).thenReturn("2026-10-07");
+        when(flowMapper.selectByCompanyAndDateRange(eq(COMPANY_ID), any(), any())).thenReturn(sampleFlows());
+
+        FlowRangeVo vo = flowService.queryRange(COMPANY_ID, null, null);
+
+        assertEquals(6, vo.getCount(), "区间内共 6 条");
+        assertEquals(0, vo.getYesterdayCount(), "fixture 里昨天（2026-11-01）没有流水");
+        assertEquals(0, vo.getYesterdayIn().compareTo(BigDecimal.ZERO),
+                "yesterdayIn 数值等于 0.00");
+        assertEquals(0, vo.getYesterdayOut().compareTo(BigDecimal.ZERO),
+                "yesterdayOut 数值等于 0.00");
+
+        // 反向验证：昨天子集不是「恒等于 0」——放一条昨天的流水进去，它必须被单独算出来
+        List<OpcFinanceBankFlow> withYesterday = List.of(
+                flow(27L, "2026-10-07", "OUT", "13200.00", "PROCESSED", "采购货款"),
+                flow(40L, "2026-11-01", "IN", "500.00", "IMPORTED", "昨天的零散订单"),
+                flow(41L, "2026-11-01", "OUT", "120.00", "IMPORTED", "昨天的采购")
+        );
+        when(flowMapper.selectByCompanyAndDateRange(eq(COMPANY_ID), any(), any())).thenReturn(withYesterday);
+
+        FlowRangeVo vo2 = flowService.queryRange(COMPANY_ID, null, null);
+
+        assertEquals(3, vo2.getCount());
+        assertEquals(2, vo2.getYesterdayCount(), "昨天那天的 2 条必须被单独计数");
+        assertEquals(0, vo2.getYesterdayIn().compareTo(new BigDecimal("500.00")));
+        assertEquals(0, vo2.getYesterdayOut().compareTo(new BigDecimal("120.00")));
+        assertEquals(0, vo2.getTotalIn().compareTo(new BigDecimal("500.00")),
+                "总额口径不受昨天子集影响");
+    }
+
+    @Test
+    @DisplayName("queryRange — 凭证：贷方 total_credit=收入 35400.00，借方 total_debit=支出 29750.00")
+    void queryRange_credentialUsesCreditAsInAndDebitAsOut() {
+        when(voucherMapper.selectMinVoucherDate(COMPANY_ID)).thenReturn("2026-10-07");
+        when(voucherMapper.selectByCompanyAndDateRange(eq(COMPANY_ID), any(), any())).thenReturn(sampleVouchers());
+
+        VoucherRangeVo vo = voucherService.queryRange(COMPANY_ID, null, null);
+
+        assertEquals(5, vo.getCount());
+        assertEquals(new BigDecimal("35400.00"), vo.getTotalIn(), "贷方合计 = 收入");
+        assertEquals(new BigDecimal("29750.00"), vo.getTotalOut(), "借方合计 = 支出");
+        assertEquals(new BigDecimal("5650.00"), vo.getNet());
+        assertEquals("2026-10-07", vo.getFromDate());
+        assertEquals("2026-11-01", vo.getToDate());
+    }
+
+    @Test
+    @DisplayName("queryRange — tradeTime 按北京时间取日期（凌晨的记录不会被算到前一天）")
+    void queryRange_tradeTimeUsesBeijingWallDate() {
+        // 库里存的是北京时间。2026-11-01 06:00（北京时间）= UTC 前一天 22:00，
+        // 容器 JVM 是 UTC —— 用 JVM 默认时区取日期会算成 10-31，这条记录就掉出「昨天」了。
+        when(flowMapper.selectMinTradeDate(COMPANY_ID)).thenReturn("2026-10-07");
+        when(flowMapper.selectByCompanyAndDateRange(eq(COMPANY_ID), any(), any()))
+                .thenReturn(List.of(flow(42L, "2026-11-01", "IN", "300.00", "IMPORTED", "清晨的订单")));
+
+        FlowRangeVo vo = flowService.queryRange(COMPANY_ID, null, null);
+
+        assertEquals(1, vo.getYesterdayCount(),
+                "2026-11-01 06:00（北京时间）必须算在 11-01，不能被算到 10-31");
+    }
+
+    // ==================== 边界 ====================
+
+    @Test
+    @DisplayName("queryRange — 无数据 → count=0、金额=0、items=空 list（都不是 null）")
+    void queryRange_noRows_returnsZeroesNotNull() {
+        when(flowMapper.selectMinTradeDate(COMPANY_ID)).thenReturn("2026-10-07");
+        when(flowMapper.selectByCompanyAndDateRange(eq(COMPANY_ID), any(), any())).thenReturn(List.of());
+
+        FlowRangeVo vo = flowService.queryRange(COMPANY_ID, null, null);
+
+        assertEquals(0, vo.getCount());
+        assertNotNull(vo.getTotalIn(), "totalIn 不能是 null");
+        assertNotNull(vo.getTotalOut(), "totalOut 不能是 null");
+        assertNotNull(vo.getNet(), "net 不能是 null");
+        assertEquals(BigDecimal.ZERO, vo.getTotalIn());
+        assertEquals(BigDecimal.ZERO, vo.getTotalOut());
+        assertEquals(BigDecimal.ZERO, vo.getNet());
+        assertNotNull(vo.getItems(), "items 不能是 null");
+        assertTrue(vo.getItems().isEmpty());
+    }
+
+    @Test
+    @DisplayName("queryRange — companyId 为空 → 抛 OpcException，且一次都不碰 mapper")
+    void queryRange_companyIdNull_throwsOpcException() {
+        OpcException ex = assertThrows(OpcException.class, () -> flowService.queryRange(null, null, null));
+        assertEquals("companyId 不能为空", ex.getMessage());
+        verifyNoInteractions(flowMapper);
+
+        // 凭证侧同一道防线
+        OpcException voucherEx =
+                assertThrows(OpcException.class, () -> voucherService.queryRange(null, null, null));
+        assertEquals("companyId 不能为空", voucherEx.getMessage());
+        verifyNoInteractions(voucherMapper);
+    }
+
+    // ==================== 非法入参 ====================
+
+    @Test
+    @DisplayName("queryRange — fromDate 格式非法 / fromDate 晚于 toDate → 抛 OpcException")
+    void queryRange_invalidArguments_throwsOpcException() {
+        assertThrows(OpcException.class, () -> flowService.queryRange(COMPANY_ID, "2026/10/07", null));
+        assertThrows(OpcException.class, () -> flowService.queryRange(COMPANY_ID, "2026-10-07", "2026-10-01"));
+        verify(flowMapper, never()).selectByCompanyAndDateRange(any(), any(), any());
+    }
+
+}

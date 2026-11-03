@@ -87,6 +87,26 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           AND voucher_date &lt;  DATE_ADD(STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d'), INTERVAL 1 MONTH)
     </select>
 
+    <!--
+        区间查询（数字员工工具端点）
+        voucher_date 是 DATE 列，直接用闭区间 [fromDate, toDate] 比较即可。
+    -->
+    <select id="selectByCompanyAndDateRange" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_finance_voucher
+        WHERE company_id = #{companyId}
+          AND voucher_date &gt;= #{fromDate}
+          AND voucher_date &lt;= #{toDate}
+        ORDER BY voucher_date ASC, id ASC
+    </select>
+
+    <!-- 该公司最早一张凭证的日期；没有凭证时返回 null（区间查询据此回落 toDate） -->
+    <select id="selectMinVoucherDate" resultType="java.lang.String">
+        SELECT DATE_FORMAT(MIN(voucher_date), '%Y-%m-%d')
+        FROM opc_finance_voucher
+        WHERE company_id = #{companyId}
+    </select>
+
     <insert id="insert" parameterType="com.ruoyi.opc.finance.domain.OpcFinanceVoucher" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO opc_finance_voucher (
             voucher_code, company_id, voucher_date, period, summary, source_type,

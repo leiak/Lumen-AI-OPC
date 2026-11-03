@@ -89,6 +89,27 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           AND trade_time &lt;  DATE_ADD(STR_TO_DATE(CONCAT(#{period},'-01'), '%Y-%m-%d'), INTERVAL 1 MONTH)
     </select>
 
+    <!--
+        区间查询（数字员工工具端点）
+        trade_time 是 DATETIME，用 [fromDate 00:00:00, toDate+1 00:00:00) 覆盖闭区间，
+        避免 BETWEEN 对时分秒的截断歧义。
+    -->
+    <select id="selectByCompanyAndDateRange" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Columns" />
+        FROM opc_finance_bank_flow
+        WHERE company_id = #{companyId}
+          AND trade_time &gt;= #{fromDate}
+          AND trade_time &lt;  DATE_ADD(#{toDate}, INTERVAL 1 DAY)
+        ORDER BY trade_time ASC, id ASC
+    </select>
+
+    <!-- 该公司最早一条流水的日期；没有流水时返回 null（区间查询据此回落 toDate） -->
+    <select id="selectMinTradeDate" resultType="java.lang.String">
+        SELECT DATE_FORMAT(MIN(trade_time), '%Y-%m-%d')
+        FROM opc_finance_bank_flow
+        WHERE company_id = #{companyId}
+    </select>
+
     <update id="update" parameterType="com.ruoyi.opc.finance.domain.OpcFinanceBankFlow">
         UPDATE opc_finance_bank_flow
         <set>

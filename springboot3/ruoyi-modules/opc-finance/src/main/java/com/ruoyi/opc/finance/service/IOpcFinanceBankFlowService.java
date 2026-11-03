@@ -2,6 +2,7 @@ package com.ruoyi.opc.finance.service;
 
 import com.ruoyi.opc.finance.domain.OpcFinanceBankFlow;
 import com.ruoyi.opc.finance.vo.FlowAggVo;
+import com.ruoyi.opc.finance.vo.FlowRangeVo;
 
 import java.util.List;
 
@@ -51,5 +52,21 @@ public interface IOpcFinanceBankFlowService {
      * @throws com.ruoyi.opc.common.exception.OpcException 当 companyId 为空 / period 格式非法
      */
     FlowAggVo aggregateByPeriod(Long companyId, String period);
+
+    /**
+     * 区间查询银行流水（供数字员工经工具端点调用）。
+     *
+     * <p>闭区间 {@code [fromDate, toDate]}，日期格式 yyyy-MM-dd：
+     * <ul>
+     *   <li>{@code fromDate} 缺省 = 该公司最早一条流水的日期</li>
+     *   <li>{@code toDate} 缺省 = 昨天（北京时间）</li>
+     * </ul>
+     *
+     * @return 明细 + 汇总（IN 合计 / OUT 合计 / 净额）+ 昨天子集，
+     *         并回写实际使用的 fromDate / toDate
+     * @throws com.ruoyi.opc.common.exception.OpcException 当 companyId 为空 /
+     *         日期格式非法 / fromDate 晚于 toDate
+     */
+    FlowRangeVo queryRange(Long companyId, String fromDate, String toDate);
 
 }

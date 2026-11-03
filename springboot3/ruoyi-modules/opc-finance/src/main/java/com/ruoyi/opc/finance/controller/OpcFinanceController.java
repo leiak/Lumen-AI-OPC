@@ -15,8 +15,10 @@ import com.ruoyi.opc.finance.service.IOpcFinanceTaxReportService;
 import com.ruoyi.opc.finance.service.IOpcFinanceTokenUsageService;
 import com.ruoyi.opc.finance.service.IOpcFinanceVoucherService;
 import com.ruoyi.opc.finance.vo.FlowAggVo;
+import com.ruoyi.opc.finance.vo.FlowRangeVo;
 import com.ruoyi.opc.finance.vo.TokenUsageVo;
 import com.ruoyi.opc.finance.vo.VoucherAggVo;
+import com.ruoyi.opc.finance.vo.VoucherRangeVo;
 import com.ruoyi.system.api.model.LoginUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -175,8 +177,38 @@ public class OpcFinanceController extends BaseController {
         return R.ok(tokenUsageService.aggregateByPeriod(companyId, period));
     }
 
+    // ==================== 工具端点（数字员工拉真数据） ====================
+    // 数字员工要的不是「某个月的汇总」，而是「某段时间有哪些流水 / 凭证」——
+    // 只有明细级区间查询才能让它后面的每句话都跟库里的行对得上。
+    //
+    // 区间语义：fromDate 缺省 = 该公司最早一条记录（自有数据起算），toDate 缺省 = 昨天（北京时间）。
+    // 刻意不做成「近 30 天」——演示库最后一笔流水是 2026-10-21，固定窗口过了 2026-11-21 就空了，
+    // 对账断言会退化成「两个空集相等」，永远绿，等于没有。响应里回写实际用的区间，
+    // 健康检查能拿这两个值原样复算一遍。
+    //
+    // 同样 @InnerAuth：只有服务间 Feign 调用能命中（网关 AuthFilter 会剥掉外部请求的 from-source 头）。
+    // 异常走本 controller 的 @ExceptionHandler(OpcException.class) → R.fail(code, msg)。
+
+    @Operation(summary = "工具端点：银行流水区间查询（数字员工）")
+    @InnerAuth
+    @GetMapping("/tools/flows")
+    public R<FlowRangeVo> toolFlows(@RequestParam Long companyId,
+                                    @RequestParam(required = false) String fromDate,
+                                    @RequestParam(required = false) String toDate) {
+        return R.ok(bankFlowService.queryRange(companyId, fromDate, toDate));
+    }
+
+    @Operation(summary = "工具端点：凭证区间查询（数字员工）")
+    @InnerAuth
+    @GetMapping("/tools/vouchers")
+    public R<VoucherRangeVo> toolVouchers(@RequestParam Long companyId,
+                                          @RequestParam(required = false) String fromDate,
+                                          @RequestParam(required = false) String toDate) {
+        return R.ok(voucherService.queryRange(companyId, fromDate, toDate));
+    }
+
     /**
-     * 把 {@link OpcException} 转成 {@link R#fail(int, String)} —— 让 4 个聚合端点的响应体
+     * 把 {@link OpcException} 转成 {@link R#fail(int, String)} —— 让 4 个聚合端点与 2 个工具端点的响应体
      * 形状永远是 {@code R<T>}，不会被全局 advice 转成 {@code AjaxResult}。
      * <p>
      * 仅作用于本 controller —— 其他端点（如 voucher CRUD）继续走 advice 返回 AjaxResult，
