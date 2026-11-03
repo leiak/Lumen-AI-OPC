@@ -29,6 +29,17 @@ import java.util.List;
  * <p><b>口径</b>：{@code totalIn} = {@code direction='IN'} 的 amount 之和；
  * {@code totalOut} = {@code direction='OUT'} 的 amount 之和；{@code net} = 两者之差。
  *
+ * <p><b>金额的 scale 不统一（下游请用 compareTo，不要用 equals）</b>：区间为空时
+ * 各合计是 {@link java.math.BigDecimal#ZERO}，JSON 里渲染成 {@code 0}；
+ * 区间非空时是库里 amount 的 scale（2），JSON 里渲染成 {@code 51892.00}。
+ * {@code BigDecimal.equals} 连 scale 一起比，{@code 0} 和 {@code 0.00} 不相等；
+ * 要比数值请用 {@code compareTo(...)}。</p>
+ *
+ * <p><b>items 里两类时间戳口径不同</b>：{@code tradeTime} 是<b>业务发生时间</b>，
+ * 渲染成北京时间墙上时间（和库里存的一致）；{@code createTime} / {@code updateTime}
+ * 是系统写入的<b>UTC</b> 时间戳（MySQL 服务器时钟是 UTC），渲染出来就是 UTC 墙上时间。
+ * 两者不是同一个时区，看的时候别混。</p>
+ *
  * @author OAC
  */
 @Data

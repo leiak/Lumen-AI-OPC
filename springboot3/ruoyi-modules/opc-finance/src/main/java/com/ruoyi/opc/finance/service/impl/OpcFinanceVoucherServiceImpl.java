@@ -11,11 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -23,14 +19,6 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class OpcFinanceVoucherServiceImpl implements IOpcFinanceVoucherService {
-
-    /**
-     * 业务时区 —— 「今天/昨天」一律按北京时间算。
-     *
-     * <p>容器 JVM 是 UTC：直接 {@code LocalDate.now()} 会算成 UTC 的「昨天」，
-     * 和日报口径差 8 小时。</p>
-     */
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final OpcFinanceVoucherMapper mapper;
 
@@ -149,15 +137,17 @@ public class OpcFinanceVoucherServiceImpl implements IOpcFinanceVoucherService {
             throw new OpcException("companyId 不能为空");
         }
         // today() 只取一次：跨零点调用两次会得到不同的「昨天」
-        LocalDate todayDate = today();
-        LocalDate to = parseDate(toDate, "toDate", todayDate.minusDays(1));
+        LocalDate todayDate = this.today();
+        LocalDate to = RangeSupport.parseDate(toDate, "toDate", todayDate.minusDays(1));
         LocalDate from;
         if (fromDate == null || fromDate.isBlank()) {
             // 自有数据起算：该公司最早一张凭证；一张都没有就回落成 toDate
             String earliest = mapper.selectMinVoucherDate(companyId);
-            from = (earliest == null || earliest.isBlank()) ? to : parseRequiredDate(earliest, "fromDate");
+            from = (earliest == null || earliest.isBlank())
+                    ? to
+                    : RangeSupport.parseRequiredDate(earliest, "最早记录日期");
         } else {
-            from = parseRequiredDate(fromDate, "fromDate");
+            from = RangeSupport.parseRequiredDate(fromDate, "fromDate");
         }
         if (from.isAfter(to)) {
             throw new OpcException("fromDate 不能晚于 toDate");
@@ -180,7 +170,7 @@ public class OpcFinanceVoucherServiceImpl implements IOpcFinanceVoucherService {
             BigDecimal debit = voucher.getTotalDebit() == null ? BigDecimal.ZERO : voucher.getTotalDebit();
             totalIn = totalIn.add(credit);
             totalOut = totalOut.add(debit);
-            if (yesterday.equals(wallDate(voucher.getVoucherDate()))) {
+            if (yesterday.equals(RangeSupport.wallDate(voucher.getVoucherDate()))) {
                 yesterdayCount++;
                 yesterdayIn = yesterdayIn.add(credit);
                 yesterdayOut = yesterdayOut.add(debit);
@@ -205,52 +195,15 @@ public class OpcFinanceVoucherServiceImpl implements IOpcFinanceVoucherService {
     /**
      * 供测试覆盖的「今天」（北京时间）。
      *
-     * <p>之所以做成可覆盖的方法而不是注入 {@code Clock}：注入 Clock 就要在每个模块
-     * 各加一个 {@code @Bean}，为「一个日期」付出 4 处配置不划算。</p>
+     * <p>为什么保留成 <b>实例</b>方法而不是直接用 {@link RangeSupport#businessToday()}：
+     * 测试用 Mockito spy + {@code doReturn(...)} 覆盖它 —— 一旦变成静态方法，
+     * spy 就盖不住，测试会随日期漂移。所以 service 内部一律调 {@code this.today()}。</p>
+     *
+     * <p>之所以不注入 {@code Clock}：注入 Clock 就要在每个模块各加一个 {@code @Bean}，
+     * 为「一个日期」付出 4 处配置不划算。</p>
      */
     protected LocalDate today() {
-        return LocalDate.now(BUSINESS_ZONE);
-    }
-
-    /**
-     * 解析 yyyy-MM-dd；null/空串用缺省值；格式非法抛 {@link OpcException}。
-     */
-    private static LocalDate parseDate(String value, String field, LocalDate fallback) {
-        if (value == null || value.isBlank()) {
-            return fallback;
-        }
-        return parseRequiredDate(value, field);
-    }
-
-    /**
-     * 解析必有的 yyyy-MM-dd；格式非法抛 {@link OpcException}。
-     */
-    private static LocalDate parseRequiredDate(String value, String field) {
-        try {
-            return LocalDate.parse(value.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
-        } catch (DateTimeParseException e) {
-            throw new OpcException(field + " 格式非法，应为 yyyy-MM-dd: " + value);
-        }
-    }
-
-    /**
-     * 把 DATE 列读出来的 {@link Date} 换算回库里存的那个日期。
-     *
-     * <p>两个坑：</p>
-     * <ul>
-     *   <li>用 {@code getTime()} 而不是 {@code toInstant()}：DATE 列可能读出
-     *       {@code java.sql.Date}，它重写了 {@code toInstant()} 直接抛
-     *       {@code UnsupportedOperationException}。</li>
-     *   <li>换算回<b>业务时区</b>而不是 JVM 默认时区：容器 JVM 是 UTC，而 JDBC URL 里
-     *       {@code serverTimezone=Asia/Shanghai} —— 驱动按上海时间解读库里的日期，
-     *       得到的瞬间比墙上时间早 8 小时。用 UTC 去取日期可能差一天。</li>
-     * </ul>
-     */
-    private static LocalDate wallDate(Date date) {
-        if (date == null) {
-            return null;
-        }
-        return Instant.ofEpochMilli(date.getTime()).atZone(BUSINESS_ZONE).toLocalDate();
+        return RangeSupport.businessToday();
     }
 
 }

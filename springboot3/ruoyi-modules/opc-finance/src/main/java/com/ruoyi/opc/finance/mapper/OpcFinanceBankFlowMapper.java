@@ -38,6 +38,12 @@ public interface OpcFinanceBankFlowMapper {
      *
      * <p>汇总在 Java 侧算（明细最多几十条）——避免 SQL 口径与 Java 口径两处漂移。</p>
      *
+     * <p><b>这条 SQL 没有 LIMIT，是故意的</b>：截断会变成「静默少给数据」——
+     * 调用方拿到一个看起来完整、其实少了几条的区间，数字对不上却没有任何提示，
+     * 比慢一点难查得多。前提是「单公司单区间」的明细量有界（演示库里是 6 条）；
+     * 真的长起来以后，必须改成显式分页（page/pageSize + total），
+     * 并且把「被截断了」写进响应，而不是偷偷砍掉。</p>
+     *
      * @param fromDate 起始日（含），yyyy-MM-dd
      * @param toDate   截止日（含），yyyy-MM-dd
      */

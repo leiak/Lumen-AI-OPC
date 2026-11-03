@@ -1,6 +1,8 @@
 package com.ruoyi.opc.finance.controller;
 
 import com.ruoyi.common.security.handler.GlobalExceptionHandler;
+import com.ruoyi.opc.common.exception.OpcException;
+import com.ruoyi.opc.finance.domain.OpcFinanceBankFlow;
 import com.ruoyi.opc.finance.mapper.OpcFinanceBankFlowMapper;
 import com.ruoyi.opc.finance.mapper.OpcFinanceTaxReportMapper;
 import com.ruoyi.opc.finance.mapper.OpcFinanceTokenUsageMapper;
@@ -11,6 +13,8 @@ import com.ruoyi.opc.finance.service.IOpcFinanceTokenUsageService;
 import com.ruoyi.opc.finance.service.IOpcFinanceVoucherService;
 import com.ruoyi.opc.finance.vo.FlowRangeVo;
 import com.ruoyi.opc.finance.vo.VoucherRangeVo;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,8 +28,12 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.Date;
 import java.util.List;
+import java.util.TimeZone;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -51,6 +59,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 但 {@code body.code != 200}。
  *
  * <p>测试用的区间数据是演示库实测值（company 2）：6 条流水 / 5 张凭证。
+ *
+ * <p><b>关于时区</b>：容器 JVM 是 UTC，生产上 {@code ApplicationConfig} 把 ObjectMapper
+ * 的时区设成 {@code TimeZone.getDefault()}（= UTC）。本切片没引入 ApplicationConfig，
+ * ObjectMapper 用 Jackson 默认的 UTC —— 两者一样，所以渲染口径与生产一致，
+ * 而且不依赖开发机的时区（{@code @BeforeEach} 里把 JVM 默认时区钉成 UTC）。
  *
  * @author OAC
  */
@@ -94,6 +107,23 @@ class OpcFinanceToolEndpointTest {
     private OpcFinanceVoucherMapper voucherMapper;
 
     private static final Long COMPANY_ID = 2L;
+
+    /** 进入测试前的 JVM 默认时区，{@code @AfterEach} 里还原 */
+    private TimeZone originalTimeZone;
+
+    @BeforeEach
+    void pinDefaultTimeZoneToUtc() {
+        // 容器 JVM 就是 UTC。把测试 JVM 的默认时区也钉成 UTC ——
+        // 「tradeTime 渲染成 UTC 还是北京时间」这件事只有在 UTC 下才分得出来。
+        originalTimeZone = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+    }
+
+    @AfterEach
+    void restoreDefaultTimeZone() {
+        // 全局状态必须还原 —— 否则会污染同 JVM 里的其他测试类
+        TimeZone.setDefault(originalTimeZone);
+    }
 
     @Test
     @DisplayName("toolFlows — 返回 R<FlowRangeVo>：count=6、totalIn=51892.00")
@@ -163,6 +193,54 @@ class OpcFinanceToolEndpointTest {
                 .andExpect(jsonPath("$.data.totalOut").value(29750.00));
 
         verify(voucherService).queryRange(COMPANY_ID, null, null);
+    }
+
+    @Test
+    @DisplayName("toolFlows — service 抛 OpcException → HTTP 200 + body.code != 200 + 响应体仍是 R 形状")
+    void toolFlows_serviceThrowsOpcException_returnsRShapedError() throws Exception {
+        when(bankFlowService.queryRange(eq(COMPANY_ID), isNull(), isNull()))
+                .thenThrow(new OpcException("fromDate 不能晚于 toDate"));
+
+        mockMvc.perform(get("/opc/finance/tools/flows").param("companyId", String.valueOf(COMPANY_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(500))
+                .andExpect(jsonPath("$.msg").value("fromDate 不能晚于 toDate"))
+                // R 形状的判据：R 有 data 字段（这里是 null）；全局 advice 的 AjaxResult 压根没有 data 键
+                .andExpect(jsonPath("$.data").value(nullValue()));
+    }
+
+    @Test
+    @DisplayName("toolFlows — items[].tradeTime 按北京时间渲染（不是容器 JVM 的 UTC）")
+    void toolFlows_tradeTimeRenderedInBeijingTime() throws Exception {
+        // 库里存的是北京时间「2026-10-07 12:49:03」；驱动按 serverTimezone=Asia/Shanghai
+        // 解读，得到的就是这个瞬间（= UTC 04:49:03）。渲染时必须还原成北京时间，
+        // 否则接口吐出 04:49:03 —— 和库里对不上，凌晨的记录连日期都会差一天。
+        OpcFinanceBankFlow flow = new OpcFinanceBankFlow();
+        flow.setId(27L);
+        flow.setCompanyId(COMPANY_ID);
+        flow.setTradeTime(Date.from(Instant.parse("2026-10-07T04:49:03Z")));
+        flow.setDirection("OUT");
+        flow.setAmount(new BigDecimal("13200.00"));
+
+        FlowRangeVo vo = FlowRangeVo.builder()
+                .companyId(COMPANY_ID)
+                .fromDate("2026-10-07")
+                .toDate("2026-11-01")
+                .count(1)
+                .totalIn(BigDecimal.ZERO)
+                .totalOut(new BigDecimal("13200.00"))
+                .net(new BigDecimal("-13200.00"))
+                .yesterdayCount(0)
+                .yesterdayIn(BigDecimal.ZERO)
+                .yesterdayOut(BigDecimal.ZERO)
+                .items(List.of(flow))
+                .build();
+        when(bankFlowService.queryRange(eq(COMPANY_ID), isNull(), isNull())).thenReturn(vo);
+
+        mockMvc.perform(get("/opc/finance/tools/flows").param("companyId", String.valueOf(COMPANY_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.items[0].tradeTime").value("2026-10-07 12:49:03"));
     }
 
 }

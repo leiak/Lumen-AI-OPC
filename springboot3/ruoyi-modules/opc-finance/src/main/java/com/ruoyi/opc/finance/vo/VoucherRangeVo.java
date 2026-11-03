@@ -21,6 +21,12 @@ import java.util.List;
  * 支出 = {@code SUM(total_debit)}（借方）。这样凭证与流水是同一套 in/out 口径，
  * 下游对账不必分两套算法。
  *
+ * <p><b>金额的 scale 不统一（下游请用 compareTo，不要用 equals）</b>：区间为空时
+ * 各合计是 {@link java.math.BigDecimal#ZERO}，JSON 里渲染成 {@code 0}；
+ * 区间非空时是库里 total_credit / total_debit 的 scale（2），
+ * JSON 里渲染成 {@code 35400.00}。{@code BigDecimal.equals} 连 scale 一起比，
+ * {@code 0} 和 {@code 0.00} 不相等；要比数值请用 {@code compareTo(...)}。</p>
+ *
  * @author OAC
  */
 @Data
