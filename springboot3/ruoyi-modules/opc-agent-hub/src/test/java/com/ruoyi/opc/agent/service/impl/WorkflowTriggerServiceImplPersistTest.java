@@ -114,7 +114,7 @@ class WorkflowTriggerServiceImplPersistTest {
         OpcAgentWorkflowRun run = service.trigger(CODE, "quartz:test");
 
         assertEquals("PARTIAL", run.getStatus(),
-                "数字是真的、只是缺 LLM 解读 —— 产出物已落表，不能记 FAILED");
+                "数字是真的、只是缺 LLM 解读 → 记 PARTIAL 而不是 FAILED（是否落表取决于 dag 的 persist 声明）");
     }
 
     @Test

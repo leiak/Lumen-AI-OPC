@@ -123,7 +123,9 @@ public class WorkflowEngine {
             // 产出物没落表 = 这件事没做成，不能记成功（裁定 R-106）。
             //
             // 不接返回值（PersistOutcome）：落表成功与否在 DB 里可反查 ——
-            // opc_insight_daily_report.source_workflow_run_id 指向这条 run（落表成功）；
+            // opc_insight_daily_report.source_workflow_run_id 指向**最近一次**写这一行的 run。
+            // 注意日报是快照：同一 (company_id, period) upsert 时先删旧行再插新行，
+            // 所以**更早**那次成功落表在表里不会留下痕迹（反查只对最近一次有效）。
             // persist 抛异常 → 整条 run 记 FAILED（没落表）。
             JsonNode persistNode = dag.get("persist");
             if (persistNode != null && !persistNode.isNull()) {
