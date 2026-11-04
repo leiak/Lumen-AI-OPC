@@ -165,3 +165,28 @@ UPDATE `opc_agent_workflow`
 -- ----------------------------------------------------------------------------
 UPDATE `sys_job` SET `cron_expression` = '0 0 1 * * ?'
  WHERE `invoke_target` = 'workflowCronJob.execute(''finance_daily_report_v1'')';
+
+-- ----------------------------------------------------------------------------
+-- 8. opc_agent_workflow_run.status 的列注释要含 PARTIAL
+--
+--    PARTIAL 是**真的会被写进这一列的值**(Task 5 引入:LLM 降级但数据落表了),
+--    Task 7 的 R-125 还专门为它加了一条处置(PARTIAL 不抛异常)。
+--    但列注释里列的合法值清单少了它 → **schema 自己在说假话**:
+--    读这份表结构的人(或工具)会以为 PARTIAL 这个状态不存在。
+--    这正是本仓库要消灭的那类病,只不过这次长在表结构里,不在文档里。
+--
+--    只改**注释**: 类型 VARCHAR(16) / NOT NULL / DEFAULT 'PENDING' 一个字都不动。
+--
+--    幂等: 迁移已经在线上库跑过两次了,这一段会被再跑一次。
+--    探测条件是「注释里**含 PARTIAL**」而不是「列存不存在」——
+--    列早就存在了,缺的只是注释,所以第二次跑要走 'SELECT 1' 分支,
+--    否则每次跑都白做一次 ALTER。
+-- ----------------------------------------------------------------------------
+SET @exist := 0;
+SELECT COUNT(*) INTO @exist FROM information_schema.COLUMNS
+ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'opc_agent_workflow_run'
+   AND COLUMN_NAME = 'status' AND COLUMN_COMMENT LIKE '%PARTIAL%';
+SET @sql := IF(@exist = 0,
+  'ALTER TABLE `opc_agent_workflow_run` MODIFY COLUMN `status` VARCHAR(16) NOT NULL DEFAULT ''PENDING'' COMMENT ''PENDING/RUNNING/SUCCESS/PARTIAL/FAILED/CANCELLED''',
+  'SELECT 1');
+PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;

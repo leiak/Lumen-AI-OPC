@@ -243,7 +243,7 @@ CREATE TABLE `opc_agent_workflow_run` (
   `company_id`      BIGINT       NOT NULL                         COMMENT '公司ID',
   `trigger_type`    VARCHAR(16)  NOT NULL                         COMMENT '触发器类型',
   `trigger_source`  VARCHAR(128) DEFAULT NULL                     COMMENT '触发来源',
-  `status`          VARCHAR(16)  NOT NULL DEFAULT 'PENDING'       COMMENT 'PENDING/RUNNING/SUCCESS/FAILED/CANCELLED',
+  `status`          VARCHAR(16)  NOT NULL DEFAULT 'PENDING'       COMMENT 'PENDING/RUNNING/SUCCESS/PARTIAL/FAILED/CANCELLED',
   `input_params`    TEXT         DEFAULT NULL                     COMMENT '输入参数 JSON',
   `output_result`   MEDIUMTEXT   DEFAULT NULL                     COMMENT '输出结果 JSON',
   `error_message`   TEXT         DEFAULT NULL                     COMMENT '错误信息',
