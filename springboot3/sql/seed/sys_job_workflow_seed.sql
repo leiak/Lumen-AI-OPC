@@ -9,6 +9,9 @@
 --   invoke_target   由 JobInvokeUtil 反射解析；bean 名 workflowCronJob 必须位于
 --                   com.ruoyi.job.task 包下（Constants.JOB_WHITELIST_STR 白名单）。
 --                   SQL 字符串里的单引号需转义成两个单引号。
+--   cron_expression '0 0 1 * * ?' = **UTC 01:00 = 北京 09:00**。容器时区是 UTC，
+--                   Quartz 的 CronScheduleBuilder 不带任何时区 → 直接用容器 TZ。
+--                   原来写的 '0 0 9 * * ?' 实际是**北京 17:00**。
 --   misfire_policy  3 = 放弃执行（服务重启错过的日报不补跑，避免堆积）
 --   concurrent      1 = 禁止并发（与服务端 30 秒去重窗口配合，双保险）
 --   status          0 = 正常（导入后立即生效）
@@ -30,7 +33,7 @@ SELECT
     '财务日报',
     'SYSTEM',
     'workflowCronJob.execute(''finance_daily_report_v1'')',
-    '0 0 9 * * ?',
+    '0 0 1 * * ?',
     '3',
     '1',
     '0',

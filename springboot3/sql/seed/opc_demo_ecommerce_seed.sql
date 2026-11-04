@@ -435,25 +435,17 @@ LIMIT 1;
 --    未重建 aiopc-insight 容器前,这里的数据只有 user_id 恰好等于 company_id 时才可见。
 -- level 取 HIGH/MEDIUM/LOW(DDL 注释写的 INFO/WARN/ERROR 与代码枚举不符,勿用)。
 -- uk_company_period 唯一 → period 每天一条。
+--
+-- ⚠️ opc_insight_daily_report **这里原本插了 7 行日报,现已整段删掉**。
+--    那 7 行的 kpi_json 是**编的**:totalRevenue = 9800 / 19600 / 6200 / 4200 /
+--    3100 / 3580 / 890,而真实流水是 3582 / 7080 / 9860 / 12150 / 13200 / 38450
+--    —— 连 3580 和 3582 都差 2 块,一条都对不上。
+--    新环境装上这份种子,就等于对外宣称「这家公司的日报是这些数」——
+--    而那些数从来不是查出来的。
+--    现在日报只由数字员工(财务日报工作流)真的跑出来才落库;
+--    文件末尾统计报表里 `日报` 那一栏统计的就是**真实表行数**:
+--    种子装完是 0,工作流真跑一次才变 1 —— 这正是我们要的「数字是真的」。
 -- =============================================================================
-
-INSERT INTO `opc_insight_daily_report`
-  (`company_id`, `period`, `summary_md`, `kpi_json`, `advice_md`, `llm_used`, `create_by`, `create_time`)
-VALUES
-  (@cid, DATE_SUB(CURDATE(), INTERVAL 6 DAY), '[自动聚合·未走 LLM] 本日销售 3 单,营收环比持平,库存周转正常。',
-   '{"totalRevenue":9800.0,"totalExpense":3200.0,"voucherCount":2,"walletBalance":2860.0}', '建议维持当前直播频次。', 'FALLBACK', @by, DATE_SUB(NOW(), INTERVAL 6 DAY)),
-  (@cid, DATE_SUB(CURDATE(), INTERVAL 5 DAY), '[自动聚合·未走 LLM] 家居专场销售 19600 元,创本周单日新高。',
-   '{"totalRevenue":19600.0,"totalExpense":5100.0,"voucherCount":3,"walletBalance":2860.0}', '可加大家居品类备货深度。', 'FALLBACK', @by, DATE_SUB(NOW(), INTERVAL 5 DAY)),
-  (@cid, DATE_SUB(CURDATE(), INTERVAL 4 DAY), '[自动聚合·未走 LLM] 销售回落,数码类库存偏低。',
-   '{"totalRevenue":6200.0,"totalExpense":2400.0,"voucherCount":1,"walletBalance":2860.0}', '蓝牙音箱建议补货。', 'FALLBACK', @by, DATE_SUB(NOW(), INTERVAL 4 DAY)),
-  (@cid, DATE_SUB(CURDATE(), INTERVAL 3 DAY), '[自动聚合·未走 LLM] 平台服务费入账,支出占比上升。',
-   '{"totalRevenue":4200.0,"totalExpense":2600.0,"voucherCount":2,"walletBalance":2860.0}', '复核平台费率。', 'FALLBACK', @by, DATE_SUB(NOW(), INTERVAL 3 DAY)),
-  (@cid, DATE_SUB(CURDATE(), INTERVAL 2 DAY), '[自动聚合·未走 LLM] 退货 1 单,售后成本小幅上升。',
-   '{"totalRevenue":3100.0,"totalExpense":1800.0,"voucherCount":1,"walletBalance":2860.0}', '核对花色描述避免退货。', 'FALLBACK', @by, DATE_SUB(NOW(), INTERVAL 2 DAY)),
-  (@cid, DATE_SUB(CURDATE(), INTERVAL 1 DAY), '[自动聚合·未走 LLM] 老客复购贡献 3580 元,私域运营见效。',
-   '{"totalRevenue":3580.0,"totalExpense":1200.0,"voucherCount":1,"walletBalance":2860.0}', '可扩大私域触达频次。', 'FALLBACK', @by, DATE_SUB(NOW(), INTERVAL 1 DAY)),
-  (@cid, CURDATE(), '[自动聚合·未走 LLM] 当日数据尚未结算,仅有零星订单。',
-   '{"totalRevenue":890.0,"totalExpense":300.0,"voucherCount":0,"walletBalance":2860.0}', '晚间复盘今日转化率。', 'FALLBACK', @by, NOW());
 
 -- status: OPEN / ACK / RESOLVED / IGNORED
 INSERT INTO `opc_insight_anomaly`

@@ -43,6 +43,12 @@ CREATE TABLE IF NOT EXISTS `opc_insight_daily_report` (
   `kpi_json`     JSON                                                  COMMENT 'KPI 指标 JSON',
   `advice_md`    MEDIUMTEXT                                            COMMENT 'AI 建议（Markdown）',
   `llm_used`     VARCHAR(64)                                           COMMENT '生成使用的 LLM 模型 ID',
+  -- 这三列的类型 / 默认值 / 注释与 sql/migrations/V20261102__finance_agent_truth.sql
+  -- 里的三段 ALTER **逐字一致** —— 新鲜库走这个 CREATE TABLE,存量库走那三段 ALTER,
+  -- 两条路径必须收敛到同一个结果(否则换环境就出问题)。
+  `report_status`          VARCHAR(16)  DEFAULT NULL                    COMMENT 'FULL/PARTIAL/FALLBACK',
+  `report_source`          VARCHAR(32)  DEFAULT NULL                    COMMENT 'AGENT_WORKFLOW/MANUAL',
+  `source_workflow_run_id` BIGINT       DEFAULT NULL                    COMMENT '产出该日报的工作流运行记录 id',
   `create_by`    VARCHAR(64)  DEFAULT NULL                            COMMENT '创建者',
   `create_time`  DATETIME     DEFAULT CURRENT_TIMESTAMP                COMMENT '创建时间',
   `update_by`    VARCHAR(64)  DEFAULT NULL                            COMMENT '更新者',
