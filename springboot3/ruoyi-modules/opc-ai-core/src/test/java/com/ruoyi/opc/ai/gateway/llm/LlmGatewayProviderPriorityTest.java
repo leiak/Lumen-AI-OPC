@@ -69,8 +69,8 @@ class LlmGatewayProviderPriorityTest {
     @Test
     @DisplayName("注入顺序与优先级相反时 → 仍然先打 priority 最小的 provider")
     void chat_prefersHighestPriorityEvenIfInjectedLast() {
-        enable(highPriority, 5, "MiniMax-Text-01");
-        enable(lowPriority, 10, "deepseek-v3");
+        enable(highPriority, 5, "MiniMax-M3.1-Flash");
+        enable(lowPriority, 10, "deepseek-chat");
         when(highPriority.chat(anyList(), any())).thenReturn(ok("主模型的答案"));
 
         // 故意按"错"的顺序注入
@@ -86,8 +86,8 @@ class LlmGatewayProviderPriorityTest {
     @Test
     @DisplayName("高优先级 provider 重试满 3 次仍失败 → 回退到下一个")
     void chat_retriesExhaustedThenFallsBackToNextProvider() {
-        enable(highPriority, 5, "MiniMax-Text-01");
-        enable(lowPriority, 10, "deepseek-v3");
+        enable(highPriority, 5, "MiniMax-M3.1-Flash");
+        enable(lowPriority, 10, "deepseek-chat");
         when(highPriority.chat(anyList(), any())).thenThrow(new RuntimeException("502 upstream"));
         when(lowPriority.chat(anyList(), any())).thenReturn(ok("备模型的答案"));
 
@@ -105,10 +105,10 @@ class LlmGatewayProviderPriorityTest {
     @Test
     @DisplayName("高优先级 provider 返回 success=false → 同样回退")
     void chat_fallsBackWhenProviderReturnsFailure() {
-        enable(highPriority, 5, "MiniMax-Text-01");
-        enable(lowPriority, 10, "deepseek-v3");
+        enable(highPriority, 5, "MiniMax-M3.1-Flash");
+        enable(lowPriority, 10, "deepseek-chat");
         when(highPriority.chat(anyList(), any())).thenReturn(ChatResponse.builder()
-                .model("MiniMax-Text-01").success(false).errorMessage("rate limited").build());
+                .model("MiniMax-M3.1-Flash").success(false).errorMessage("rate limited").build());
         when(lowPriority.chat(anyList(), any())).thenReturn(ok("备模型的答案"));
 
         LlmGateway gw = gateway(List.of(highPriority, lowPriority));
@@ -126,7 +126,7 @@ class LlmGatewayProviderPriorityTest {
     @DisplayName("高优先级 provider 被禁用 → 直接跳到下一个")
     void chat_skipsDisabledProvider() {
         when(highPriority.enabled()).thenReturn(false);
-        enable(lowPriority, 10, "deepseek-v3");
+        enable(lowPriority, 10, "deepseek-chat");
         when(lowPriority.chat(anyList(), any())).thenReturn(ok("备模型的答案"));
 
         LlmGateway gw = gateway(List.of(highPriority, lowPriority));
@@ -141,8 +141,8 @@ class LlmGatewayProviderPriorityTest {
     @Test
     @DisplayName("所有 provider 都失败 → 抛 OpcException")
     void chat_allProvidersFail_throwsOpcException() {
-        enable(highPriority, 5, "MiniMax-Text-01");
-        enable(lowPriority, 10, "deepseek-v3");
+        enable(highPriority, 5, "MiniMax-M3.1-Flash");
+        enable(lowPriority, 10, "deepseek-chat");
         when(highPriority.chat(anyList(), any())).thenThrow(new RuntimeException("boom-1"));
         when(lowPriority.chat(anyList(), any())).thenThrow(new RuntimeException("boom-2"));
 
@@ -158,8 +158,8 @@ class LlmGatewayProviderPriorityTest {
     @Test
     @DisplayName("chatStream 也挑 priority 最小的那个（与 chat 保持一致）")
     void chatStream_picksHighestPriorityProvider() {
-        enable(highPriority, 5, "MiniMax-Text-01");
-        enable(lowPriority, 10, "deepseek-v3");
+        enable(highPriority, 5, "MiniMax-M3.1-Flash");
+        enable(lowPriority, 10, "deepseek-chat");
 
         LlmGateway gw = gateway(List.of(lowPriority, highPriority));
 

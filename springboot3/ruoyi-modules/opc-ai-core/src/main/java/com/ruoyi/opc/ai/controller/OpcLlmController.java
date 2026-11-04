@@ -49,7 +49,7 @@ public class OpcLlmController {
     private final com.ruoyi.opc.ai.memory.Memory memory;
     /**
      * W48.6: 注入所有 ChatModelProvider，{@code /models} 端点直接列 enabled=true 的 provider。
-     * 之前是硬编码 [deepseek-v3, gpt-4o-mini, wenxin-4.0]，新增 MiniMax 时容易漏改。
+     * 之前是硬编码 [deepseek-chat, gpt-4o-mini, wenxin-4.0]，新增 MiniMax 时容易漏改。
      */
     private final List<ChatModelProvider> providers;
 

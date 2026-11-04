@@ -46,8 +46,8 @@ opc:
     #     (全仓 grep 这两个键, 只命中一处 javadoc —— 没有任何代码读它们。)
     #   健康检查 26.9 / 26.9b / 26.12 断的是「链真的接上了吗 / 那把钥匙能开门吗」,
     #   26.11 断的是这四份 yml 的这一段还对不对得上。
-    primary: MiniMax-Text-01  # MiniMax 优先 (priority=5)
-    fallback: deepseek-v3
+    primary: MiniMax-M3.1-Flash  # MiniMax 优先 (priority=5)
+    fallback: deepseek-chat
     enable-cache: true
     cache-ttl: 3600
     max-retries: 3
@@ -64,8 +64,8 @@ opc:
       enabled: ${OPC_LLM_MINIMAX_ENABLED:true}
       api-key: ${MINIMAX_API_KEY:}
       base-url: https://api.minimaxi.com/v1
-      model: MiniMax-Text-01
-      # 向量化模型与聊天模型是两回事：聊天用 MiniMax-Text-01，向量化用 embo-01
+      model: MiniMax-M3.1-Flash
+      # 向量化模型与聊天模型是两回事：聊天用 MiniMax-M3.1-Flash，向量化用 embo-01
       embedding-model: embo-01
       embedding-dimension: 1536
     openai:

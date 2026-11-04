@@ -14,7 +14,7 @@ import java.util.List;
  * base-url 默认 {@code https://api.minimaxi.com/v1}，
  * 鉴权走 {@code Authorization: Bearer <MINIMAX_API_KEY>}。
  *
- * <p>priority=5，比 DeepSeek 优先（10），让用户在 Nacos 配 {@code opc.llm.primary=MiniMax-Text-01}
+ * <p>priority=5，比 DeepSeek 优先（10），让用户在 Nacos 配 {@code opc.llm.primary=MiniMax-M3.1-Flash}
  * 时默认走 MiniMax。
  *
  * @author OAC
@@ -30,7 +30,9 @@ public class MiniMaxProvider implements ChatModelProvider {
     private String apiKey;
     @Value("${opc.llm.minimax.base-url:https://api.minimaxi.com/v1}")
     private String baseUrl;
-    @Value("${opc.llm.minimax.model:MiniMax-Text-01}")
+    // MiniMax-Text-01 已被官方下线（HTTP 404 not_found_error："The model MiniMax-Text-01 is no longer available"），
+    // 改成 MiniMax-M3.1-Flash；谁要是「恢复旧值」，先去看 MiniMax 的 /v1/models。
+    @Value("${opc.llm.minimax.model:MiniMax-M3.1-Flash}")
     private String modelName;
     @Value("${opc.llm.minimax.enabled:true}")
     private boolean enabled;

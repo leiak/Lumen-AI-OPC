@@ -84,7 +84,7 @@ class TokenMeterTest {
     @Test
     @DisplayName("ctx 里有归属 → 原样落库")
     void record_usesContextOwnership() {
-        meter.record(LlmGateway.ChatContext.builder().companyId(7L).userId(42L).build(), "deepseek-v3", resp());
+        meter.record(LlmGateway.ChatContext.builder().companyId(7L).userId(42L).build(), "deepseek-chat", resp());
 
         TokenMeter.TokenUsageRecord record = captured();
         assertEquals(7L, record.getCompanyId());
@@ -96,7 +96,7 @@ class TokenMeterTest {
     void record_backfillsOwnershipFromLoginContext() {
         loginAs(42L, 7L);
 
-        meter.record(LlmGateway.ChatContext.builder().build(), "deepseek-v3", resp());
+        meter.record(LlmGateway.ChatContext.builder().build(), "deepseek-chat", resp());
 
         TokenMeter.TokenUsageRecord record = captured();
         assertEquals(7L, record.getCompanyId(), "归属缺失时应从登录态补齐, 而不是丢记录");
@@ -106,7 +106,7 @@ class TokenMeterTest {
     @Test
     @DisplayName("ctx 与登录态都没有归属 → 不写库 (写也必然失败), 不再抛 NOT NULL 违例")
     void record_skipsWhenOwnershipCannotBeResolved() {
-        meter.record(LlmGateway.ChatContext.builder().build(), "deepseek-v3", resp());
+        meter.record(LlmGateway.ChatContext.builder().build(), "deepseek-chat", resp());
 
         verify(recorder, never()).save(any());
     }
@@ -116,7 +116,7 @@ class TokenMeterTest {
     void record_toleratesNullContext() {
         loginAs(42L, 7L);
 
-        meter.record(null, "deepseek-v3", resp());
+        meter.record(null, "deepseek-chat", resp());
 
         TokenMeter.TokenUsageRecord record = captured();
         assertEquals(7L, record.getCompanyId());
@@ -128,7 +128,7 @@ class TokenMeterTest {
     void record_skipsWhenUserHasNoCompany() {
         loginAs(42L, null);
 
-        meter.record(LlmGateway.ChatContext.builder().build(), "deepseek-v3", resp());
+        meter.record(LlmGateway.ChatContext.builder().build(), "deepseek-chat", resp());
 
         verify(recorder, never()).save(any());
         LoginUser loginUser = SecurityContextHolder.get(SecurityConstants.LOGIN_USER, LoginUser.class);
@@ -139,7 +139,7 @@ class TokenMeterTest {
     @DisplayName("缓存命中 → token 数照记, 费用记 0 (缓存的意义就是不重复计费)")
     void record_cacheHit_zeroCostButTokensKept() {
         meter.record(LlmGateway.ChatContext.builder().companyId(7L).userId(42L).build(),
-                "deepseek-v3", resp(), true);
+                "deepseek-chat", resp(), true);
 
         TokenMeter.TokenUsageRecord record = captured();
         assertEquals(0.0, record.getCost(), 0.0001,
@@ -153,7 +153,7 @@ class TokenMeterTest {
     @DisplayName("非缓存命中 → 费用照算")
     void record_normalCall_costComputed() {
         meter.record(LlmGateway.ChatContext.builder().companyId(7L).userId(42L).build(),
-                "deepseek-v3", resp());
+                "deepseek-chat", resp());
 
         TokenMeter.TokenUsageRecord record = captured();
         assertTrue(record.getCost() > 0, "真实调用了 provider 就必须有费用");

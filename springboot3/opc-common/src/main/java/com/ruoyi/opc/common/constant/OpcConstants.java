@@ -35,13 +35,15 @@ public final class OpcConstants {
     public static final String HIRE_TRIAL = "TRIAL";
 
     /** 模型标识 */
-    public static final String MODEL_DEEPSEEK_V3 = "deepseek-v3";
+    // DeepSeek 的模型 id 是 deepseek-chat / deepseek-reasoner，没有 deepseek-v3 这个 id。
+    public static final String MODEL_DEEPSEEK_CHAT = "deepseek-chat";
     public static final String MODEL_GPT_4O_MINI = "gpt-4o-mini";
     public static final String MODEL_GPT_4O = "gpt-4o";
     public static final String MODEL_WENXIN = "wenxin-4.0";
     public static final String MODEL_QWEN = "qwen-max";
-    // W48.6: MiniMaxAI(MiniMax) MiniMax-Text-01 是 OpenAI 兼容协议上的旗舰文本模型
-    public static final String MODEL_MINIMAX = "MiniMax-Text-01";
+    // W48.6: MiniMaxAI(MiniMax) MiniMax-M3.1-Flash 是 OpenAI 兼容协议上的旗舰文本模型
+    // （旧的 MiniMax-Text-01 已被官方下线）
+    public static final String MODEL_MINIMAX = "MiniMax-M3.1-Flash";
     public static final String PROVIDER_MINIMAX = "minimax";
     public static final String PROVIDER_DEEPSEEK = "deepseek";
 
@@ -52,9 +54,9 @@ public final class OpcConstants {
     public static final double PRICE_GPT_4O_MINI_OUTPUT = 0.060;
     public static final double PRICE_GPT_4O_INPUT = 0.250;
     public static final double PRICE_GPT_4O_OUTPUT = 0.750;
-    // W48.6: MiniMax-Text-01 公开定价 input ¥0.001/1k, output ¥0.008/1k (人民币)
+    // MiniMax-M3.1-Flash 公开定价：输入 ¥1/1M、输出 ¥4/1M（人民币）→ 每千 token ¥0.001 / ¥0.004
     public static final double PRICE_MINIMAX_INPUT = 0.001;
-    public static final double PRICE_MINIMAX_OUTPUT = 0.008;
+    public static final double PRICE_MINIMAX_OUTPUT = 0.004;
 
     /** Redis Key 前缀 */
     public static final String REDIS_KEY_PREFIX = "opc:";

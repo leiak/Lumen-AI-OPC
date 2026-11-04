@@ -55,7 +55,7 @@ spring:
 # OPC 通用业务配置
 opc:
   llm:
-    primary: deepseek-v3
+    primary: deepseek-chat
     fallback: gpt-4o-mini
     enable-cache: true
     cache-ttl: 7200       # prod 缓存延长到 2h
@@ -91,7 +91,7 @@ opc:
       enabled: true
       api-key: ENC(${MINIMAX_API_KEY})
       base-url: https://api.minimaxi.com/v1
-      model: MiniMax-Text-01
+      model: MiniMax-M3.1-Flash
     openai:
       enabled: false
       api-key: ENC(3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f)

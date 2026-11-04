@@ -18,7 +18,7 @@ import java.util.List;
  * </pre>
  *
  * <p>与聊天模型分开配置：聊天用 {@code opc.llm.minimax.model}
- * （默认 {@code MiniMax-Text-01}），向量化用 {@code opc.llm.minimax.embedding-model}
+ * （默认 {@code MiniMax-M3.1-Flash}），向量化用 {@code opc.llm.minimax.embedding-model}
  * （默认 {@code embo-01}）。
  *
  * @author OAC

@@ -6,7 +6,7 @@ import java.util.List;
  * Embedding（向量化）提供者抽象。
  *
  * <p><b>为什么单独一套接口</b>：聊天和向量化是两种能力，厂商提供的模型也不同
- * （MiniMax 聊天用 {@code MiniMax-Text-01}，向量化用 {@code embo-01}）。
+ * （MiniMax 聊天用 {@code MiniMax-M3.1-Flash}，向量化用 {@code embo-01}）。
  * 硬塞进 {@link ChatModelProvider} 只会让每个 provider 多出一堆用不上的方法。
  *
  * <p>长期记忆（Qdrant）完全依赖它 —— 没有能用的 embedding provider，

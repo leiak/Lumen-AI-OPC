@@ -134,7 +134,7 @@ public class TokenMeter {
         if (model.startsWith("deepseek")) return OpcConstants.PRICE_DEEPSEEK_INPUT;
         if (model.startsWith("gpt-4o-mini")) return OpcConstants.PRICE_GPT_4O_MINI_INPUT;
         if (model.startsWith("gpt-4o")) return OpcConstants.PRICE_GPT_4O_INPUT;
-        // W48.6: MiniMax(MiniMax) MiniMax-Text-01 走 MiniMax 价格
+        // W48.6: MiniMax(MiniMax) MiniMax-M3.1-Flash 走 MiniMax 价格
         if (model.startsWith("MiniMax") || model.startsWith("abab")) return OpcConstants.PRICE_MINIMAX_INPUT;
         return OpcConstants.PRICE_DEEPSEEK_INPUT;
     }

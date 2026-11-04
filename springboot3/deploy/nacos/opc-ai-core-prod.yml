@@ -40,8 +40,8 @@ opc:
     model-routing:
       strategy: cost-first  # cost-first | latency-first | quality-first
       fallback-chain:
-        - MiniMax-Text-01
-        - deepseek-v3
+        - MiniMax-M3.1-Flash
+        - deepseek-chat
         - gpt-4o-mini
         - zhipu-glm-4
     memory:
@@ -75,7 +75,7 @@ opc:
       enabled: true
       api-key: ENC(${MINIMAX_API_KEY_NACOS_ENC:})
       base-url: https://api.minimaxi.com/v1
-      model: MiniMax-Text-01
+      model: MiniMax-M3.1-Flash
     openai:
       enabled: false
       api-key: ENC(${OPENAI_API_KEY_NACOS_ENC:})

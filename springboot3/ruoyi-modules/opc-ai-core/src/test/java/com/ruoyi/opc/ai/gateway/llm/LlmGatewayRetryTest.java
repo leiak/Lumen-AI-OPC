@@ -75,7 +75,7 @@ class LlmGatewayRetryTest {
     /** 失败响应：httpStatus 为 null 表示「没拿到 HTTP 响应」→ 按可重试处理。 */
     private ChatResponse fail(String errorMessage) {
         return ChatResponse.builder()
-                .model("MiniMax-Text-01")
+                .model("MiniMax-M3.1-Flash")
                 .success(false)
                 .errorMessage(errorMessage)
                 .build();
@@ -84,7 +84,7 @@ class LlmGatewayRetryTest {
     /** 失败响应：带 HTTP 状态码。 */
     private ChatResponse fail(int httpStatus, String errorMessage) {
         return ChatResponse.builder()
-                .model("MiniMax-Text-01")
+                .model("MiniMax-M3.1-Flash")
                 .success(false)
                 .httpStatus(httpStatus)
                 .errorMessage(errorMessage)
@@ -94,8 +94,8 @@ class LlmGatewayRetryTest {
     @Test
     @DisplayName("provider 抛异常（超时）→ 重试，第二次成功就返回")
     void chat_retriesOnTimeout() {
-        enable(primary, 5, "MiniMax-Text-01");
-        enable(backup, 10, "deepseek-v3");
+        enable(primary, 5, "MiniMax-M3.1-Flash");
+        enable(backup, 10, "deepseek-chat");
         // 注意：这里用 RuntimeException 而不是 HttpTimeoutException ——
         // ChatModelProvider.chat 不声明 checked exception，Mockito 会直接拒绝那个 stub。
         when(primary.chat(anyList(), any()))
@@ -114,8 +114,8 @@ class LlmGatewayRetryTest {
     @Test
     @DisplayName("httpStatus=429 → 不重试，直接换下一个 provider")
     void chat_doesNotRetryOn429() {
-        enable(primary, 5, "MiniMax-Text-01");
-        enable(backup, 10, "deepseek-v3");
+        enable(primary, 5, "MiniMax-M3.1-Flash");
+        enable(backup, 10, "deepseek-chat");
         when(primary.chat(anyList(), any())).thenReturn(fail(429, "配额用尽"));
         when(backup.chat(anyList(), any())).thenReturn(ok("备模型的答案"));
 
@@ -132,8 +132,8 @@ class LlmGatewayRetryTest {
     @Test
     @DisplayName("httpStatus=503 → 调满 maxRetries 次后才换 provider")
     void chat_retriesOn5xx() {
-        enable(primary, 5, "MiniMax-Text-01");
-        enable(backup, 10, "deepseek-v3");
+        enable(primary, 5, "MiniMax-M3.1-Flash");
+        enable(backup, 10, "deepseek-chat");
         when(primary.chat(anyList(), any())).thenReturn(fail(503, "服务端临时故障"));
         when(backup.chat(anyList(), any())).thenReturn(ok("备模型的答案"));
 
@@ -149,8 +149,8 @@ class LlmGatewayRetryTest {
     @Test
     @DisplayName("第一个 provider 重试耗尽 → 第二个 provider 被调用")
     void chat_movesToNextProviderAfterRetriesExhausted() {
-        enable(primary, 5, "MiniMax-Text-01");
-        enable(backup, 10, "deepseek-v3");
+        enable(primary, 5, "MiniMax-M3.1-Flash");
+        enable(backup, 10, "deepseek-chat");
         when(primary.chat(anyList(), any())).thenThrow(new RuntimeException("502 upstream"));
         when(backup.chat(anyList(), any())).thenReturn(ok("备模型的答案"));
 
@@ -166,8 +166,8 @@ class LlmGatewayRetryTest {
     @Test
     @DisplayName("所有 provider 都失败 → 抛 OpcException，消息带最后一个 provider 名与原因")
     void chat_allProvidersFail_throwsWithLastError() {
-        enable(primary, 5, "MiniMax-Text-01");
-        enable(backup, 10, "deepseek-v3");
+        enable(primary, 5, "MiniMax-M3.1-Flash");
+        enable(backup, 10, "deepseek-chat");
         when(primary.name()).thenReturn("minimax");
         when(backup.name()).thenReturn("deepseek");
         when(primary.chat(anyList(), any())).thenReturn(fail(503, "主模型挂了"));
@@ -187,8 +187,8 @@ class LlmGatewayRetryTest {
     @Test
     @DisplayName("httpStatus=401（4xx 非 429）→ 不重试，只调 1 次")
     void chat_doesNotRetryOn4xxOtherThan429() {
-        enable(primary, 5, "MiniMax-Text-01");
-        enable(backup, 10, "deepseek-v3");
+        enable(primary, 5, "MiniMax-M3.1-Flash");
+        enable(backup, 10, "deepseek-chat");
         when(primary.chat(anyList(), any())).thenReturn(fail(401, "鉴权失败"));
         when(backup.chat(anyList(), any())).thenReturn(ok("备模型的答案"));
 
@@ -204,8 +204,8 @@ class LlmGatewayRetryTest {
     @Test
     @DisplayName("失败响应没有 httpStatus（未知错误）→ 算可重试，调满 3 次")
     void chat_failureWithoutHttpStatus_isRetried() {
-        enable(primary, 5, "MiniMax-Text-01");
-        enable(backup, 10, "deepseek-v3");
+        enable(primary, 5, "MiniMax-M3.1-Flash");
+        enable(backup, 10, "deepseek-chat");
         when(primary.chat(anyList(), any())).thenReturn(fail("rate limited"));
         when(backup.chat(anyList(), any())).thenReturn(ok("备模型的答案"));
 
@@ -222,10 +222,10 @@ class LlmGatewayRetryTest {
     @Test
     @DisplayName("缓存命中 → provider 一次都不调，且照样计量(fromCache=true)")
     void chat_cacheHit_doesNotCallProvider() {
-        enable(primary, 5, "MiniMax-Text-01");
+        enable(primary, 5, "MiniMax-M3.1-Flash");
         ChatResponse cached = ChatResponse.builder()
                 .content("缓存里的答案")
-                .model("deepseek-v3")
+                .model("deepseek-chat")
                 .success(true)
                 .tokenInput(100)
                 .tokenOutput(50)
@@ -240,13 +240,13 @@ class LlmGatewayRetryTest {
 
         assertEquals("缓存里的答案", resp.getContent());
         verify(primary, never()).chat(anyList(), any());
-        verify(tokenMeter).record(eq(ctx), eq("deepseek-v3"), any(ChatResponse.class), eq(true));
+        verify(tokenMeter).record(eq(ctx), eq("deepseek-chat"), any(ChatResponse.class), eq(true));
     }
 
     @Test
     @DisplayName("4 参构造器传 max-retries=5 → provider 被调 5 次（证明这个键真的被读了）")
     void chat_usesConfiguredMaxRetries() {
-        enable(primary, 5, "MiniMax-Text-01");
+        enable(primary, 5, "MiniMax-M3.1-Flash");
         when(primary.chat(anyList(), any()))
                 .thenReturn(fail(503, "服务端临时故障"))
                 .thenReturn(fail(503, "服务端临时故障"))
@@ -267,7 +267,7 @@ class LlmGatewayRetryTest {
     @Test
     @DisplayName("max-retries=0 → 至少试一次，错误消息要带上 provider 名与原因")
     void chat_maxRetriesZero_stillTriesOnce() {
-        enable(primary, 5, "MiniMax-Text-01");
+        enable(primary, 5, "MiniMax-M3.1-Flash");
         when(primary.name()).thenReturn("minimax");
         when(primary.chat(anyList(), any())).thenReturn(fail(503, "主模型挂了"));
 

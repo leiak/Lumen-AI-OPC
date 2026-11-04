@@ -42,7 +42,7 @@ public class HttpLlmClient {
      *
      * @param baseUrl     形如 {@code https://api.deepseek.com/v1}，方法会自动拼 {@code /chat/completions}
      * @param apiKey      Bearer token
-     * @param model       模型名（gpt-4o-mini / deepseek-chat / MiniMax-Text-01 等）
+     * @param model       模型名（gpt-4o-mini / deepseek-chat / MiniMax-M3.1-Flash 等）
      * @param messages    业务消息
      * @param options     调参（temperature / maxTokens / tools...）
      * @return 原始响应 JSON（解析失败的 fallback）

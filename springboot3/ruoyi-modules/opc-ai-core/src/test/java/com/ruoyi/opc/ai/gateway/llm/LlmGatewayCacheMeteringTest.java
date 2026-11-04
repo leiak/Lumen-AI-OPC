@@ -60,7 +60,7 @@ class LlmGatewayCacheMeteringTest {
     private ChatResponse cachedResponse() {
         return ChatResponse.builder()
                 .content("缓存里的答案")
-                .model("deepseek-v3")
+                .model("deepseek-chat")
                 .success(true)
                 .tokenInput(100)
                 .tokenOutput(50)
@@ -80,7 +80,7 @@ class LlmGatewayCacheMeteringTest {
 
         assertThat(resp.getContent()).isEqualTo("缓存里的答案");
         assertThat(resp.getRequestId()).startsWith("cache-");
-        verify(tokenMeter).record(eq(ctx), eq("deepseek-v3"), any(ChatResponse.class), eq(true));
+        verify(tokenMeter).record(eq(ctx), eq("deepseek-chat"), any(ChatResponse.class), eq(true));
         verify(provider, never()).chat(anyList(), any());
     }
 
@@ -101,7 +101,7 @@ class LlmGatewayCacheMeteringTest {
         build();
         when(cache.get(any())).thenReturn(null);
         when(provider.enabled()).thenReturn(true);
-        when(provider.model()).thenReturn("deepseek-v3");
+        when(provider.model()).thenReturn("deepseek-chat");
         when(provider.chat(anyList(), any())).thenReturn(ChatResponse.builder()
                 .content("x").success(true).tokenInput(1).tokenOutput(1).build());
 

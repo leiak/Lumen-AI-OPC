@@ -58,7 +58,7 @@ class LlmGatewayCacheWriteTest {
     private void enableProvider() {
         when(cache.get(any())).thenReturn(null);
         when(provider.enabled()).thenReturn(true);
-        when(provider.model()).thenReturn("deepseek-v3");
+        when(provider.model()).thenReturn("deepseek-chat");
     }
 
     @Test
@@ -66,7 +66,7 @@ class LlmGatewayCacheWriteTest {
     void chat_failure_doesNotWriteCache() {
         enableProvider();
         when(provider.chat(anyList(), any())).thenReturn(ChatResponse.builder()
-                .model("deepseek-v3")
+                .model("deepseek-chat")
                 .success(false)
                 .httpStatus(503)
                 .errorMessage("服务端临时故障")
@@ -86,7 +86,7 @@ class LlmGatewayCacheWriteTest {
     void chat_success_writesCacheOnce() {
         enableProvider();
         when(provider.chat(anyList(), any())).thenReturn(ChatResponse.builder()
-                .model("deepseek-v3")
+                .model("deepseek-chat")
                 .content("答案")
                 .success(true)
                 .tokenInput(1)
