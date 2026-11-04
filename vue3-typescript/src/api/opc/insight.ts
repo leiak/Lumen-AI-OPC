@@ -57,7 +57,14 @@ export function listDaily(from: string, to: string, limit?: number): Promise<Aja
 export function getDaily(id: number): Promise<AjaxResult<DailyReportVO>> {
   return request({ url: `/opc/insight/daily/${id}`, method: 'get' })
 }
-export function generateDaily(date: string) {
+/**
+ * 生成日报。
+ *
+ * <p>后端 `DailyReportController.generate` 返回的是 **`R<Void>`**（`R.ok()`，没有 body）——
+ * **没有日报 id 可言**。以前前端写「日报生成成功（ID=${r.data?.reportId}）」，
+ * 那个 id 恒为 `undefined`：界面在报一个后端根本没给的东西。</p>
+ */
+export function generateDaily(date: string): Promise<AjaxResult<void>> {
   return request({ url: '/opc/insight/daily/generate', method: 'post', params: { date } })
 }
 

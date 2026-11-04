@@ -18,9 +18,20 @@
 // - 新增用例在**移动模式**下跑（mock @vueuse/core 把窗口宽度设成 500）：
 //   桌面模式下 ElTableColumn 桩自己造了个空 row（{ row: {} }），
 //   单元格恒为 '-' —— 在那儿断言数字等于断言一条永远为真的假测试。
+//
+// 修复轮 R=1：
+// - 弹窗的状态/来源**兜底自称「完整」/「手工」** —— `report_status = NULL` 的旧日报
+//   根本不知道完整不完整，界面不能替它说「完整」。未知取值 → **不出 tag**，显示「—」。
+// - 弹窗的「取不到」渲染（formatMoney 的空值分支、凭证数的 `?? '—'`）**零测试保护** ——
+//   补一条坏 kpiJson 的用例。
+// - 用例 21 原来的 fixture 恰好是兜底分支的文案 → **没牙齿**（写死 tag 也全绿）。
+//   改成 FALLBACK/MANUAL，并补 PARTIAL/AGENT_WORKFLOW 与 null/null（旧数据）两条。
+// - `onGenerate` 的提示恒显示「（ID=undefined）」—— 后端 `generate` 返回 `R<Void>`，
+//   压根没有 id。提示里别提 id；mock 也不能自己编一个 `reportId`。
 import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { ElMessage } from 'element-plus'
 
 const widthRef = ref(1200)
 
@@ -219,8 +230,61 @@ function makeRealRows(): any[] {
   ]
 }
 
+/**
+ * 详情弹窗用的 fixture。
+ *
+ * <p>summaryMd / adviceMd **刻意不含**「完整 / 部分完成 / 未走 LLM / 数字员工 / 手工」
+ * 这几个字 —— 否则断言会断到摘要里的字，而不是断到状态 tag 上
+ * （`makeRealRows()` 的第 2 行摘要就写着「[自动聚合·未走 LLM] ...」，不能拿它做弹窗断言）。</p>
+ */
+function makeDialogRow(over: any = {}): any {
+  return {
+    id: 41,
+    period: '2026-11-01',
+    kpiJson: JSON.stringify({
+      query_bank_flow: {
+        source: 'opc_finance_bank_flow',
+        companyId: 2,
+        fromDate: '2026-10-07',
+        toDate: '2026-11-01',
+        count: 6,
+        totalIn: 51892.0,
+        totalOut: 32430.0,
+        net: 19462.0,
+        items: [],
+      },
+      query_voucher: {
+        source: 'opc_finance_voucher',
+        companyId: 2,
+        fromDate: '2026-10-07',
+        toDate: '2026-11-01',
+        count: 5,
+        totalIn: 35400.0,
+        totalOut: 29750.0,
+        items: [],
+      },
+    }),
+    summaryMd: '（无解读）',
+    adviceMd: '（无建议）',
+    llmUsed: 'MiniMax-Text-01',
+    reportStatus: 'FULL',
+    reportSource: 'AGENT_WORKFLOW',
+    createTime: '2026-11-01 09:00:00',
+    ...over,
+  }
+}
+
 function mountDaily() {
   return mount(Daily, stubMountOpts)
+}
+
+/** 点开第一张卡片的「查看」按钮，把弹窗等出来 */
+async function openFirstDialog(w: any) {
+  const viewBtn = w.findAll('button').find((b: any) => b.text().includes('查看'))
+  expect(viewBtn).toBeTruthy()
+  await viewBtn!.trigger('click')
+  await flushPromises()
+  return w.find('[data-stub="ElDialog"]')
 }
 
 /**
@@ -293,7 +357,10 @@ beforeEach(() => {
       createTime: '2026-09-08 09:00:00',
     },
   })
-  mocks.generateDaily.mockResolvedValue({ code: 200, msg: 'ok', data: { reportId: 99 } })
+  // 后端 `DailyReportController.generate` 返回的是 `R<Void>` —— **没有 data、没有 reportId**。
+  // 以前这里 mock 了 `{ reportId: 99 }` —— mock 自己编了个后端不返回的字段，
+  // 于是「提示里显示一个不存在的 id」这件事测试一直是绿的。
+  mocks.generateDaily.mockResolvedValue({ code: 200, msg: 'ok' })
 })
 
 describe('daily.vue — title + structure', () => {
@@ -517,15 +584,104 @@ describe('daily.vue — 数字列 + 状态标（Task 9）', () => {
     expect(w.text()).not.toContain('0.00')
   })
 
-  it('21. 详情弹窗显示日报状态与来源', async () => {
+  it('21. 详情弹窗显示日报状态与来源（FALLBACK / MANUAL）', async () => {
+    // 刻意用**兜底分支之外**的取值 —— 原来这里用的是 FULL/AGENT_WORKFLOW，
+    // 正好等于兜底分支的文案 → 把 tag 写死成「完整/数字员工」测试照样全绿（没牙齿）。
+    mocks.getDaily.mockResolvedValue({
+      code: 200,
+      msg: 'ok',
+      data: makeDialogRow({ reportStatus: 'FALLBACK', reportSource: 'MANUAL' }),
+    })
     const w = mountDaily()
     await flushPromises()
-    const viewBtn = w.findAll('button').find((b) => b.text().includes('查看'))
-    expect(viewBtn).toBeTruthy()
-    await viewBtn!.trigger('click')
+    const dialog = await openFirstDialog(w)
+    const t = dialog.text()
+    expect(t).toContain('未走 LLM')
+    expect(t).toContain('手工')
+    // 不许出现别的状态的文案
+    expect(t).not.toContain('完整')
+    expect(t).not.toContain('数字员工')
+  })
+
+  it('21b. 详情弹窗显示日报状态与来源（PARTIAL / 数字员工）', async () => {
+    mocks.getDaily.mockResolvedValue({
+      code: 200,
+      msg: 'ok',
+      data: makeDialogRow({ reportStatus: 'PARTIAL', reportSource: 'AGENT_WORKFLOW' }),
+    })
+    const w = mountDaily()
     await flushPromises()
-    const dialog = w.find('[data-stub="ElDialog"]')
-    expect(dialog.text()).toContain('数字员工')
-    expect(dialog.text()).toContain('完整')
+    const dialog = await openFirstDialog(w)
+    const t = dialog.text()
+    expect(t).toContain('部分完成')
+    expect(t).toContain('数字员工')
+    expect(t).not.toContain('未走 LLM')
+    expect(t).not.toContain('手工')
+  })
+
+  it('21c. 旧日报（状态/来源为 null）弹窗不自称「完整」/「手工」', async () => {
+    // report_status / report_source 为 NULL 的旧日报 —— 系统根本不知道，
+    // 界面不能替它说「完整」。这条是「兜底自称完整」的看门狗。
+    mocks.getDaily.mockResolvedValue({
+      code: 200,
+      msg: 'ok',
+      data: makeDialogRow({ reportStatus: null, reportSource: null }),
+    })
+    const w = mountDaily()
+    await flushPromises()
+    const dialog = await openFirstDialog(w)
+    const t = dialog.text()
+    expect(t).not.toContain('完整')
+    expect(t).not.toContain('部分完成')
+    expect(t).not.toContain('未走 LLM')
+    expect(t).not.toContain('数字员工')
+    expect(t).not.toContain('手工')
+    // 弹窗正常打开（没崩）
+    expect(w.find('[data-stub="ElDescriptions"]').exists()).toBe(true)
+  })
+
+  it('22. 弹窗的「取不到」不是 0.00（坏 kpiJson：不崩、也不说 0 元）', async () => {
+    mocks.getDaily.mockResolvedValue({
+      code: 200,
+      msg: 'ok',
+      data: makeDialogRow({
+        kpiJson: 'not json',
+        reportStatus: 'FALLBACK',
+        reportSource: 'MANUAL',
+      }),
+    })
+    const w = mountDaily()
+    await flushPromises()
+    const dialog = await openFirstDialog(w)
+    const t = dialog.text()
+    // 「0.00」是在说「收入是 0 元」，而真相是「这条日报没有这个数据」
+    expect(t).not.toContain('0.00')
+    expect(t).not.toContain('¥ 0')
+    // 凭证数那一项同理：不是 0
+    const voucherItem = w
+      .findAll('[data-stub="ElDescriptionsItem"]')
+      .find((i: any) => i.attributes('data-label') === '凭证数')
+    expect(voucherItem).toBeTruthy()
+    expect(voucherItem!.text()).not.toBe('0')
+    expect(voucherItem!.text()).not.toMatch(/\d/)
+  })
+
+  it('23. 生成日报的提示不含 undefined（后端 generate 返回 R<Void>，没有 id）', async () => {
+    const successSpy = vi.spyOn(ElMessage, 'success').mockImplementation((() => undefined) as any)
+    try {
+      const w = mountDaily()
+      await flushPromises()
+      const genBtn = w.findAll('button').find((b) => b.text().includes('生成今日日报'))
+      expect(genBtn).toBeTruthy()
+      await genBtn!.trigger('click')
+      await flushPromises()
+      expect(successSpy).toHaveBeenCalled()
+      const msg = String(successSpy.mock.calls[0][0] ?? '')
+      expect(msg).toContain('日报生成成功')
+      // 后端没给 id，提示里就不该出现 id（以前恒显示「（ID=undefined）」）
+      expect(msg).not.toContain('undefined')
+    } finally {
+      successSpy.mockRestore()
+    }
   })
 })

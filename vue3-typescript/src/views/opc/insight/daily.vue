@@ -45,13 +45,20 @@
     <el-dialog v-model="show" :title="`财务日报 - ${current?.period || ''}`" width="640px">
       <el-descriptions v-if="current" :column="2" border>
         <el-descriptions-item label="状态">
-          <el-tag v-if="current?.reportStatus === 'FALLBACK'" type="danger" size="small">未走 LLM</el-tag>
-          <el-tag v-else-if="current?.reportStatus === 'PARTIAL'" type="warning" size="small">部分完成</el-tag>
-          <el-tag v-else type="success" size="small">完整</el-tag>
+          <!-- 未知取值（report_status 为 NULL 的旧数据）**不出 tag** ——
+               兜底自称「完整」是界面替系统说它并不知道的事 -->
+          <el-tag
+            v-if="statusTextOf(current?.reportStatus)"
+            :type="statusTypeOf(current?.reportStatus)"
+            size="small"
+          >{{ statusTextOf(current?.reportStatus) }}</el-tag>
+          <span v-else>—</span>
         </el-descriptions-item>
         <el-descriptions-item label="来源">
-          <el-tag v-if="current?.reportSource === 'AGENT_WORKFLOW'" type="info" size="small">数字员工</el-tag>
-          <el-tag v-else type="info" size="small">手工</el-tag>
+          <el-tag v-if="sourceTextOf(current?.reportSource)" type="info" size="small">
+            {{ sourceTextOf(current?.reportSource) }}
+          </el-tag>
+          <span v-else>—</span>
         </el-descriptions-item>
         <el-descriptions-item label="所属期">{{ current?.period }}</el-descriptions-item>
         <el-descriptions-item label="凭证数">{{ voucherCountOf(current) ?? '—' }}</el-descriptions-item>
@@ -167,6 +174,35 @@ function intervalOf(row: any): string {
   return k?.fromDate && k?.toDate ? `${k.fromDate} ~ ${k.toDate}` : ''
 }
 
+/**
+ * 状态取值 → 显示文案。
+ *
+ * <p>**未知取值（null / 空串 / 没见过的新取值）返回 null** ——
+ * `report_status` 为 NULL 的旧日报（Task 4 之前写的行）根本不知道完整不完整，
+ * 界面不能替它说「完整」。那跟「卡片上 823 次浏览」是同一类病。</p>
+ */
+function statusTextOf(v: any): string | null {
+  if (v === 'FULL') return '完整'
+  if (v === 'PARTIAL') return '部分完成'
+  if (v === 'FALLBACK') return '未走 LLM'
+  return null
+}
+
+/** 状态取值 → tag 颜色（只对已知的三个取值有意义；未知取值不会走到这里） */
+function statusTypeOf(v: any): 'success' | 'warning' | 'danger' | 'info' {
+  if (v === 'FULL') return 'success'
+  if (v === 'PARTIAL') return 'warning'
+  if (v === 'FALLBACK') return 'danger'
+  return 'info'
+}
+
+/** 来源取值 → 显示文案；未知取值返回 null（理由同 statusTextOf） */
+function sourceTextOf(v: any): string | null {
+  if (v === 'AGENT_WORKFLOW') return '数字员工'
+  if (v === 'MANUAL') return '手工'
+  return null
+}
+
 const columns: Column[] = [
   { key: 'period', label: '所属期', primary: true, width: 120 },
   { key: 'revenue', label: '收入', type: 'amount', width: 140, align: 'right' },
@@ -176,13 +212,14 @@ const columns: Column[] = [
   {
     // 状态与来源拆成两列：ResponsiveTable 一个单元格只渲染一个 tag，
     // 一列放两个 tag 就得改这个几十个页面在用的共享组件 —— 不值得。
+    // 文案跟弹窗共用 statusTextOf / sourceTextOf —— 同一个字段，
+    // 列表和弹窗不许一个说「不知道」、另一个说「完整」。
     key: 'reportStatus',
     label: '状态',
     type: 'tag',
     width: 110,
     tagMap: { FULL: 'success', PARTIAL: 'warning', FALLBACK: 'danger' },
-    formatter: (v: any) =>
-      v === 'FULL' ? '完整' : v === 'PARTIAL' ? '部分完成' : v === 'FALLBACK' ? '未走 LLM' : '-',
+    formatter: (v: any) => statusTextOf(v) ?? '-',
   },
   {
     key: 'reportSource',
@@ -190,7 +227,7 @@ const columns: Column[] = [
     type: 'tag',
     width: 110,
     tagMap: { AGENT_WORKFLOW: 'info', MANUAL: 'info' },
-    formatter: (v: any) => (v === 'AGENT_WORKFLOW' ? '数字员工' : v === 'MANUAL' ? '手工' : '-'),
+    formatter: (v: any) => sourceTextOf(v) ?? '-',
   },
   { key: 'createTime', label: '生成时间', type: 'date', width: 160, hideOnMobile: true },
 ]
@@ -224,8 +261,11 @@ async function onGenerate() {
   const today = new Date().toISOString().slice(0, 10)
   generating.value = true
   try {
-    const r = await generateDaily(today)
-    ElMessage.success(`日报生成成功（ID=${r.data?.reportId}）`)
+    // 后端 `DailyReportController.generate` 返回的是 `R<Void>` —— **没有日报 id**。
+    // 以前这里写 `（ID=${r.data?.reportId}）` → 提示恒显示「（ID=undefined）」，
+    // 界面在报一个后端根本没给的东西。后端没给 id，提示里就别提 id。
+    await generateDaily(today)
+    ElMessage.success('日报生成成功')
     await load()
   } catch (e: any) {
     ElMessage.error(e?.msg || '生成日报失败')
