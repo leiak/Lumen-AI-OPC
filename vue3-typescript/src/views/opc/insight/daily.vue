@@ -218,7 +218,14 @@ const columns: Column[] = [
     label: '状态',
     type: 'tag',
     width: 110,
-    tagMap: { FULL: 'success', PARTIAL: 'warning', FALLBACK: 'danger' },
+    // 颜色也跟弹窗共用 statusTypeOf —— 文案共用还不够，
+    // 颜色要是两处各写一份，改了一处忘了另一处，
+    // 列表画成绿色的「部分完成」、弹窗画成黄色的，谁都看不出来。
+    tagMap: {
+      FULL: statusTypeOf('FULL'),
+      PARTIAL: statusTypeOf('PARTIAL'),
+      FALLBACK: statusTypeOf('FALLBACK'),
+    },
     formatter: (v: any) => statusTextOf(v) ?? '-',
   },
   {

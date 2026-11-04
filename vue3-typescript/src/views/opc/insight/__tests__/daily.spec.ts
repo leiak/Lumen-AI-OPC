@@ -28,6 +28,15 @@
 //   改成 FALLBACK/MANUAL，并补 PARTIAL/AGENT_WORKFLOW 与 null/null（旧数据）两条。
 // - `onGenerate` 的提示恒显示「（ID=undefined）」—— 后端 `generate` 返回 `R<Void>`，
 //   压根没有 id。提示里别提 id；mock 也不能自己编一个 `reportId`。
+//
+// 修复轮 R=2：
+// - `FULL → 「完整」` 这行**没有任何正向断言**（改成「完完整」也全绿）→ 补正向用例
+//   （列表状态列 + 弹窗那一项都显示「完整」，且不含「未走 LLM」「部分完成」），
+//   外加一条断 tag 颜色的用例（FULL→success / PARTIAL→warning / FALLBACK→danger）。
+// - 列表用例 17 / 18 / 19 断的是**整张表的文本** → FALLBACK 与 PARTIAL 各有一行，
+//   两个分支对调后两个字都还在表里，断言照样成立 → 改成**行级**断言：
+//   先按「所属期」定位到那一张卡片，再断「状态」/「来源」那一列单元格。
+//   （第 1 行的 summaryMd 本身就含「未走 LLM」，断整段文本会被摘要喂绿。）
 import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -306,6 +315,38 @@ function cardValues(w: any): Record<string, string[]> {
   return out
 }
 
+/**
+ * 按「所属期」定位到移动模式下那一张卡片（卡片标题就是 primary 列 = 所属期）。
+ */
+function findCard(w: any, period: string): any {
+  const card = w.findAll('[data-stub="ElCard"]').find((c: any) => {
+    const titles = c.findAll('.opc-responsive-table__card-title')
+    return titles.length > 0 && titles[0].text() === period
+  })
+  expect(card, `没找到所属期为 ${period} 的卡片`).toBeTruthy()
+  return card
+}
+
+/**
+ * **行级**取值：按「所属期」定位到那一张卡片，再取它某一列单元格。
+ *
+ * <p>为什么不能断整表 / 整行文本：`makeRealRows()` 里 FALLBACK 和 PARTIAL 各有一行，
+ * 两个分支对调之后「未走 LLM」和「部分完成」这两个字**都还在表里**（只是挂错行），
+ * `toContain` 照样成立 —— 断不出任何东西。而且第 1 行的 `summaryMd`
+ * 本身就写着「[自动聚合·未走 LLM] ...」，断整段文本会被摘要喂绿。
+ * → **必须断到「状态」/「来源」那一列单元格本身。**</p>
+ */
+function cellOf(w: any, period: string, label: string): { text: string; html: string } {
+  const card = findCard(w, period)
+  for (const row of card.findAll('.opc-responsive-table__card-row')) {
+    const labels = row.findAll('.opc-responsive-table__card-label')
+    const values = row.findAll('.opc-responsive-table__card-value')
+    if (!labels.length || !values.length) continue
+    if (labels[0].text() === label) return { text: values[0].text(), html: values[0].html() }
+  }
+  throw new Error(`卡片 ${period} 里没有「${label}」这一列`)
+}
+
 beforeEach(() => {
   // 既有 12 条用例保持桌面模式（它们断言的是标题/选择器/排序/调用次数，与渲染模式无关）
   widthRef.value = 1200
@@ -529,29 +570,33 @@ describe('daily.vue — 数字列 + 状态标（Task 9）', () => {
     expect(vals['凭证数'][1]).toBe('12') // 手工日报的 voucherCount
   })
 
-  it('17. FALLBACK 的日报显示「未走 LLM」标记', async () => {
+  it('17. FALLBACK 的日报显示「未走 LLM」标记（行级：按所属期定位到那一行）', async () => {
     const w = mountDaily()
     await flushPromises()
-    const listText = w.find('.opc-responsive-table').text()
-    expect(listText).toContain('未走 LLM')
-    // 显示的是中文，不是后端的枚举值
-    expect(listText).not.toContain('FALLBACK')
+    // 行级断言：断「状态」列单元格本身，不是整表文本
+    // （整表文本里「未走 LLM」和「部分完成」都在，两个分支对调也照样绿）
+    const cell = cellOf(w, '2026-10-31', '状态')
+    expect(cell.text).toBe('未走 LLM')
+    expect(cell.text).not.toContain('部分完成')
+    expect(cell.text).not.toContain('完整')
   })
 
-  it('18. 数字员工的日报显示「数字员工」来源标记', async () => {
+  it('18. 数字员工的日报显示「数字员工」来源标记（行级）', async () => {
     const w = mountDaily()
     await flushPromises()
-    const listText = w.find('.opc-responsive-table').text()
-    expect(listText).toContain('数字员工')
-    expect(listText).not.toContain('AGENT_WORKFLOW')
+    // 两种来源都要断 —— 只断一种的话，对调两个分支照样绿
+    expect(cellOf(w, '2026-11-01', '来源').text).toBe('数字员工') // AGENT_WORKFLOW
+    expect(cellOf(w, '2026-10-30', '来源').text).toBe('数字员工') // AGENT_WORKFLOW
+    expect(cellOf(w, '2026-10-31', '来源').text).toBe('手工') // MANUAL
   })
 
-  it('19. PARTIAL 的日报显示「部分完成」标记', async () => {
+  it('19. PARTIAL 的日报显示「部分完成」标记（行级）', async () => {
     const w = mountDaily()
     await flushPromises()
-    const listText = w.find('.opc-responsive-table').text()
-    expect(listText).toContain('部分完成')
-    expect(listText).not.toContain('PARTIAL')
+    const cell = cellOf(w, '2026-10-30', '状态')
+    expect(cell.text).toBe('部分完成')
+    expect(cell.text).not.toContain('未走 LLM')
+    expect(cell.text).not.toContain('完整')
   })
 
   it('20. kpiJson 解析失败时页面不崩，数字列显示空值（不是 0.00）', async () => {
@@ -682,6 +727,80 @@ describe('daily.vue — 数字列 + 状态标（Task 9）', () => {
       expect(msg).not.toContain('undefined')
     } finally {
       successSpy.mockRestore()
+    }
+  })
+
+  it('26. FULL 的日报：列表状态列和弹窗都显示「完整」（正向断言）', async () => {
+    // 必改 A：以前 `if (v === 'FULL') return '完整'` 这行**没有任何正向断言** ——
+    // 把它改成「完完整」，25 条用例全绿。规格写着、断言不存在 = 规格是装饰。
+    const w = mountDaily()
+    await flushPromises()
+    // 列表那一行的状态单元格
+    const cell = cellOf(w, '2026-11-01', '状态')
+    expect(cell.text).toBe('完整')
+    // 要能分辨「完整」和其它两个 —— 防的是把 FULL 的行画成 PARTIAL/FALLBACK 的样子
+    expect(cell.text).not.toContain('未走 LLM')
+    expect(cell.text).not.toContain('部分完成')
+    // 弹窗那一项也是「完整」
+    mocks.getDaily.mockResolvedValue({
+      code: 200,
+      msg: 'ok',
+      data: makeDialogRow({ reportStatus: 'FULL', reportSource: 'AGENT_WORKFLOW' }),
+    })
+    await openFirstDialog(w)
+    const statusItem = w
+      .findAll('[data-stub="ElDescriptionsItem"]')
+      .find((i: any) => i.attributes('data-label') === '状态')
+    expect(statusItem).toBeTruthy()
+    expect(statusItem!.text()).toBe('完整')
+    expect(statusItem!.text()).not.toContain('未走 LLM')
+    expect(statusItem!.text()).not.toContain('部分完成')
+  })
+
+  it('27. 状态 tag 的颜色：FULL→success / PARTIAL→warning / FALLBACK→danger', async () => {
+    const w = mountDaily()
+    await flushPromises()
+    // 列表里的 tag 是**真** ElTag（ResponsiveTable 直接 import 的，不是 stub）
+    // → class 拿得到；弹窗里那个 <el-tag> 在 spec 里是 stub → 断不了 class，
+    //   所以颜色断言主战场在列表这一侧。
+    const full = cellOf(w, '2026-11-01', '状态').html
+    expect(full).toContain('el-tag--success')
+    expect(full).not.toContain('el-tag--warning')
+    expect(full).not.toContain('el-tag--danger')
+    const partial = cellOf(w, '2026-10-30', '状态').html
+    expect(partial).toContain('el-tag--warning')
+    expect(partial).not.toContain('el-tag--success')
+    expect(partial).not.toContain('el-tag--danger')
+    const fallback = cellOf(w, '2026-10-31', '状态').html
+    expect(fallback).toContain('el-tag--danger')
+    expect(fallback).not.toContain('el-tag--success')
+    expect(fallback).not.toContain('el-tag--warning')
+
+    // 弹窗那一侧也断一遍 —— 弹窗的 <el-tag> 是 stub，断不了 class，
+    // 但 stub 把 type 透出成 data-type（见 element-plus-stubs.ts）。
+    // 列表和弹窗的颜色必须一致：改了一处忘了另一处，
+    // 列表绿、弹窗黄，谁都看不出来。
+    for (const [status, type] of [
+      ['FULL', 'success'],
+      ['PARTIAL', 'warning'],
+      ['FALLBACK', 'danger'],
+    ] as const) {
+      mocks.getDaily.mockResolvedValue({
+        code: 200,
+        msg: 'ok',
+        data: makeDialogRow({ reportStatus: status, reportSource: 'AGENT_WORKFLOW' }),
+      })
+      const w2 = mountDaily()
+      await flushPromises()
+      await openFirstDialog(w2)
+      const item = w2
+        .findAll('[data-stub="ElDescriptionsItem"]')
+        .find((i: any) => i.attributes('data-label') === '状态')
+      expect(item, `弹窗里没找到「状态」这一项`).toBeTruthy()
+      const tag = item!.find('[data-stub="ElTag"]')
+      expect(tag, `弹窗的「状态」项里没有 tag`).toBeTruthy()
+      expect(tag!.attributes('data-type'), `${status} 的 tag 颜色`).toBe(type)
+      w2.unmount()
     }
   })
 })
