@@ -44,20 +44,31 @@
     <!-- 详情弹窗 -->
     <el-dialog v-model="show" :title="`财务日报 - ${current?.period || ''}`" width="640px">
       <el-descriptions v-if="current" :column="2" border>
+        <el-descriptions-item label="状态">
+          <el-tag v-if="current?.reportStatus === 'FALLBACK'" type="danger" size="small">未走 LLM</el-tag>
+          <el-tag v-else-if="current?.reportStatus === 'PARTIAL'" type="warning" size="small">部分完成</el-tag>
+          <el-tag v-else type="success" size="small">完整</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="来源">
+          <el-tag v-if="current?.reportSource === 'AGENT_WORKFLOW'" type="info" size="small">数字员工</el-tag>
+          <el-tag v-else type="info" size="small">手工</el-tag>
+        </el-descriptions-item>
         <el-descriptions-item label="所属期">{{ current?.period }}</el-descriptions-item>
-        <el-descriptions-item label="凭证数">{{ current?.kpi?.voucherCount ?? 0 }}</el-descriptions-item>
-        <el-descriptions-item label="收入合计">¥ {{ formatMoney(current?.kpi?.totalRevenue) }}</el-descriptions-item>
-        <el-descriptions-item label="支出合计">¥ {{ formatMoney(current?.kpi?.totalExpense) }}</el-descriptions-item>
+        <el-descriptions-item label="凭证数">{{ voucherCountOf(current) ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="收入合计">{{ formatMoney(revenueOf(current)) }}</el-descriptions-item>
+        <el-descriptions-item label="支出合计">{{ formatMoney(expenseOf(current)) }}</el-descriptions-item>
+        <el-descriptions-item v-if="intervalOf(current)" label="统计区间">
+          {{ intervalOf(current) }}
+        </el-descriptions-item>
         <el-descriptions-item label="生成时间">{{ current?.createTime }}</el-descriptions-item>
-        <el-descriptions-item label="生成人">{{ current?.createBy || '—' }}</el-descriptions-item>
       </el-descriptions>
       <h4 style="margin-top: 16px">摘要</h4>
       <div class="summary-box">
-        <pre>{{ current?.summary || '（暂无）' }}</pre>
+        <pre>{{ current?.summaryMd || '（暂无）' }}</pre>
       </div>
       <h4>建议</h4>
       <div class="summary-box">
-        <pre>{{ current?.advice || '（暂无）' }}</pre>
+        <pre>{{ current?.adviceMd || '（暂无）' }}</pre>
       </div>
     </el-dialog>
   </div>
@@ -67,14 +78,23 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listDaily, getDaily, generateDaily } from '@/api/opc/insight'
+import type { DailyReportVO } from '@/api/opc/insight'
 import ResponsiveTable, { type Column } from '@/views/opc/components/ResponsiveTable.vue'
 
-const list = ref<any[]>([])
+/** 列表行 = 后端返回的日报 + 前端从 kpiJson 里解析出来的四个数字 */
+type DailyRow = DailyReportVO & {
+  revenue: number | null
+  expense: number | null
+  flowCount: number | null
+  voucherCount: number | null
+}
+
+const list = ref<DailyRow[]>([])
 const loading = ref(false)
 const generating = ref(false)
 const range = ref<[string, string] | null>(null)
 const show = ref(false)
-const current = ref<any>(null)
+const current = ref<DailyReportVO | null>(null)
 
 const sortedList = computed(() =>
   [...list.value].sort((a, b) => String(b.period || '').localeCompare(String(a.period || '')))
@@ -86,11 +106,92 @@ const rangeHint = computed(() => {
   return `查询范围：${range.value[0]} ~ ${range.value[1]}`
 })
 
+/**
+ * 日报的数字**不在顶层字段上** —— 后端 DailyReportVo 只有 kpiJson 这个
+ * JSON 字符串。以前这里写的是 row.totalRevenue / row.totalExpense /
+ * row.voucherCount，那三个字段后端从来不返回 → 三列永远是空的。
+ *
+ * kpiJson 有两种形状，都得认：
+ * - 数字员工日报（AGENT_WORKFLOW）：
+ *   {query_bank_flow:{totalIn,totalOut,count,fromDate,toDate}, query_voucher:{count}}
+ * - insight 自己生成的日报（KpiSnapshot）：{totalRevenue,totalExpense,voucherCount}
+ */
+function parseKpi(raw?: any): any | null {
+  if (!raw) return null
+  // 万一哪天后端改成直接给对象，也别把它当字符串解析失败丢掉
+  if (typeof raw === 'object') return raw
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function kpiOf(row: any): any {
+  return parseKpi(row?.kpiJson) || {}
+}
+
+/** 取不到就返回 null —— 不返回 0。0 会被渲染成「0.00」，那是在说「收入是 0 元」 */
+function numOrNull(v: any): number | null {
+  if (v === undefined || v === null || v === '') return null
+  const n = Number(v)
+  return Number.isNaN(n) ? null : n
+}
+
+/** 收入：数字员工日报写 totalIn，insight 自己的日报写 totalRevenue */
+function revenueOf(row: any): number | null {
+  const k = kpiOf(row)
+  return numOrNull(k?.query_bank_flow?.totalIn ?? k?.totalRevenue)
+}
+
+/** 支出：数字员工日报写 totalOut，insight 自己的日报写 totalExpense */
+function expenseOf(row: any): number | null {
+  const k = kpiOf(row)
+  return numOrNull(k?.query_bank_flow?.totalOut ?? k?.totalExpense)
+}
+
+/** 流水笔数 —— 只有数字员工的日报有 */
+function flowCountOf(row: any): number | null {
+  return numOrNull(kpiOf(row)?.query_bank_flow?.count)
+}
+
+/** 凭证数 —— 数字员工日报取 query_voucher.count，insight 自己取 voucherCount */
+function voucherCountOf(row: any): number | null {
+  const k = kpiOf(row)
+  return numOrNull(k?.query_voucher?.count ?? k?.voucherCount)
+}
+
+/** 数字员工的日报带真实区间；手工的不带 */
+function intervalOf(row: any): string {
+  const k = kpiOf(row)?.query_bank_flow
+  return k?.fromDate && k?.toDate ? `${k.fromDate} ~ ${k.toDate}` : ''
+}
+
 const columns: Column[] = [
   { key: 'period', label: '所属期', primary: true, width: 120 },
-  { key: 'totalRevenue', label: '收入', type: 'amount', width: 140, align: 'right' },
-  { key: 'totalExpense', label: '支出', type: 'amount', width: 140, align: 'right' },
+  { key: 'revenue', label: '收入', type: 'amount', width: 140, align: 'right' },
+  { key: 'expense', label: '支出', type: 'amount', width: 140, align: 'right' },
+  { key: 'flowCount', label: '流水笔数', type: 'number', width: 100, align: 'right' },
   { key: 'voucherCount', label: '凭证数', type: 'number', width: 100, align: 'right' },
+  {
+    // 状态与来源拆成两列：ResponsiveTable 一个单元格只渲染一个 tag，
+    // 一列放两个 tag 就得改这个几十个页面在用的共享组件 —— 不值得。
+    key: 'reportStatus',
+    label: '状态',
+    type: 'tag',
+    width: 110,
+    tagMap: { FULL: 'success', PARTIAL: 'warning', FALLBACK: 'danger' },
+    formatter: (v: any) =>
+      v === 'FULL' ? '完整' : v === 'PARTIAL' ? '部分完成' : v === 'FALLBACK' ? '未走 LLM' : '-',
+  },
+  {
+    key: 'reportSource',
+    label: '来源',
+    type: 'tag',
+    width: 110,
+    tagMap: { AGENT_WORKFLOW: 'info', MANUAL: 'info' },
+    formatter: (v: any) => (v === 'AGENT_WORKFLOW' ? '数字员工' : v === 'MANUAL' ? '手工' : '-'),
+  },
   { key: 'createTime', label: '生成时间', type: 'date', width: 160, hideOnMobile: true },
 ]
 
@@ -102,7 +203,15 @@ async function load() {
   loading.value = true
   try {
     const r = await listDaily(range.value[0], range.value[1], 50)
-    list.value = r.data || []
+    // ResponsiveTable 的 amount/number 列取的是 row 上的同名 key，
+    // 所以不能直接把后端返回的原始对象丢进去 —— 先把数字解析出来挂上去。
+    list.value = (r.data || []).map((row: DailyReportVO) => ({
+      ...row,
+      revenue: revenueOf(row),
+      expense: expenseOf(row),
+      flowCount: flowCountOf(row),
+      voucherCount: voucherCountOf(row),
+    }))
   } catch (e: any) {
     ElMessage.error(e?.msg || '加载日报列表失败')
     list.value = []
@@ -130,18 +239,22 @@ async function view(row: any) {
   current.value = null
   try {
     const r = await getDaily(row.id)
-    current.value = r.data
+    current.value = r.data ?? null
   } catch (e: any) {
     ElMessage.error(e?.msg || '加载日报详情失败')
     show.value = false
   }
 }
 
+/**
+ * 金额格式化。**取不到就显示 '—'，不是 '0.00'** ——
+ * '0.00' 是在说「收入是 0 元」，而真相是「这条日报没有这个数据」。
+ */
 function formatMoney(v: any): string {
-  if (v === null || v === undefined || v === '') return '0.00'
+  if (v === null || v === undefined || v === '') return '—'
   const n = Number(v)
   if (Number.isNaN(n)) return String(v)
-  return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return '¥ ' + n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 onMounted(() => {

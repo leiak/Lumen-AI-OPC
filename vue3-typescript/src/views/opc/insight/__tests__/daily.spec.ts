@@ -7,8 +7,27 @@
 // - On generate -> POST /daily/generate?date=today -> ElMessage.success
 // - Empty range -> "请选择日期范围" hint
 // - ElMessage.error on failure
+//
+// Task 9（日报的数字列 + 状态标）：
+// - 列表的「收入/支出/流水笔数/凭证数」四列读的是**后端真的返回的**字段 ——
+//   kpiJson（JSON 字符串）里的 query_bank_flow / query_voucher。解析不出来就是空值
+//   （渲染成 '-'），不是 0 —— 0.00 是在说「收入是 0 元」。
+// - 「状态」「来源」两列走 ResponsiveTable 本来就有的 type:'tag' + formatter + tagMap。
+//   （ResponsiveTable **没有**按列的 slot：一个单元格只渲染一个 tag，
+//     一列塞两个 tag 就得改这个几十个页面在用的共享组件 —— 不改。）
+// - 新增用例在**移动模式**下跑（mock @vueuse/core 把窗口宽度设成 500）：
+//   桌面模式下 ElTableColumn 桩自己造了个空 row（{ row: {} }），
+//   单元格恒为 '-' —— 在那儿断言数字等于断言一条永远为真的假测试。
+import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+
+const widthRef = ref(1200)
+
+vi.mock('@vueuse/core', async () => {
+  const actual = await vi.importActual<any>('@vueuse/core')
+  return { ...actual, useWindowSize: () => ({ width: widthRef, height: ref(800) }) }
+})
 
 const mocks = vi.hoisted(() => ({
   dashboard: vi.fn(),
@@ -37,11 +56,166 @@ vi.mock('@/api/opc/insight', () => ({
 import { stubMountOpts } from './element-plus-stubs'
 import Daily from '@/views/opc/insight/daily.vue'
 
+/**
+ * 按后端**真实返回**的样子写的 fixture。
+ *
+ * 后端 DailyReportVo 里**没有** totalRevenue / totalExpense / voucherCount 这三个
+ * 顶层字段（以前 fixture 里编了 `totalRevenue: 5000` —— 后端从不返回它，
+ * 所以测试一直是绿的、页面一直是空的）。数字全在 kpiJson 这个 JSON 字符串里，
+ * 而且有两种形状：
+ * - 数字员工日报（AGENT_WORKFLOW）：
+ *   {query_bank_flow:{totalIn,totalOut,count,...}, query_voucher:{count,...}}
+ * - insight 自己生成的日报（KpiSnapshot）：{totalRevenue,totalExpense,voucherCount}
+ */
 function makeDaily(): any[] {
   return [
-    { id: 1, period: '2026-09-08', totalRevenue: 5000, totalExpense: 3000, voucherCount: 12, createTime: '2026-09-08 09:00:00' },
-    { id: 2, period: '2026-09-07', totalRevenue: 4500, totalExpense: 3200, voucherCount: 10, createTime: '2026-09-07 09:00:00' },
-    { id: 3, period: '2026-09-06', totalRevenue: 0, totalExpense: 500, voucherCount: 3, createTime: '2026-09-06 09:00:00' },
+    {
+      id: 1,
+      period: '2026-09-08',
+      kpiJson: JSON.stringify({
+        query_bank_flow: {
+          source: 'opc_finance_bank_flow',
+          companyId: 2,
+          fromDate: '2026-08-10',
+          toDate: '2026-09-08',
+          count: 6,
+          totalIn: 51892.0,
+          totalOut: 32430.0,
+          net: 19462.0,
+          yesterdayCount: 0,
+          yesterdayIn: 0.0,
+          yesterdayOut: 0.0,
+          items: [],
+        },
+        query_voucher: {
+          source: 'opc_finance_voucher',
+          companyId: 2,
+          fromDate: '2026-08-10',
+          toDate: '2026-09-08',
+          count: 5,
+          totalIn: 35400.0,
+          totalOut: 29750.0,
+          items: [],
+        },
+      }),
+      summaryMd: '昨日无资金流水',
+      adviceMd: '保持现状',
+      llmUsed: 'MiniMax-Text-01',
+      reportStatus: 'FULL',
+      reportSource: 'AGENT_WORKFLOW',
+      createTime: '2026-09-08 09:00:00',
+    },
+    {
+      id: 2,
+      period: '2026-09-07',
+      kpiJson: JSON.stringify({ totalRevenue: 4500.0, totalExpense: 3200.0, voucherCount: 10 }),
+      summaryMd: '[自动聚合·未走 LLM] ...',
+      adviceMd: '...',
+      llmUsed: 'FALLBACK',
+      reportStatus: 'FALLBACK',
+      reportSource: 'MANUAL',
+      createTime: '2026-09-07 09:00:00',
+    },
+    {
+      id: 3,
+      period: '2026-09-06',
+      kpiJson: 'not json',
+      summaryMd: 'kpi 解析失败',
+      adviceMd: null,
+      llmUsed: 'FALLBACK',
+      reportStatus: 'PARTIAL',
+      reportSource: 'MANUAL',
+      createTime: '2026-09-06 09:00:00',
+    },
+  ]
+}
+
+/** 三条按后端真实形状写的日报：数字员工 / 手工 / PARTIAL。 */
+function makeRealRows(): any[] {
+  return [
+    // 数字员工产出的日报：kpiJson 是字符串，内容是数字员工日报的嵌套形状
+    {
+      id: 11,
+      period: '2026-11-01',
+      kpiJson: JSON.stringify({
+        query_bank_flow: {
+          source: 'opc_finance_bank_flow',
+          companyId: 2,
+          fromDate: '2026-10-07',
+          toDate: '2026-11-01',
+          count: 6,
+          totalIn: 51892.0,
+          totalOut: 32430.0,
+          net: 19462.0,
+          yesterdayCount: 0,
+          yesterdayIn: 0.0,
+          yesterdayOut: 0.0,
+          items: [],
+        },
+        query_voucher: {
+          source: 'opc_finance_voucher',
+          companyId: 2,
+          fromDate: '2026-10-07',
+          toDate: '2026-11-01',
+          count: 5,
+          totalIn: 35400.0,
+          totalOut: 29750.0,
+          items: [],
+        },
+      }),
+      summaryMd: '昨日无资金流水',
+      adviceMd: null,
+      llmUsed: 'MiniMax-Text-01',
+      reportStatus: 'FULL',
+      reportSource: 'AGENT_WORKFLOW',
+      createTime: '2026-11-01 09:00:00',
+    },
+    // insight 自己生成的日报：kpiJson 是 KpiSnapshot 形状
+    {
+      id: 12,
+      period: '2026-10-31',
+      kpiJson: JSON.stringify({ totalRevenue: 19600.0, totalExpense: 6200.0, voucherCount: 12 }),
+      summaryMd: '[自动聚合·未走 LLM] ...',
+      adviceMd: '...',
+      llmUsed: 'FALLBACK',
+      reportStatus: 'FALLBACK',
+      reportSource: 'MANUAL',
+      createTime: '2026-10-31 09:00:00',
+    },
+    // 数字是真的、但缺了 LLM 解读 —— PARTIAL
+    {
+      id: 13,
+      period: '2026-10-30',
+      kpiJson: JSON.stringify({
+        query_bank_flow: {
+          source: 'opc_finance_bank_flow',
+          companyId: 2,
+          fromDate: '2026-10-06',
+          toDate: '2026-10-30',
+          count: 2,
+          totalIn: 1000.0,
+          totalOut: 400.0,
+          net: 600.0,
+          items: [],
+        },
+        query_voucher: {
+          source: 'opc_finance_voucher',
+          companyId: 2,
+          fromDate: '2026-10-06',
+          toDate: '2026-10-30',
+          count: 1,
+          totalIn: 1000.0,
+          totalOut: 400.0,
+          items: [],
+        },
+      }),
+      summaryMd: '数字是真的，但没写解读',
+      adviceMd: null,
+      llmUsed: 'MiniMax-Text-01',
+      reportStatus: 'PARTIAL',
+      reportSource: 'AGENT_WORKFLOW',
+      createTime: '2026-10-30 09:00:00',
+    },
   ]
 }
 
@@ -49,7 +223,29 @@ function mountDaily() {
   return mount(Daily, stubMountOpts)
 }
 
+/**
+ * 移动模式（ResponsiveTable 的卡片视图）下，把每张卡片的「标签 -> 值」抽出来。
+ * 桌面模式抽不到真值 —— 见文件头的说明。
+ */
+function cardValues(w: any): Record<string, string[]> {
+  const out: Record<string, string[]> = {}
+  const rows = w.findAll('.opc-responsive-table__card-row')
+  for (const row of rows) {
+    const labels = row.findAll('.opc-responsive-table__card-label')
+    const values = row.findAll('.opc-responsive-table__card-value')
+    if (!labels.length || !values.length) continue
+    const label = labels[0].text()
+    const value = values[0].text()
+    if (!out[label]) out[label] = []
+    out[label].push(value)
+  }
+  return out
+}
+
 beforeEach(() => {
+  // 既有 12 条用例保持桌面模式（它们断言的是标题/选择器/排序/调用次数，与渲染模式无关）
+  widthRef.value = 1200
+
   mocks.dashboard.mockReset()
   mocks.listAlerts.mockReset()
   mocks.ackAlert.mockReset()
@@ -61,7 +257,42 @@ beforeEach(() => {
   mocks.regenerateAdvice.mockReset()
 
   mocks.listDaily.mockResolvedValue({ code: 200, msg: 'ok', data: makeDaily() })
-  mocks.getDaily.mockResolvedValue({ code: 200, msg: 'ok', data: { id: 1, period: '2026-09-08', summary: 'test', advice: 'tip' } })
+  mocks.getDaily.mockResolvedValue({
+    code: 200,
+    msg: 'ok',
+    data: {
+      id: 1,
+      period: '2026-09-08',
+      summaryMd: 'test',
+      adviceMd: 'tip',
+      kpiJson: JSON.stringify({
+        query_bank_flow: {
+          source: 'opc_finance_bank_flow',
+          companyId: 2,
+          fromDate: '2026-08-10',
+          toDate: '2026-09-08',
+          count: 6,
+          totalIn: 51892.0,
+          totalOut: 32430.0,
+          items: [],
+        },
+        query_voucher: {
+          source: 'opc_finance_voucher',
+          companyId: 2,
+          fromDate: '2026-08-10',
+          toDate: '2026-09-08',
+          count: 5,
+          totalIn: 35400.0,
+          totalOut: 29750.0,
+          items: [],
+        },
+      }),
+      llmUsed: 'MiniMax-Text-01',
+      reportStatus: 'FULL',
+      reportSource: 'AGENT_WORKFLOW',
+      createTime: '2026-09-08 09:00:00',
+    },
+  })
   mocks.generateDaily.mockResolvedValue({ code: 200, msg: 'ok', data: { reportId: 99 } })
 })
 
@@ -185,5 +416,116 @@ describe('daily.vue — module', () => {
   it('12. Daily.vue is a valid SFC with default export', () => {
     expect(typeof Daily).toBe('object')
     expect(Daily).not.toBeNull()
+  })
+})
+
+// Task 9：日报的数字列 + 状态标。
+// 全部在移动模式下跑（宽度 500）—— 桌面模式的单元格恒为 '-'，断言不了数字。
+describe('daily.vue — 数字列 + 状态标（Task 9）', () => {
+  beforeEach(() => {
+    widthRef.value = 500
+    mocks.listDaily.mockResolvedValue({ code: 200, msg: 'ok', data: makeRealRows() })
+    mocks.getDaily.mockResolvedValue({ code: 200, msg: 'ok', data: makeRealRows()[0] })
+  })
+
+  it('13. 列表「收入」列显示数字员工日报的 totalIn', async () => {
+    const w = mountDaily()
+    await flushPromises()
+    const vals = cardValues(w)
+    expect(vals['收入']).toBeTruthy()
+    expect(vals['收入'][0]).toContain('51,892.00')
+    expect(vals['收入'][0]).not.toContain('0.00')
+  })
+
+  it('14. 列表「收入」列显示手工日报的 totalRevenue（两种 kpi 形状都认）', async () => {
+    const w = mountDaily()
+    await flushPromises()
+    const vals = cardValues(w)
+    expect(vals['收入'][1]).toContain('19,600.00')
+  })
+
+  it('15. 列表「流水笔数」列显示 6；手工日报没有流水数据就显示空值（不是 0）', async () => {
+    const w = mountDaily()
+    await flushPromises()
+    const vals = cardValues(w)
+    expect(vals['流水笔数'][0]).toBe('6')
+    // 手工日报（KpiSnapshot 形状）里根本没有流水笔数 —— 显示空值，不显示 0
+    expect(vals['流水笔数'][1]).toBe('-')
+    expect(vals['流水笔数'][1]).not.toBe('0')
+  })
+
+  it('16. 列表「凭证数」列显示 5（来自 query_voucher.count）', async () => {
+    const w = mountDaily()
+    await flushPromises()
+    const vals = cardValues(w)
+    expect(vals['凭证数'][0]).toBe('5')
+    expect(vals['凭证数'][1]).toBe('12') // 手工日报的 voucherCount
+  })
+
+  it('17. FALLBACK 的日报显示「未走 LLM」标记', async () => {
+    const w = mountDaily()
+    await flushPromises()
+    const listText = w.find('.opc-responsive-table').text()
+    expect(listText).toContain('未走 LLM')
+    // 显示的是中文，不是后端的枚举值
+    expect(listText).not.toContain('FALLBACK')
+  })
+
+  it('18. 数字员工的日报显示「数字员工」来源标记', async () => {
+    const w = mountDaily()
+    await flushPromises()
+    const listText = w.find('.opc-responsive-table').text()
+    expect(listText).toContain('数字员工')
+    expect(listText).not.toContain('AGENT_WORKFLOW')
+  })
+
+  it('19. PARTIAL 的日报显示「部分完成」标记', async () => {
+    const w = mountDaily()
+    await flushPromises()
+    const listText = w.find('.opc-responsive-table').text()
+    expect(listText).toContain('部分完成')
+    expect(listText).not.toContain('PARTIAL')
+  })
+
+  it('20. kpiJson 解析失败时页面不崩，数字列显示空值（不是 0.00）', async () => {
+    mocks.listDaily.mockResolvedValue({
+      code: 200,
+      msg: 'ok',
+      data: [
+        {
+          id: 21,
+          period: '2026-11-01',
+          kpiJson: 'not json',
+          summaryMd: 'x',
+          adviceMd: 'y',
+          llmUsed: 'FALLBACK',
+          reportStatus: 'FALLBACK',
+          reportSource: 'MANUAL',
+          createTime: '2026-11-01 09:00:00',
+        },
+      ],
+    })
+    const w = mountDaily()
+    await flushPromises()
+    // 页面还活着（没被异常打空）
+    expect(w.find('[data-stub="ElCard"]').exists()).toBe(true)
+    const vals = cardValues(w)
+    expect(vals['收入'][0]).toBe('¥ -')
+    expect(vals['支出'][0]).toBe('¥ -')
+    expect(vals['流水笔数'][0]).toBe('-')
+    expect(vals['凭证数'][0]).toBe('-')
+    expect(w.text()).not.toContain('0.00')
+  })
+
+  it('21. 详情弹窗显示日报状态与来源', async () => {
+    const w = mountDaily()
+    await flushPromises()
+    const viewBtn = w.findAll('button').find((b) => b.text().includes('查看'))
+    expect(viewBtn).toBeTruthy()
+    await viewBtn!.trigger('click')
+    await flushPromises()
+    const dialog = w.find('[data-stub="ElDialog"]')
+    expect(dialog.text()).toContain('数字员工')
+    expect(dialog.text()).toContain('完整')
   })
 })
