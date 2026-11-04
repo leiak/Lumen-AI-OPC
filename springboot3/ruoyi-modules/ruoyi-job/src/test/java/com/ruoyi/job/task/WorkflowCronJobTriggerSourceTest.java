@@ -145,6 +145,24 @@ class WorkflowCronJobTriggerSourceTest
                 .hasMessageContaining("无法判定的状态");
     }
 
+    @Test
+    @DisplayName("响应体里 data 为 null → 抛（拿不到工作流状态 = 不能记成功）")
+    void execute_nullData_throws()
+    {
+        // 与 execute_nullStatus_throws 是两条不同的代码路径：
+        // 那一条是 data 非 null、但 data 里没有 status 键；
+        // 这一条是 data 整个为 null（拿不到工作流状态）。
+        // 这一条必须单独断言 —— 它坏了的话，这次失败的任务会被
+        // AbstractQuartzJob 记成 sys_job_log.status='0'（成功），
+        // 也就是「以为跑成了，其实没跑成」。
+        stubData(null);
+
+        assertThatThrownBy(() -> workflowCronJob.execute(CODE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("无法判定的状态")
+                .hasMessageContaining("finance_daily_report_v1");
+    }
+
     private void stubStatus(String status)
     {
         Map<String, Object> data = new HashMap<>();
