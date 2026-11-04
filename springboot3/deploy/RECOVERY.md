@@ -86,7 +86,7 @@ docker compose up -d
 ```bash
 cd /www/Lumen-AI-OPC/springboot3/deploy
 bash deploy.sh health
-# 应该看到: PASS: 184  FAIL: 0   （25 节全绿）
+# 应该看到: PASS: 200+  FAIL: 0   （26 节全绿）
 ```
 
 > ⚠️ **走 `deploy.sh health`，不要直接 `bash scripts/health-check.sh`** ——
@@ -199,11 +199,13 @@ docker restart aiopc-frontend
 ## 8. 验证清单 (恢复后跑一遍)
 
 ```bash
-bash deploy.sh health          # 全量 25 节
+bash deploy.sh health          # 全量 26 节
 HEALTH_ONLY=25 bash deploy.sh health   # 只跑第 25 节（定时任务）
+HEALTH_ONLY=26 bash deploy.sh health   # 只跑第 26 节（财务数字员工读的是真数据）
 ```
 
-预期 `PASS: 184  FAIL: 0`（2026-10-30 实测）。逐节的清单见 `README.md`「健康检查的 25 节」。
+预期 `PASS: 200+  FAIL: 0`（前 25 节 2026-10-30 实测全绿；第 26 节 2026-11-04 新增，待部署后首次实测）。
+逐节的清单见 `README.md`「健康检查的 26 节」。
 
 最关键的几条（对应「这个功能是不是真的在管事」）:
 - [x] 核心容器 Up（含 `aiopc-job` 调度器）
@@ -224,7 +226,7 @@ HEALTH_ONLY=25 bash deploy.sh health   # 只跑第 25 节（定时任务）
 | 改 Nacos 配置 | nacos/*.yml + import-dev.sh (auto) |
 | 加新 SQL 表/迁移 | mysql-initdb.d/NN-*.sql + RECOVERY.md §1 |
 | 改密钥需求 | .env.example + RECOVERY.md §1 |
-| **加一条健康检查断言** | scripts/health-check.sh（加 `ok()`/`nok()` + 在 `main()` 里加 `step N check_xxx`）+ `README.md`「健康检查的 25 节」表 |
+| **加一条健康检查断言** | scripts/health-check.sh（加 `ok()`/`nok()` + 在 `main()` 里加 `step N check_xxx`）+ `README.md`「健康检查的 26 节」表 |
 | **修一个「说假话」的地方** | 根 README（说清楚现状）+ CLAUDE.md §四（记成一条坑）+ 健康检查（加一条会红的断言） |
 
 ---
@@ -420,7 +422,7 @@ bash deploy.sh nuke                        # ⚠️ 删 mysql/redis/nacos 数据
 4. 等 30s 让 MySQL 建库
 5. 跑 `nacos/import-dev.sh` 把 dev 配置推 Nacos
 6. `docker compose up -d` 起业务容器 (首次会 build 镜像, ~8 分钟)
-7. 提示跑 `bash deploy.sh health` 验证 (25 节, 期望 `PASS: 184  FAIL: 0`)
+7. 提示跑 `bash deploy.sh health` 验证 (26 节, 期望 `PASS: 200+  FAIL: 0`)
 
 > ⚠️ `deploy.sh` 不重建镜像。如果改了 OPC 服务源码,先 `mvn package + mvn dependency:copy-dependencies`,再 `deploy.sh rebuild crm` (或 `rebuild all` 重建所有 OPC 模块镜像)。
 > ⚠️ **共享库改完必须先 `mvn install`** —— `package` 不写 `~/.m2`,镜像里拿到的还是旧快照
@@ -583,7 +585,7 @@ docker compose build aiopc-frontend && docker compose up -d aiopc-frontend
 # 但那个文件没有进仓库,别人拿不到 —— 现在唯一可复现的前端起法是上面的
 # docker compose build aiopc-frontend。镜像拉不下来就先修网络,别找那个脚本。
 
-# 7. 健康检查 (期望 25 节 / 184 项断言全绿)
+# 7. 健康检查 (期望 26 节 / 200+ 项断言全绿)
 bash deploy.sh health
 
 # 8. e2e 验证
@@ -880,8 +882,9 @@ docker exec -i aiopc-mysql mysql -uroot -p'Opc@2026!' ry-vue-opc \
 [OK]   25.2 sys_job 里有 1 条启用中的任务
 [OK]   25.3 网关 /schedule/job/list 通, 且列得出 job 100「财务日报」
 [OK]   25.4 PUT /schedule/job/run 受理了 (job 100 立即执行一次)
-[OK]   25.5 真跑出一条定时器触发的记录: <id>|R2026...|CRON|quartz:finance_daily_report_v1|SUCCESS
-[OK]   25.6 sys_job_log 记下了这次执行(成功): 财务日报|0|财务日报 总共耗时：xxxx毫秒
+[OK]   25.5 真跑出一条运行记录(手动执行): <id>|R2026...|MANUAL|manual:finance_daily_report_v1|SUCCESS
+[OK]   25.5b 这条运行记录 status=SUCCESS (id=<id>)
+[OK]   25.6 调度器记成功, 业务运行也成功: 财务日报|0|财务日报 总共耗时：xxxx毫秒
 [OK]   25.7 没有一条运行记录冒充 CRON
 [OK]   25.8 界面上没有指向 localhost 的死外链菜单
 ```
@@ -933,12 +936,31 @@ curl -s -X PUT -H "Authorization: Bearer ${TOKEN}" \
 ```
 
 `scheduler.triggerJob()` 是**异步**的 —— 这个请求立刻返回，工作流在后台跑。
-要看结果就查 `opc_agent_workflow_run`（`trigger_source` 带 `quartz:` 前缀）和
-`sys_job_log`。
+要看结果就查 `opc_agent_workflow_run` 和 `sys_job_log`。
+**`trigger_source` 的前缀说明这次到底怎么触发的**：手动执行（`PUT /schedule/job/run`）
+落 `manual:`，定时触发落 `quartz:` —— 想确认「定时器有没有真跑过」就查 `quartz:` 的行。
+
+### 17.5 第 26 节红了（财务数字员工读的是真数据）
+
+第 26 节断的是**「日报里的金额逐笔等于库里的金额」**，外加「降级链真的开着」。
+单节调试：`HEALTH_ONLY=26 bash deploy.sh health`。
+
+| 症状 | 原因 | 怎么查 |
+|---|---|---|
+| 26.1 / 26.6 说「定时器没跑过」 | 历史里没有 `trigger_source LIKE 'quartz:%'` 且 `status='SUCCESS'` 的运行记录 | `SELECT id,trigger_source,status,start_time FROM opc_agent_workflow_run ORDER BY id DESC LIMIT 5`；定时器平时是 `0 0 1 * * ?`（每月 1 号）→ 验证要临时改成每 2 分钟并**重启 `aiopc-job`** 让 RAMJobStore 重排，跑完再改回去 |
+| 26.2 / 26.3 说「没有日报行」 | `opc_insight_daily_report` 里还没有 `report_source='AGENT_WORKFLOW'` 的行 | 先让定时器真跑一次（或手动触发一次工作流）→ 工作流跑完才会 upsert 日报 |
+| 26.3 说「金额对不上」 | 日报里的 `kpi_json` 和 `opc_finance_bank_flow` 的原始流水不是一回事 | 26.3 是**逐笔重算**：按日报自己写回的 `fromDate`/`toDate` 重查 `opc_finance_bank_flow`，逐笔比金额。差一分钱也会红 —— 这是故意的 |
+| 26.7 说「有 FALLBACK 的日报」 | LLM 没真调通，落成了降级数据 | `SELECT report_source,llm_used,report_status FROM opc_insight_daily_report ORDER BY id DESC LIMIT 10`；先修 provider（26.9 / 26.9b） |
+| 26.9b 说「这把钥匙开不了门」 | provider 的 API key 无效 / 过期（401/403），或被限流（429） | 26.9b 只打 HTTP 状态码（**不打 key 的值**）；换 key 后**重建镜像** —— key 是构建期注入的 |
+| 26.11 说「四份 yml 对不上」 | `opc-ai-core` / `opc-agent-hub` / `opc-insight` 的 `application.yml` 和 `deploy/nacos/application-dev.yml` 里的 `opc.llm:` 段被人改得不一致了 | 四份要**逐行相同**（注释不算）；改完记得 `cd nacos && bash import-dev.sh` 推回 Nacos |
+| 26.12 说「容器里没这个 key」 | 容器 env 没注入 `OPC_LLM_DEEPSEEK_ENABLED` / `DEEPSEEK_API_KEY` / `MINIMAX_API_KEY` | 26.12 只打 `ENABLED=true|false` 和 `NONEMPTY|EMPTY`（**不打 key 的值**） |
+
+> ⚠️ 26.9b 在 `aiopc-ai-core` 容器里调 **`GET /v1/models`**（**零 token 消耗**）。
+> **绝不**改成 `chat/completions` 探活 —— 那是真花钱。
 
 ---
 
-**Last updated:** 2026-10-30 (W80.2 — 接上 ruoyi-job 调度器: 新增 §17 定时任务故障排查, 含健康检查第 25 节期望输出 / 常见症状 / RAMJobStore 重启要求 / 手动触发方法)
+**Last updated:** 2026-11-04 (W81.1 — 财务数字员工读的是真数据: 健康检查新增第 26 节, 25.5/25.5b/25.6 改成断「业务真跑成」, 新增 §17.5 第 26 节排障表; 全文的「25 节 / 184 项」口径更新为「26 节 / 200+ 项」)
 
 
 ---

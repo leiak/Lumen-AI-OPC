@@ -45,7 +45,7 @@ docs/superpowers/      9 份实施计划 + 逐份审计报告（plans/audit/）
 
 ### 落地办法：把断言写进健康检查
 
-`springboot3/deploy/scripts/health-check.sh` 现在有 **25 节**，每节只做一件事：
+`springboot3/deploy/scripts/health-check.sh` 现在有 **26 节**，每节只做一件事：
 把「这个功能是不是真的在管事」变成一条会红的断言。新功能上线时：
 
 1. 在 `health-check.sh` 里加一节（`ok()` / `nok()` / `warn()`）；
@@ -226,6 +226,26 @@ compose 里没有容器、网关没有 `/schedule` 路由。`sys_job_log` 表 0 
 - 控制台口令：放在 `springboot3/deploy/sentinel-dashboard/application.yml`，
   健康检查**从文件读**，不落命令行、不打日志
 - API key：只看有没有 / 多长，**不要打印值**；凭据只经应用自己的配置注入
+
+### 13. 「每天 09:00」是北京时间的假话 —— 容器时区是 **UTC**
+
+Quartz 按**容器时区**求值，而 `aiopc-job` 容器里的 JVM 时区是 **UTC**：
+
+| cron 表达式 | UTC | 北京时间 | 对不对 |
+|---|---|---|---|
+| `0 0 9 * * ?` | 09:00 | **17:00** | ❌ 差 8 小时 |
+| `0 0 1 * * ?` | 01:00 | **09:00** | ✅ 现在用的就是这个 |
+
+`sys_job` 里那条「财务日报」现在是 `0 0 1 * * ?`（迁移
+`springboot3/sql/migrations/V20261102__finance_agent_truth.sql` 改的），
+README 里写「每天 09:00」时**必须写明是北京时间**。
+
+同一个坑在**查库**时也会咬人：`opc_agent_workflow_run.start_time` 存的是
+**北京墙上时间**，而 MySQL 的 `NOW()` 是 **UTC**（`SELECT NOW(), UTC_TIMESTAMP()`
+两个值相同）。所以「最近 7 天」这种窗口不能写
+`start_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)` —— 那是拿北京值比 UTC 时刻，
+**窗口会少 8 小时**，在 7 天边界上**假红**。要写成
+`DATE_SUB(NOW(), INTERVAL 7 DAY) + INTERVAL 8 HOUR`（健康检查 26.6 就是这么写的）。
 
 ---
 

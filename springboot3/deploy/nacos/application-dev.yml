@@ -37,6 +37,15 @@ jasypt:
 # 读不到也不装 Bean），值与 opc-ai-core 本地 application.yml 逐条一致。
 opc:
   llm:
+    # ⚠️ primary / fallback 这两个键**当前没有任何代码读**。
+    #   LlmGateway.chat() 是按各 provider 的 priority() **升序**遍历的
+    #   (priority 数字小的先试), 某个 provider 全部失败就换下一个 provider。
+    #   → 想改「先试谁 / 退到谁」, 改的是各 provider 自己的 priority,
+    #     **不是**这两个键 —— 改了这两个键不会有任何效果。
+    #   → 读这份文件的人却会以为「改 fallback 就能改降级目标」。
+    #     (全仓 grep 这两个键, 只命中一处 javadoc —— 没有任何代码读它们。)
+    #   健康检查 26.9 / 26.9b / 26.12 断的是「链真的接上了吗 / 那把钥匙能开门吗」,
+    #   26.11 断的是这四份 yml 的这一段还对不对得上。
     primary: MiniMax-Text-01  # MiniMax 优先 (priority=5)
     fallback: deepseek-v3
     enable-cache: true

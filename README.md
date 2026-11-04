@@ -60,8 +60,9 @@ OPC = **One-Person Company**，核心假设是未来大量"一人公司"会涌�
   业务端口只绑 `127.0.0.1` 且网关没有 `/actuator/**` 路由，所以端点不经网关，公网不可达
 - **Quartz** 定时任务 —— `ruoyi-job` 模块**真的在跑**（容器 `aiopc-job`，
   端口 9203，RAMJobStore，启动时从 `sys_job` 表重建触发器）。
-  `sys_job` 里那条「财务日报」（cron `0 0 9 * * ?`）每天 09:00 会真的触发
-  `finance_daily_report_v1` 工作流；健康检查第 25 节会**真的触发一次**
+  `sys_job` 里那条「财务日报」（cron `0 0 1 * * ?`）**北京时间**每天 09:00 会真的触发
+  `finance_daily_report_v1` 工作流（**容器时区是 UTC** → `0 0 1 * * ?` = UTC 01:00 = 北京 09:00）；
+  健康检查第 25 节会**真的触发一次**
   来证明它不是一句空话
 - **OpenFeign** 微服务调用（带 Sentinel 降级）
 - **Jasypt** 配置加密（口令 `OpcEncrypt!2026`）
@@ -136,14 +137,20 @@ opc-content      (9325) AI 内容创作  ── 4 个 LLM 场景 / 抖音发布
 - Quartz 用 **RAMJobStore**（触发器不落 `QRTZ_*` 表，每次启动从 `sys_job` 重建
   —— 这是 RuoYi 自己的推荐做法，`ruoyi-job/config/ScheduleConfig.java` 里那份
   JDBC 方案整个被注释掉了，注释里写的也是「单机部署建议删掉此类和 qrtz 数据库表」）
-- `sys_job` 里那条「财务日报」（`0 0 9 * * ?`）**启用中**，每天 09:00 触发
+- `sys_job` 里那条「财务日报」（`0 0 1 * * ?`）**启用中**，**北京时间**每天 09:00 触发
   `finance_daily_report_v1` 工作流
+  （**容器时区是 UTC**：Quartz 按容器时区求值，`0 0 1 * * ?` = UTC 01:00 = **北京 09:00**；
+  写成 `0 0 9 * * ?` 其实是**北京 17:00**）
 - 触发链：`sys_job` → Quartz → `WorkflowCronJob.execute()` → OpenFeign →
   `opc-agent-hub` 的 `/opc/agent/workflows/{code}/trigger`（`@InnerAuth` 内部端点）
 - 界面「定时任务」菜单现在**真的能用**：网关新增 `/schedule/**` 路由（StripPrefix=1
   → `ruoyi-job` 的 `/job/**`），前端 `src/api/monitor/job.ts` 本来就用的这个路径
 - 健康检查第 25 节会**真的触发一次**并断言 `opc_agent_workflow_run` 里多了一行
-  `trigger_source='quartz:...'`、`sys_job_log` 里多了一行成功记录
+  `trigger_source='manual:...'`（手动执行落 `manual:`，定时触发才落 `quartz:`）、
+  `sys_job_log` 里多了一行成功记录
+- 「定时器有没有真跑过」由**第 26 节**断：26.1 查历史上有过 `quartz:` 且 `SUCCESS` 的运行记录，
+  26.6 查**最近一次 `quartz:` 触发**是不是 SUCCESS、且落在**最近 7 天**内
+  （`start_time` 存的是北京墙上时间，而 MySQL 的 `NOW()` 是 UTC，所以窗口要 `+ INTERVAL 8 HOUR`）
 
 Spring 那边仍然没有 `@Scheduled`（**全仓 0 个 `@Scheduled`、0 个 `@EnableScheduling`**）——
 但那不重要：调度靠的是 Quartz，不是 Spring 的定时器。
@@ -439,8 +446,9 @@ npm run dev          # 本地开发服务器
 
 # 线上验证（唯一被放行的入口, 别手搓 curl）
 cd springboot3/deploy
-bash deploy.sh health                  # 25 节全量
+bash deploy.sh health                  # 26 节全量
 HEALTH_ONLY=25 bash deploy.sh health   # 只跑第 25 节（定时任务）
+HEALTH_ONLY=26 bash deploy.sh health   # 只跑第 26 节（财务数字员工读的是真数据）
 
 # Helm
 helm lint springboot3/deploy/helm/opc
@@ -466,9 +474,9 @@ mvn -pl ruoyi-modules/opc-ai-core test -Dtest=RedTeamRunnerTest,PromptGuardHarde
 - `OPC-SECURITY-REPORT-v0.1.md` — **Task #8 完整安全报告**（必读）
 
 ### 部署 / DevOps
-- `springboot3/deploy/README.md` — 部署文档（31 个服务清单 / **健康检查的 25 节** / rebuild 入口）
+- `springboot3/deploy/README.md` — 部署文档（31 个服务清单 / **健康检查的 26 节** / rebuild 入口）
 - `springboot3/deploy/RECOVERY.md` — 灾难恢复 + 各服务 runbook（17 节）
-- `springboot3/deploy/scripts/health-check.sh` — **25 节 / 184 项断言**（`bash deploy.sh health`）
+- `springboot3/deploy/scripts/health-check.sh` — **26 节 / 200+ 项断言**（`bash deploy.sh health`）
 - `springboot3/deploy/nacos/README.md` — Nacos 配置管理（`tenant=` 参数陷阱 / 限流规则真相源）
 - `springboot3/deploy/helm/opc/` — K8s Helm Chart（**存档 —— 本项目不走 K8s 路径**，见「状态」一节）
 - `springboot3/Jenkinsfile` — CI 流水线
@@ -503,8 +511,9 @@ mvn -pl ruoyi-modules/opc-ai-core test -Dtest=RedTeamRunnerTest,PromptGuardHarde
 ## 近期开发（2026-10-24 ~ 11-02）：把演示环境说的话变成真的
 
 主题还是那一条：**别对外说自己并不支持的事**。
-这一轮每改一处，都配了一条**会红的健康检查断言** —— 25 节 / 184 项，
-2026-10-30 全绿（`bash deploy.sh health`）。
+这一轮每改一处，都配了一条**会红的健康检查断言** —— 26 节 / 200+ 项。
+2026-10-30 实测全绿（`bash deploy.sh health`）的是**前 25 节**；
+第 26 节（财务数字员工读的是真数据）2026-11-04 才加进来，**第一次对线上实测要等部署之后**。
 
 ### 之前在说的假话，和现在的样子
 

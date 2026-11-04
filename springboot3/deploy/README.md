@@ -33,8 +33,8 @@ docker compose build aiopc-frontend && docker compose up -d aiopc-frontend
 # W74 当天用过 Windows 临时目录里的 frontend_proxy.py 顶替 nginx,
 # 但它没有进仓库 —— 前端唯一可复现的起法还是上面的 docker compose build。
 
-# 6. 健康检查 —— 25 节, 184 项断言
-bash deploy.sh health          # ← 走这个入口, 见下方「健康检查的 25 节」
+# 6. 健康检查 —— 26 节, 200+ 项断言
+bash deploy.sh health          # ← 走这个入口, 见下方「健康检查的 26 节」
 
 # 7. e2e 验证 (W74 新增 opc-content)
 cd ../tmp_e2e && OPC_GATEWAY=http://127.0.0.1:8080 python e2e_content.py
@@ -106,7 +106,7 @@ Nacos(sentinel-ruoyi-gateway, tenant=opc-dev)
 | 文件 | 作用 | 现状 |
 |------|------|---------|
 | `docker-compose.yml` | **31 个服务**编排 | ✅ 含 `aiopc-job` / `aiopc-marketplace` / `aiopc-insight` |
-| `scripts/health-check.sh` | **25 节 / 184 项断言** | ✅ 每次部署后必跑 |
+| `scripts/health-check.sh` | **26 节 / 200+ 项断言** | ✅ 每次部署后必跑 |
 | `deploy.sh` | `rebuild` / `health` / `snapshot` 入口 | ✅ 线上验证走它，不手搓 curl |
 | `nacos/import-dev.sh` | 推 10 份配置 + 按 `tenant=` 回读逐行比对 | ✅ 不对就 `[FAIL]` 退出 1 |
 | `nacos/sentinel-ruoyi-gateway.json` | 限流规则**真相源**（18 条 ↔ 网关 18 条路由） | ✅ 加路由必须同步加 |
@@ -116,7 +116,7 @@ Nacos(sentinel-ruoyi-gateway, tenant=opc-dev)
 | `../docs/superpowers/plans/audit/` | 9 份实施计划的逐条审计 | ✅ |
 | `RECOVERY.md` | 灾难恢复 + 各服务 runbook（17 节） | ✅ |
 
-## 健康检查的 25 节
+## 健康检查的 26 节
 
 **这是本仓库的核心资产**：每个「这个功能是不是真的在管事」都变成一条会红的断言。
 新增功能时按同样方式加一节 —— 写法见 `CLAUDE.md` §二。
@@ -148,10 +148,12 @@ Nacos(sentinel-ruoyi-gateway, tenant=opc-dev)
 | 23 | 记忆系统记事 + Sentinel 限流真的在限 |
 | 24 | Sentinel 控制台是真的在管事 |
 | 25 | 定时任务是真的在跑（真触发一次 + 落库对账） |
+| 26 | 财务数字员工读的是真数据（日报逐笔对表 + 降级链真的开着） |
 
 ```bash
-bash deploy.sh health            # 全量 (25 节)
+bash deploy.sh health            # 全量 (26 节)
 HEALTH_ONLY=25 bash deploy.sh health   # 只跑第 25 节
+HEALTH_ONLY=26 bash deploy.sh health   # 只跑第 26 节
 ```
 
 > ⚠️ **必须走 `deploy.sh health`**，不要直接 `bash scripts/health-check.sh` ——
@@ -300,7 +302,7 @@ kubectl delete deployment opc-ai-core-old
 |------|------|------|
 | **CLAUDE.md** | `../../CLAUDE.md` | 给 Claude 看的项目说明 + **12 条踩过的坑**（最新的一份） |
 | **RECOVERY** | `RECOVERY.md` | 灾难恢复 + 各服务 runbook（**17 节**） |
-| **健康检查** | `scripts/health-check.sh` | **25 节 / 184 项断言**（2026-10-30 实测全绿） |
+| **健康检查** | `scripts/health-check.sh` | **26 节 / 200+ 项断言**（前 25 节 2026-10-30 实测全绿；第 26 节 2026-11-04 新增，待部署后首次实测） |
 | **Nacos 配置** | `nacos/README.md` | 命名空间 / `tenant=` 参数陷阱 / 限流规则表真相源 |
 | **计划审计** | `../docs/superpowers/plans/audit/README.md` | 9 份实施计划的 checkbox 逐条核实（565 勾 / 175 明确写没做） |
 | **根 README** | `../../README.md` | 项目门面：模块布局、部署架构、端口转发 |

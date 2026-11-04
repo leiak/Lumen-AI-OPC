@@ -7,7 +7,7 @@
 | 我想看... | 文档 |
 |----------|------|
 | **怎么跑 / 踩过的坑** | [`CLAUDE.md`](../CLAUDE.md) ← 先看这页 |
-| **功能是不是真的在管事** | `bash deploy.sh health`（25 节 / 184 项断言）|
+| **功能是不是真的在管事** | `bash deploy.sh health`（26 节 / 200+ 项断言）|
 | 项目从 0 到 1 是什么 | [`init.md`](../init.md) |
 | 13 周 MVP 怎么交付 | [`OPC-MVP-DELIVERY.md`](../OPC-MVP-DELIVERY.md) |
 | W1 8 项任务的拆分 | [`OPC-W1-TASK-BREAKDOWN.md`](../OPC-W1-TASK-BREAKDOWN.md) |
@@ -53,9 +53,9 @@
 | 文件 | 主题 |
 |------|------|
 | `springboot3/README.md` | 后端基座 README（RuoYi 上游原文 + OPC 定制说明） |
-| `springboot3/deploy/README.md` | Docker 部署 README（31 服务清单 / **健康检查 25 节** / rebuild 入口） |
+| `springboot3/deploy/README.md` | Docker 部署 README（31 服务清单 / **健康检查 26 节** / rebuild 入口） |
 | `springboot3/deploy/RECOVERY.md` | 灾难恢复 + 各服务 runbook（17 节） |
-| `springboot3/deploy/scripts/health-check.sh` | **25 节 / 184 项断言** —— 实现文件；**执行入口是 `bash deploy.sh health`**（直接跑这个脚本会被安全分类器拦掉） |
+| `springboot3/deploy/scripts/health-check.sh` | **26 节 / 200+ 项断言** —— 实现文件；**执行入口是 `bash deploy.sh health`**（直接跑这个脚本会被安全分类器拦掉） |
 | `springboot3/deploy/nacos/README.md` | Nacos 配置操作（`tenant=` 参数陷阱 / 限流规则真相源） |
 | `springboot3/deploy/helm/opc/README.md` | Helm chart README（**存档 —— K8s 不在本项目范围内**） |
 | `springboot3/deploy/runbooks/incident-response.md` | F-01..F-07 故障手册（**存档 —— K8s 操作步骤不适用**，compose 排障看 RECOVERY.md） |
@@ -92,7 +92,7 @@
 | 变更 | 同步到 |
 |------|--------|
 | 加 OPC 微服务 / 新端口 | `docker-compose.yml` + 网关 `application.yml` + **`nacos/sentinel-ruoyi-gateway.json` 加一条规则** + `springboot3/deploy/README.md` 服务清单 + 根 `README.md` 模块布局 + `RECOVERY.md` §1 |
-| **加一条健康检查断言** | `scripts/health-check.sh`（加 `ok()`/`nok()` + `main()` 里加 `step N check_xxx`）+ `deploy/README.md`「健康检查的 25 节」表 |
+| **加一条健康检查断言** | `scripts/health-check.sh`（加 `ok()`/`nok()` + `main()` 里加 `step N check_xxx`）+ `deploy/README.md`「健康检查的 26 节」表 |
 | **修一个「说假话」的地方** | 根 `README.md`（说清现状）+ `CLAUDE.md` §四（记成一条坑）+ 健康检查（加一条会红的断言）|
 | W*N* 完成验证 | 新增 `docs/verification/week-N/OPC-W*N*-VERIFICATION-*.md` + 在 `docs/verification/README.md` 索引 |
 | 加新 OPC 里程碑 | `docs/verification/milestones/<name>/` 子目录 |

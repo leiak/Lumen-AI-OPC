@@ -32,6 +32,8 @@
 #  23) 记忆系统记事 + Sentinel 限流真的在限
 #  24) Sentinel 控制台是真的在管事 (不是「零节点零规则」的空壳)
 #  25) 定时任务是真的在跑 (ruoyi-job 真的被装起来 + 真的触发过)
+#  26) 财务数字员工读的是真数据 (日报里的金额逐笔等于库里的金额 +
+#      降级链真的开着 + 四份 yml 对得上)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -98,6 +100,64 @@ try:
 except Exception:
     print('-1')
 " 2>/dev/null
+}
+
+# 取一份 yml 里 opc.llm 这一段的「键与值」(注释不算)。
+#
+# 为什么不用 `awk '/^  llm:/{f=1} f{print} f&&/^  [a-z]/{exit}'`:
+# 那个写法会把**结束这一段的下一行也打出来**(先 print 再 exit),于是
+#   · opc-ai-core / opc-agent-hub / nacos 那三份 llm 段后面跟的是 `  memory:`
+#   · opc-insight 那份后面跟的是**顶格**的 `mybatis:`(它的 opc: 段里只有 llm)
+# → 四份提取出来的东西**最后一行不一样** → 26.11 永远红。
+# 这里改成:只取 llm 段**内部**的行(下一个缩进 <= 2 的键就停),四份逐字相同。
+llm_section() {
+  awk '
+    /^[[:space:]]*#/ { next }
+    /^  llm:/ { inllm = 1; next }
+    inllm && /^[^[:space:]]/ { exit }   # 顶格的下一个键 → llm 段结束
+    inllm && /^  [^ ]/ { exit }         # 同级(缩进 2)的下一个键 → llm 段结束
+    !inllm { next }
+    {
+      line = $0
+      sub(/[[:space:]]+#.*$/, "", line)   # 去行尾注释
+      sub(/[[:space:]]+$/, "", line)      # 去行尾空白
+      if (line == "") next
+      print line
+    }
+  ' "$1" 2>/dev/null
+}
+
+# 取一份 yml 里 opc.llm.<provider>.<key> 的值。
+#
+# 缩进是分层的:`  llm:`(2) → `    provider:`(4) → `      key: value`(6)。
+# 「provider 层」必须按**正好 4 个空格**来认 —— 按「缩进后是字母」来认的话,
+# `base-url` 这种以字母开头的属性会被误认成下一个 provider。
+llm_yml_value() {
+  # $1 = yml 路径, $2 = provider, $3 = 键名
+  awk -v want_provider="$2" -v want_key="$3" '
+    /^[[:space:]]*#/ { next }
+    /^  llm:/ { inllm = 1; next }
+    inllm && /^[^[:space:]]/ { exit }   # 顶格的下一个键 → llm 段结束
+    inllm && /^  [^ ]/ { exit }         # 同级(缩进 2)的下一个键 → llm 段结束
+    !inllm { next }
+    {
+      line = $0
+      if (line ~ /^    [^ ]/) {                 # provider 层
+        head = line; sub(/:.*$/, "", head); gsub(/[[:space:]]/, "", head); prov = head; next
+      }
+      if (line ~ /^      [^ ]/) {               # provider 的属性
+        head = line; sub(/:.*$/, "", head); gsub(/[[:space:]]/, "", head)
+        if (prov == want_provider && head == want_key) {
+          v = line
+          sub(/^[^:]*:[[:space:]]*/, "", v)
+          sub(/[[:space:]]+#.*$/, "", v)
+          sub(/[[:space:]]+$/, "", v)
+          print v
+          exit
+        }
+      }
+    }
+  ' "$1" 2>/dev/null
 }
 
 # ---------- 1. 容器 Up 检查 ----------
@@ -3804,8 +3864,10 @@ PY
 # 「每天 09:00 生成财务日报」的 cron 一次都没跑过(sys_job_log 表 0 行)。
 #
 # 判据不能是「容器在跑」—— 那也可能是空壳。要**真的触发一次**,然后看见:
-#   · opc_agent_workflow_run 多了一行 trigger_source='quartz:...' 的记录
-#   · sys_job_log 多了一行 status='0'(成功)
+#   · opc_agent_workflow_run 多了一行 trigger_source='manual:...' 的记录
+#     (本节自己触发的是「手动执行一次」; 定时触发落的是 `quartz:...`,
+#      由第 26.1 / 26.6 去查 —— 见那两节)
+#   · sys_job_log 多了一行 status='0'(成功) **且** 那次业务运行也是 SUCCESS
 # 这两行都是应用自己写的,不是检查脚本造的 —— 造不出来才是关键。
 #
 # ⚠️ URL 不带 /prod-api:前端 axios 的 baseURL 是 /prod-api,但 nginx 的
@@ -3919,24 +3981,66 @@ print(sum(1 for r in rows if r.get('jobId') == 100))
     return
   fi
 
-  # --- 25.5 等真的落库:新的运行记录 trigger_source='quartz:...' ---
+  # --- 25.5 等真的落库:新的运行记录 trigger_source='manual:...' ---
   #
-  # 这是整节的关键断言:这一行是 opc-agent-hub 自己写的
-  # (WorkflowTriggerServiceImpl.newRun),而且 trigger_source 带 quartz: 前缀
-  # —— 与每天 09:00 定时触发产生的记录**完全一样**。
+  # 这一行是 opc-agent-hub 自己写的 (WorkflowTriggerServiceImpl.newRun)。
+  #
+  # ⚠️ 等的是 `manual:` 不是 `quartz:`:
+  # 健康检查第 25.4 步调的是 `PUT /schedule/job/run`(手动执行一次)。
+  # Task 7 之后手动执行在 Quartz 的 JobDataMap 里放了一个标记
+  # (ruoyi-job 的 ManualTriggerMarker),agent-hub 那边收到的 triggerSource
+  # 就是 `manual:<code>` —— 而定时触发才是 `quartz:<code>`。
+  # 等 quartz: 会**永远等不到**(40 次 × 3 秒 = 2 分钟超时 → 25.5 当场红),
+  # 而且更糟: 等 quartz: 会让健康检查自己把「定时器跑没跑过」这个问题喂绿。
+  # 「定时器有没有真跑过」由第 26.1 / 26.6 查 quartz: 的历史记录来回答。
   local new_run=""
   for _ in $(seq 1 40); do
-    new_run=$(db_q "SELECT CONCAT(id,'|',run_code,'|',trigger_type,'|',trigger_source,'|',status) FROM opc_agent_workflow_run WHERE id > ${before_id} AND trigger_source LIKE 'quartz:%' ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+    new_run=$(db_q "SELECT CONCAT(id,'|',run_code,'|',trigger_type,'|',trigger_source,'|',status) FROM opc_agent_workflow_run WHERE id > ${before_id} AND trigger_source LIKE 'manual:%' ORDER BY id DESC LIMIT 1;" | tr -d '\r')
     [[ -n "${new_run}" ]] && break
     sleep 3
   done
   if [[ -z "${new_run}" ]]; then
-    nok "25.5 触发后 2 分钟内没等到 trigger_source='quartz:%' 的运行记录 —— 定时器这一环没通"
+    nok "25.5 触发后 2 分钟内没等到 trigger_source='manual:%' 的运行记录 —— 手动执行这一环没通"
   else
-    ok "25.5 真跑出一条定时器触发的记录: ${new_run}"
+    ok "25.5 真跑出一条运行记录(手动执行): ${new_run}"
   fi
 
-  # --- 25.6 sys_job_log 里必须有这次执行, 而且是成功 ---
+  # --- 25.5b 落库的那条运行记录, 状态必须是真的跑成了 ---
+  #
+  # 以前 25.5 只断「记录存在」→ 4 条 FAILED 的记录照样通过。
+  #
+  # 状态**从上面那条 new_run 的第 5 段切**, 不回查:
+  # new_run 的格式是 id|run_code|trigger_type|trigger_source|status,
+  # 回查拿到的是「此刻表里那一行」—— 两次触发挨得近时可能不是这次那一条
+  # (一条会配错的断言比没有断言更坏)。
+  #
+  # PARTIAL 是 **warn** 不是 nok: PARTIAL = 本次运行有节点降级
+  # (LLM 没成功, 用了引擎侧确定性聚合摘要) —— 是「跑过了, 只是降级」, 不是失败。
+  # ⚠️ PARTIAL **不代表产出物落过表**(没有 persist 声明的 dag 记 PARTIAL 时业务表里
+  # 一行都没有)—— 所以这里绝不能断言「PARTIAL 的运行必有对应的日报行」。
+  # 「LLM 通不通」由 26.2 / 26.7 / 26.9b / 26.10 负责。
+  local new_run_id run_status
+  new_run_id=$(printf '%s' "${new_run}" | cut -d'|' -f1)
+  run_status=$(printf '%s' "${new_run}" | cut -d'|' -f5)
+  if [[ -z "${new_run}" ]]; then
+    nok "25.5b 没有一条可判状态的运行记录 —— 25.5 本身就没跑成"
+  elif [[ "${run_status}" == "SUCCESS" ]]; then
+    ok "25.5b 这条运行记录 status=SUCCESS (id=${new_run_id})"
+  elif [[ "${run_status}" == "PARTIAL" ]]; then
+    warn "25.5b 这条运行记录 status=PARTIAL (id=${new_run_id}) —— 跑成了, 但有节点降级(不等于业务成功)"
+  else
+    nok "25.5b 这条运行记录 status=${run_status:-<空>} (id=${new_run_id}) —— 记录落库了, 但业务没跑成(以前的 25.5 只看记录在不在)"
+  fi
+
+  # --- 25.6 sys_job_log 里必须有这次执行, 而且业务也得真跑成 ---
+  #
+  # sys_job_log.status 记的是「Feign 触发**受理**成功」, 不是业务成功 ——
+  # 历史上 4 条业务全 FAILED, sys_job_log 却全是 status=0。
+  # 所以现在要求「调度器记成功」**且**「25.5b 那条业务运行也是成功」。
+  #
+  # ⚠️ 不按 start_time 关联(brief 原来那么写):两列虽然都是墙上时间,
+  # 但「按时间关联」在两次触发挨得近时会配错行 —— 一条会配错的断言比没有断言更坏。
+  # 25.4 触发 → 25.5 等到**那条**记录 → 25.6 看**它**的状态:关联关系是**因果**。
   local log_row
   log_row=$(db_q "SELECT CONCAT(job_name,'|',status,'|',LEFT(job_message,40)) FROM sys_job_log WHERE job_name='财务日报' ORDER BY job_log_id DESC LIMIT 1;" | tr -d '\r')
   if [[ -z "${log_row}" ]]; then
@@ -3944,10 +4048,14 @@ print(sum(1 for r in rows if r.get('jobId') == 100))
   else
     local log_status
     log_status=$(printf '%s' "${log_row}" | cut -d'|' -f2)
-    if [[ "${log_status}" == "0" ]]; then
-      ok "25.6 sys_job_log 记下了这次执行(成功): ${log_row}"
-    else
+    if [[ "${log_status}" != "0" ]]; then
       nok "25.6 sys_job_log 记下了这次执行但**失败**: ${log_row}"
+    elif [[ "${run_status}" == "SUCCESS" ]]; then
+      ok "25.6 调度器记成功, 业务运行也成功: ${log_row}"
+    elif [[ "${run_status}" == "PARTIAL" ]]; then
+      warn "25.6 调度器记成功, 业务运行是 PARTIAL(有节点降级, 不是业务失败): ${log_row}"
+    else
+      nok "25.6 调度器记成功但业务没跑成(status=${run_status:-<空>}) —— 「触发受理成功」不等于「业务成功」: ${log_row}"
     fi
   fi
 
@@ -3982,6 +4090,550 @@ print(sum(1 for r in rows if r.get('jobId') == 100))
   else
     ok "25.8 界面上没有指向 localhost 的死外链菜单"
   fi
+}
+
+# ---------- 26. 财务数字员工读的是真数据 ----------
+#
+# 这一节存在的理由:前面那些 Task 让「财务数字员工」真的产出日报了,
+# 但「产出了」不等于「产出的数字是真的」。这一节把「真」拆成三层:
+#
+#   · 配置层:降级链**接上了**吗?
+#       26.9  配了几个 provider(接上了)
+#       26.9b 那把钥匙**真的能开门**吗(接上了 ≠ 能用)
+#       26.11 四份 yml 的 opc.llm 段对得上吗(没有第二个真相源)
+#       26.12 容器里开关真的开着、钥匙真的在吗(yml 配了 ≠ 跑起来会用)
+#   · 运行层:定时器**真跑过**吗?
+#       26.1  历史上跑成过吗(不限时间)
+#       26.6  最近一次跑成了吗(限 7 天 —— 一周多没跑过也是实话)
+#   · 数据层:日报里的数字**等于**库里的数字吗?
+#       26.2  最新一条日报是 FULL、不是降级产物、出自一次 SUCCESS 的运行
+#       26.3  日报里的金额**逐笔**等于库里同公司同区间的金额
+#       26.4  取数用的公司 == 工作流挂的公司
+#       26.7  工作流路径一条降级日报都没有
+#       26.8  每一条日报的来源都说得清(谁写的 / 能不能反查回那次运行)
+#
+# ⚠️ 这一节**不许**调 chat/completions —— 那是真花钱(用户 2026-11-04 点名)。
+#    探 provider 连通性只用 GET /v1/models(零 token 消耗)。
+# ⚠️ 这一节**不许**自动调 POST /opc/insight/advice —— 那也是真花钱。
+#    26.10 只**读**最近一条;造那条非 FALLBACK 的行是**部署流程**里的一次动作。
+# ⚠️ 这一节**不许**把 key 的值打进输出(坑 #12)—— 只判「有没有 / 多长 / 是不是真值」。
+check_finance_agent_truth() {
+  hr
+  echo "[26] 财务数字员工读的是真数据"
+  hr
+
+  # --- 26.0 自己登录一次 ---
+  #
+  # HEALTH_ONLY=26 bash deploy.sh health 必须能单独跑 → 不能依赖第 25 节的 token。
+  local login_body token
+  login_body=$(curl -sf -m 15 -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"admin123"}' \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/login" 2>/dev/null) || true
+  token=$(printf '%s' "${login_body}" | python -c "
+import sys,json
+try:
+    d = json.load(sys.stdin).get('data', {})
+except Exception:
+    print('')
+    raise SystemExit
+print(d.get('token','') or d.get('access_token',''))
+" 2>/dev/null)
+  if [[ -z "${token}" ]]; then
+    nok "26.0 拿不到 admin token —— 26.9 / 26.9b 跑不了(走数据库的那几条不受影响)"
+  else
+    ok "26.0 admin 登录通了(拿到 token, 不打印它)"
+  fi
+
+  # --- 26.1 历史上有没有真的跑成过的定时触发 ---
+  #
+  # **不限时间**:这一条问的是「这条链路**历史上**有没有成功过」,
+  # 不是「最近有没有成功」。最近的那次由 26.6 问(限 7 天)。
+  local q_ok
+  q_ok=$(db_q "SELECT COUNT(*) FROM opc_agent_workflow_run WHERE trigger_source LIKE 'quartz:%' AND status='SUCCESS';" | tr -d '\r')
+  if [[ -z "${q_ok}" ]]; then
+    nok "26.1 查不到 opc_agent_workflow_run —— 护栏空转, 证明不了任何东西"
+  elif [[ "${q_ok}" == "0" ]]; then
+    nok "26.1 从来没有一条 quartz: 触发的运行 status='SUCCESS' —— 定时触发这条链一次都没跑成过"
+  else
+    ok "26.1 历史上跑成过 ${q_ok} 条 quartz: 触发的运行 —— 这条链路真的成功过"
+  fi
+
+  # --- 26.2 最新一条数字员工日报:是 FULL、不是降级产物、出自一次 SUCCESS 的运行 ---
+  #
+  # 判**最新一条**,不是「存在一条」:「存在一条」会被历史上的一条好日报永久满足
+  # → 「今天跑出来的是不是降级产物」这个问题就永远绿了。
+  local rep
+  rep=$(db_q "SELECT CONCAT(id,'|',IFNULL(report_status,''),'|',IFNULL(llm_used,''),'|',IFNULL(source_workflow_run_id,''),'|',company_id,'|',period) FROM opc_insight_daily_report WHERE report_source='AGENT_WORKFLOW' ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+  if [[ -z "${rep}" ]]; then
+    nok "26.2 opc_insight_daily_report 里一条 report_source='AGENT_WORKFLOW' 的日报都没有 —— 数字员工没产出过东西"
+  else
+    local rep_id rep_status rep_llm rep_runid rep_company rep_period rep_why=""
+    rep_id=$(printf '%s' "${rep}" | cut -d'|' -f1)
+    rep_status=$(printf '%s' "${rep}" | cut -d'|' -f2)
+    rep_llm=$(printf '%s' "${rep}" | cut -d'|' -f3)
+    rep_runid=$(printf '%s' "${rep}" | cut -d'|' -f4)
+    rep_company=$(printf '%s' "${rep}" | cut -d'|' -f5)
+    rep_period=$(printf '%s' "${rep}" | cut -d'|' -f6)
+    if [[ "${rep_status}" != "FULL" ]]; then
+      rep_why="${rep_why} report_status='${rep_status}'(要 FULL) "
+    fi
+    if [[ -z "${rep_llm}" || "${rep_llm}" == "FALLBACK" ]]; then
+      rep_why="${rep_why} llm_used='${rep_llm}'(要非空且不是 FALLBACK) "
+    fi
+    if [[ -z "${rep_runid}" ]]; then
+      rep_why="${rep_why} source_workflow_run_id 为空(查不回产出它的那次运行) "
+    elif ! [[ "${rep_runid}" =~ ^[0-9]+$ ]]; then
+      rep_why="${rep_why} source_workflow_run_id='${rep_runid}' 不是运行 id "
+    else
+      local rep_run_status
+      rep_run_status=$(db_q "SELECT status FROM opc_agent_workflow_run WHERE id = ${rep_runid};" | tr -d '\r')
+      if [[ -z "${rep_run_status}" ]]; then
+        rep_why="${rep_why} run ${rep_runid} 在 opc_agent_workflow_run 里不存在 "
+      elif [[ "${rep_run_status}" != "SUCCESS" ]]; then
+        rep_why="${rep_why} run ${rep_runid} status='${rep_run_status}'(要 SUCCESS) "
+      fi
+    fi
+    if [[ -z "${rep_why}" ]]; then
+      ok "26.2 最新一条数字员工日报(id=${rep_id} company=${rep_company} period=${rep_period})是 FULL、非降级产物, 出自一次 SUCCESS 的运行 ${rep_runid}"
+    else
+      nok "26.2 最新一条数字员工日报(id=${rep_id} company=${rep_company} period=${rep_period})不合格:${rep_why}"
+    fi
+  fi
+
+  # --- 26.3 日报里的金额, 逐笔等于库里的金额 ---
+  #
+  # 这是这一节最强的一条:日报的 kpi_json.query_bank_flow.items[] 里每一笔金额,
+  # 都要等于 opc_finance_bank_flow 里**同一公司、同一区间**的金额。
+  #
+  # 区间**不猜**:FlowRangeVo 把实际用的 fromDate / toDate 回写进了响应
+  # (「响应里回写实际使用的 fromDate / toDate, 健康检查靠这两个值原样复算」),
+  # 所以这里用日报自己回写的值去查库 —— 用的是日报**实际**用的区间。
+  #
+  # DB 侧的谓词**逐字复刻** mapper(OpcFinanceBankFlowMapper.xml):
+  #   WHERE company_id = ? AND trade_time >= ? AND trade_time < DATE_ADD(?, INTERVAL 1 DAY)
+  #   ORDER BY trade_time ASC, id ASC
+  # 自己另写一个 BETWEEN 就是在对一套不存在的口径。
+  #
+  # 金额比较用 Decimal:JSON 里的 13200.00 经 json.loads 会变成 float(13200.0),
+  # 裸字符串比较会**假红**。两侧都按 Decimal 解析、量化到 2 位小数再比数值
+  # (FlowRangeVo 的 javadoc 也明说「下游用 compareTo 不用 equals」)。
+  #
+  # ⚠️ 只取**数字**字段(items[*].amount / totalIn / totalOut / net / 区间),
+  #    不取 items 里那些自由文本(memo / counterParty / rawText):
+  #    mysql -B 会把反斜杠和换行转义掉, JSON 文本过一趟管道就可能被弄坏。
+  #    数字字段不会有这个问题。
+  local kpi_line kpi_cid kpi_from kpi_to kpi_tin kpi_tout kpi_net kpi_items
+  kpi_line=$(db_q "SELECT CONCAT_WS('|',
+      IFNULL(JSON_UNQUOTE(JSON_EXTRACT(kpi_json, '\$.query_bank_flow.companyId')),''),
+      IFNULL(JSON_UNQUOTE(JSON_EXTRACT(kpi_json, '\$.query_bank_flow.fromDate')),''),
+      IFNULL(JSON_UNQUOTE(JSON_EXTRACT(kpi_json, '\$.query_bank_flow.toDate')),''),
+      IFNULL(JSON_UNQUOTE(JSON_EXTRACT(kpi_json, '\$.query_bank_flow.totalIn')),''),
+      IFNULL(JSON_UNQUOTE(JSON_EXTRACT(kpi_json, '\$.query_bank_flow.totalOut')),''),
+      IFNULL(JSON_UNQUOTE(JSON_EXTRACT(kpi_json, '\$.query_bank_flow.net')),''),
+      IFNULL(JSON_EXTRACT(kpi_json, '\$.query_bank_flow.items[*].amount'),'')
+    ) FROM opc_insight_daily_report WHERE report_source='AGENT_WORKFLOW' ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+  kpi_cid=$(printf '%s' "${kpi_line}" | cut -d'|' -f1)
+  kpi_from=$(printf '%s' "${kpi_line}" | cut -d'|' -f2)
+  kpi_to=$(printf '%s' "${kpi_line}" | cut -d'|' -f3)
+  kpi_tin=$(printf '%s' "${kpi_line}" | cut -d'|' -f4)
+  kpi_tout=$(printf '%s' "${kpi_line}" | cut -d'|' -f5)
+  kpi_net=$(printf '%s' "${kpi_line}" | cut -d'|' -f6)
+  kpi_items=$(printf '%s' "${kpi_line}" | cut -d'|' -f7)
+
+  if [[ -z "${kpi_line}" ]]; then
+    nok "26.3 取不到数字员工日报里的 kpi_json —— 没有可对账的日报"
+  elif ! [[ "${kpi_cid}" =~ ^[0-9]+$ ]] || ! [[ "${kpi_from}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || ! [[ "${kpi_to}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    nok "26.3 日报的 kpi_json 里取不出「公司 + 区间」(companyId='${kpi_cid}' from='${kpi_from}' to='${kpi_to}') —— 对不了账"
+  else
+    local db_amounts db_totals db_tin db_tout db_net
+    db_amounts=$(db_q "SELECT amount FROM opc_finance_bank_flow WHERE company_id = ${kpi_cid} AND trade_time >= '${kpi_from}' AND trade_time < DATE_ADD('${kpi_to}', INTERVAL 1 DAY) ORDER BY trade_time ASC, id ASC;" | tr -d '\r')
+    db_totals=$(db_q "SELECT CONCAT_WS('|',
+        IFNULL(SUM(CASE WHEN direction='IN' THEN amount ELSE 0 END),0),
+        IFNULL(SUM(CASE WHEN direction='OUT' THEN amount ELSE 0 END),0),
+        IFNULL(SUM(CASE WHEN direction='IN' THEN amount ELSE 0 END),0) - IFNULL(SUM(CASE WHEN direction='OUT' THEN amount ELSE 0 END),0)
+      ) FROM opc_finance_bank_flow WHERE company_id = ${kpi_cid} AND trade_time >= '${kpi_from}' AND trade_time < DATE_ADD('${kpi_to}', INTERVAL 1 DAY);" | tr -d '\r')
+    db_tin=$(printf '%s' "${db_totals}" | cut -d'|' -f1)
+    db_tout=$(printf '%s' "${db_totals}" | cut -d'|' -f2)
+    db_net=$(printf '%s' "${db_totals}" | cut -d'|' -f3)
+
+    local verdict
+    verdict=$(KPI_ITEMS="${kpi_items}" KPI_TIN="${kpi_tin}" KPI_TOUT="${kpi_tout}" KPI_NET="${kpi_net}" \
+              DB_AMOUNTS="${db_amounts}" DB_TIN="${db_tin}" DB_TOUT="${db_tout}" DB_NET="${db_net}" \
+              python - <<'PY' 2>/dev/null
+import os, sys, json, decimal
+
+Q = decimal.Decimal('0.01')
+D = decimal.Decimal
+
+
+def dec(v):
+    v = (v or '').strip()
+    if not v:
+        return None
+    try:
+        return D(v)
+    except Exception:
+        return None
+
+
+def q(v):
+    return None if v is None else v.quantize(Q)
+
+
+items_raw = os.environ.get('KPI_ITEMS', '').strip()
+if not items_raw:
+    print('NOITEMS|日报的 kpi_json 里没有 query_bank_flow.items[] —— 对不了账')
+    sys.exit(0)
+try:
+    items = json.loads(items_raw, parse_float=decimal.Decimal)
+except Exception:
+    print('BADJSON|日报的 items[] 不是合法 JSON')
+    sys.exit(0)
+if not isinstance(items, list) or len(items) == 0:
+    print('EMPTYITEMS|日报的 items[] 是空的 —— 一条流水都没有, 那份日报不该存在')
+    sys.exit(0)
+try:
+    kpi = sorted(q(D(str(x))) for x in items)
+except Exception:
+    print('BADITEMS|日报 items[] 里的金额不是数字')
+    sys.exit(0)
+
+db_raw = [l.strip() for l in os.environ.get('DB_AMOUNTS', '').splitlines() if l.strip()]
+if not db_raw:
+    print('DBEMPTY|同公司同区间在 opc_finance_bank_flow 里一笔流水都没有 —— 日报算错区间了(不能「两个空集相等」就算通过)')
+    sys.exit(0)
+try:
+    db = sorted(q(D(x)) for x in db_raw)
+except Exception:
+    print('DBBAD|库里的金额不是数字')
+    sys.exit(0)
+
+if len(kpi) != len(db):
+    print('COUNT|日报 %d 笔 / 库 %d 笔' % (len(kpi), len(db)))
+    sys.exit(0)
+if kpi != db:
+    print('AMOUNT|日报 %s / 库 %s' % (','.join(str(x) for x in kpi), ','.join(str(x) for x in db)))
+    sys.exit(0)
+
+# 明细对得上但合计对不上 —— 也是一种假话, 一起断。
+for label, ke, de in (('totalIn', 'KPI_TIN', 'DB_TIN'),
+                       ('totalOut', 'KPI_TOUT', 'DB_TOUT'),
+                       ('net', 'KPI_NET', 'DB_NET')):
+    kv = q(dec(os.environ.get(ke, '')))
+    dv = q(dec(os.environ.get(de, '')))
+    if kv is None or dv is None:
+        print('TOTALMISS|%s|日报 %s / 库 %s' % (label, kv, dv))
+        sys.exit(0)
+    if kv != dv:
+        print('TOTAL|%s|日报 %s / 库 %s' % (label, kv, dv))
+        sys.exit(0)
+
+print('OK|%d 笔金额逐笔相等, totalIn/totalOut/net 也相等' % len(kpi))
+PY
+    )
+    local v_kind v_msg
+    v_kind=$(printf '%s' "${verdict}" | cut -d'|' -f1)
+    v_msg=$(printf '%s' "${verdict}" | cut -d'|' -f2-)
+    if [[ "${v_kind}" == "OK" ]]; then
+      ok "26.3 日报里的金额与库逐笔对得上(company=${kpi_cid} ${kpi_from}~${kpi_to}): ${v_msg}"
+    elif [[ -z "${v_kind}" || "${v_kind}" == "${verdict}" ]]; then
+      nok "26.3 对账脚本没给出结论 —— 这条断言等于没跑"
+    else
+      nok "26.3 日报里的金额与库对不上: ${v_msg}"
+    fi
+  fi
+
+  # --- 26.4 取数用的公司 == 工作流挂的公司 == 2 ---
+  #
+  # 工作流以前挂在 company 1, 而全部财务数据在 company 2 →
+  # 工具恒查空集,「如实说无流水」分不出「链路是真的」和「工具完全坏掉」。
+  # 三方相等(工具结果 / 工作流 / 期望值)才能挡住这种漂移。
+  local wf_cid
+  wf_cid=$(db_q "SELECT company_id FROM opc_agent_workflow WHERE workflow_code='finance_daily_report_v1';" | tr -d '\r')
+  if [[ -z "${wf_cid}" ]]; then
+    nok "26.4 查不到 finance_daily_report_v1 这个工作流 —— 护栏空转"
+  elif [[ -z "${kpi_cid}" ]]; then
+    nok "26.4 日报里取不到 query_bank_flow.companyId —— 归属公司对不了"
+  elif [[ "${kpi_cid}" != "${wf_cid}" || "${wf_cid}" != "2" ]]; then
+    nok "26.4 归属公司对不上: 工具结果 companyId=${kpi_cid} / 工作流 company_id=${wf_cid} / 期望 2"
+  else
+    ok "26.4 归属公司三方相等: 工具结果 companyId=${kpi_cid} == 工作流 company_id=${wf_cid} == 2"
+  fi
+
+  # --- 26.5 工具注册表里没有假工具, 有三个真工具 ---
+  #
+  # 「假工具下线了」以前只是源码里的一个说法,从外面看不见。
+  #
+  # ⚠️ GET /opc/agent/tools 是 @InnerAuth → 网关会剥掉 from-source 头 →
+  #    网关侧必然 401 → 必须**直连** agent-hub。
+  local tools_body tools_code
+  tools_body=$(curl -s -m 15 -H "from-source: inner" \
+    "http://127.0.0.1:${AGENT_HUB_PORT}/opc/agent/tools" 2>/dev/null) || tools_body=""
+  tools_code=$(body_code "${tools_body}")
+  if [[ "${tools_code}" != "200" ]]; then
+    nok "26.5 直连 agent-hub 的 /opc/agent/tools body.code=${tools_code} —— 工具注册表读不到"
+  else
+    local tool_verdict
+    tool_verdict=$(printf '%s' "${tools_body}" | python -c "
+import sys, json
+FAKE = {'query_daily_report', 'create_voucher', 'extract_voucher'}
+REAL = {'query_bank_flow', 'query_voucher', 'query_balance'}
+try:
+    rows = json.load(sys.stdin).get('data') or []
+except Exception:
+    print('BADJSON|读不出工具列表'); raise SystemExit
+names = set(str(r.get('name')) for r in rows)
+fake = sorted(FAKE & names)
+miss = sorted(REAL - names)
+if fake:
+    print('FAKE|假工具还在: %s' % ','.join(fake))
+elif miss:
+    print('MISS|真工具不见了: %s' % ','.join(miss))
+else:
+    print('OK|%d 个工具, 假工具已下线, 三个真工具都在' % len(names))
+" 2>/dev/null)
+    local t_kind t_msg
+    t_kind=$(printf '%s' "${tool_verdict}" | cut -d'|' -f1)
+    t_msg=$(printf '%s' "${tool_verdict}" | cut -d'|' -f2-)
+    if [[ "${t_kind}" == "OK" ]]; then
+      ok "26.5 工具注册表对得上: ${t_msg}"
+    elif [[ -z "${t_kind}" || "${t_kind}" == "${tool_verdict}" ]]; then
+      nok "26.5 解析工具列表失败 —— 这条断言等于没跑"
+    else
+      nok "26.5 工具注册表不对: ${t_msg}"
+    fi
+  fi
+
+  # --- 26.6 最近一次定时触发:是 SUCCESS, 且在 7 天内 ---
+  #
+  # 7 天是个取舍:演示环境可能一周没人动 → 这条会红。**那是实话**
+  # (「定时任务最近一周没成功跑过」)。部署时用临时的 2 分钟 cron 保证当场绿。
+  #
+  # ⚠️ 时区:opc_agent_workflow_run.start_time 存的是**北京**墙上时间,
+  #    而 MySQL 的 NOW() 是 **UTC**(容器时区是 UTC) → 直接比会少 8 小时,
+  #    在 7 天边界上会**假红**。所以窗口要 +8 HOUR。
+  local q_last q_status q_start q_recent
+  q_last=$(db_q "SELECT CONCAT(id,'|',status,'|',IFNULL(start_time,'')) FROM opc_agent_workflow_run WHERE trigger_source LIKE 'quartz:%' ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+  if [[ -z "${q_last}" ]]; then
+    nok "26.6 从来没有一条 quartz: 触发的运行记录 —— 定时器这一环没通"
+  else
+    q_status=$(printf '%s' "${q_last}" | cut -d'|' -f2)
+    q_start=$(printf '%s' "${q_last}" | cut -d'|' -f3)
+    q_recent=$(db_q "SELECT COUNT(*) FROM opc_agent_workflow_run WHERE trigger_source LIKE 'quartz:%' AND start_time >= DATE_SUB(NOW(), INTERVAL 7 DAY) + INTERVAL 8 HOUR;" | tr -d '\r')
+    if [[ "${q_status}" != "SUCCESS" ]]; then
+      nok "26.6 最近一次定时触发(运行 ${q_last})不是 SUCCESS —— 定时任务最近没跑成"
+    elif [[ -z "${q_recent}" ]]; then
+      nok "26.6 查不了 7 天窗口 —— 这条断言等于没跑(运行 ${q_last})"
+    elif [[ "${q_recent}" == "0" ]]; then
+      nok "26.6 最近一次定时触发成功了(${q_start}), 但**不在最近 7 天内** —— 这套环境一周多没让定时任务真跑过"
+    else
+      ok "26.6 最近一次定时触发是 SUCCESS 且在 7 天内: ${q_last}"
+    fi
+  fi
+
+  # --- 26.7 工作流路径一条降级日报都不许有 ---
+  #
+  # 判「工作流路径产出的日报一条都不是 FALLBACK」, 不判「全局最近一条」——
+  # 全局最近一条会被**手工生成**的日报污染, 而手工路径不由工作流负责。
+  local fb_cnt
+  fb_cnt=$(db_q "SELECT COUNT(*) FROM opc_insight_daily_report WHERE report_source='AGENT_WORKFLOW' AND llm_used='FALLBACK';" | tr -d '\r')
+  if [[ -z "${fb_cnt}" ]]; then
+    nok "26.7 查不到 opc_insight_daily_report —— 护栏空转"
+  elif [[ "${fb_cnt}" != "0" ]]; then
+    nok "26.7 工作流路径产出过 ${fb_cnt} 条降级日报(llm_used='FALLBACK') —— 那些数字是模板编的, 不是模型看着真实数据写的"
+  else
+    ok "26.7 工作流路径一条降级日报都没有"
+  fi
+
+  # --- 26.8 每一条日报的来源都说得清 ---
+  #
+  # 对**每一条**日报行断:
+  #   · report_source='AGENT_WORKFLOW' → source_workflow_run_id 必须非空,
+  #     且它指向的那次运行必须存在且 status='SUCCESS'
+  #   · report_source='MANUAL'         → source_workflow_run_id 必须为空
+  #
+  # ⚠️ **不**断「同一 (company_id, period) 最多一行」—— 表上有唯一索引
+  #    uk_company_period, 那件事由数据库保证 → 断它等于断一条**不可能红**的断言。
+  #    (手工路径撞上数字员工的行会直接抛 409, 也不许覆盖 —— 那是代码里的行为,
+  #     这里断的是「行上写着的来源」是不是真的。)
+  local bad_rows
+  bad_rows=$(db_q "SELECT CONCAT(d.id,'|',IFNULL(d.report_source,'<NULL>'),'|',IFNULL(d.source_workflow_run_id,'<NULL>'),'|',IFNULL(r.status,'<无此运行>')) FROM opc_insight_daily_report d LEFT JOIN opc_agent_workflow_run r ON r.id = d.source_workflow_run_id WHERE d.report_source IS NULL OR d.report_source NOT IN ('AGENT_WORKFLOW','MANUAL') OR (d.report_source='MANUAL' AND d.source_workflow_run_id IS NOT NULL) OR (d.report_source='AGENT_WORKFLOW' AND (d.source_workflow_run_id IS NULL OR r.id IS NULL OR r.status<>'SUCCESS'));" | tr -d '\r')
+  if [[ -z "${bad_rows}" ]]; then
+    ok "26.8 每一条日报的来源都说得清: 数字员工的行指着一次 SUCCESS 的运行, 手工的行不指着任何运行"
+  else
+    local bad_n bad_first
+    bad_n=$(printf '%s\n' "${bad_rows}" | grep -c '|')
+    bad_first=$(printf '%s' "${bad_rows}" | head -1)
+    nok "26.8 有 ${bad_n} 行日报的来源对不上(id|report_source|source_workflow_run_id|那次运行的状态): ${bad_first}"
+  fi
+
+  # --- 26.9 降级链接上了:已启用的 provider >= 2 且含 deepseek ---
+  #
+  # GET /opc/llm/models 只返回 **enabled 的** provider(enabled = 开关 && key 非空),
+  # 返回里**不含 key 的值**。
+  #
+  # provider 名是小写(ChatModelProvider.name() 返回小写)→ 用小写匹配,
+  # 免得以后有人把它改成驼峰这条断言就莫名其妙变红。
+  local enabled_providers=""
+  local models_body models_code
+  models_body=$(curl -s -m 15 -H "Authorization: Bearer ${token}" \
+    "http://${GATEWAY_HOST}:${GATEWAY_PORT}/opc/llm/models" 2>/dev/null) || models_body=""
+  models_code=$(body_code "${models_body}")
+  if [[ -z "${token}" ]]; then
+    nok "26.9 没有 token, 读不了 /opc/llm/models"
+  elif [[ "${models_code}" != "200" ]]; then
+    nok "26.9 GET /opc/llm/models body.code=${models_code} —— 读不到 provider 列表"
+  else
+    enabled_providers=$(printf '%s' "${models_body}" | python -c "
+import sys, json
+try:
+    rows = json.load(sys.stdin).get('data') or []
+except Exception:
+    print(''); raise SystemExit
+names = []
+for r in rows:
+    if not isinstance(r, dict):
+        continue
+    if r.get('enabled') is False:
+        continue
+    n = str(r.get('provider', '')).strip().lower()
+    if n and n not in names:
+        names.append(n)
+print(' '.join(names))
+" 2>/dev/null)
+    local n_prov has_ds=""
+    n_prov=$(printf '%s' "${enabled_providers}" | wc -w | tr -d ' ')
+    for p in ${enabled_providers}; do
+      [[ "${p}" == *deepseek* ]] && has_ds="yes"
+    done
+    if [[ "${n_prov}" -lt 2 ]]; then
+      nok "26.9 已启用的 provider 只有 ${n_prov} 个 —— 降级链没接上"
+    elif [[ -z "${has_ds}" ]]; then
+      nok "26.9 已启用的 provider 里没有 deepseek —— 降级链的目标不在"
+    else
+      ok "26.9 降级链接上了: 已启用 ${n_prov} 个 provider(${enabled_providers})"
+    fi
+  fi
+
+  # --- 26.9b 那把钥匙真的能开门吗 ---
+  #
+  # enabled() 的定义是「配置开关 && apiKey **非空**」→ **不验 key 对不对**。
+  # 一把 401 的 key 也是非空 → deepseek 会被算成「已启用」→ 26.9 报绿,
+  # 而降级链其实有一半是死的。那就是一条**假绿灯**,比没有这条断言更坏。
+  #
+  # 这里用零成本的 `GET /v1/models` 真探一次(不计 token):每个已启用的 provider
+  # 都必须 200。凭据**只在容器自己的 env 里**, 脚本里不出现 key 的值,
+  # 输出里**只有 HTTP 状态码**(状态码不是秘密, key 是)。
+  # base-url 从 opc-ai-core 的 yml 里读 —— 不在脚本里写死, 也不新增真相源。
+  if [[ -z "${enabled_providers}" ]]; then
+    nok "26.9b 没有已启用的 provider 可探 —— 26.9 就没通过"
+  else
+    local ai_core_yml probe_bad="" probe_ok=""
+    ai_core_yml="${DEPLOY_DIR}/../ruoyi-modules/opc-ai-core/src/main/resources/application.yml"
+    for p in ${enabled_providers}; do
+      local base_url env_var code
+      base_url=$(llm_yml_value "${ai_core_yml}" "${p}" "base-url")
+      env_var="$(printf '%s' "${p}" | tr '[:lower:]' '[:upper:]')_API_KEY"
+      if [[ -z "${base_url}" ]]; then
+        probe_bad="${probe_bad} ${p}=<yml 里没有这个 provider 的 base-url>"
+        continue
+      fi
+      # $ENVVAR 在**容器里**展开 → key 的值既不上宿主机命令行, 也不进输出
+      code=$(docker exec aiopc-ai-core sh -c "curl -s -o /dev/null -w '%{http_code}' --max-time 20 -H \"Authorization: Bearer \$${env_var}\" '${base_url}/models'" 2>/dev/null)
+      code=$(printf '%s' "${code}" | tr -dc '0-9')
+      if [[ -z "${code}" ]]; then
+        probe_bad="${probe_bad} ${p}=探不通(docker exec 没拿到状态码: 容器没起来? 容器里没有 curl?)"
+      elif [[ "${code}" == "000" ]]; then
+        probe_bad="${probe_bad} ${p}=000(探不通: 网络不通 / 超时 / 容器里没有 curl)"
+      elif [[ "${code}" != "200" ]]; then
+        probe_bad="${probe_bad} ${p}=${code}"
+      else
+        probe_ok="${probe_ok} ${p}=200"
+      fi
+    done
+    if [[ -n "${probe_bad}" ]]; then
+      nok "26.9b 已启用的 provider 里这把钥匙开不了门:${probe_bad} —— 降级链有一半是死的(enabled() 只看 key 非空, 不看 key 对不对)"
+    else
+      ok "26.9b 每个已启用的 provider 的 key 都被接受(GET /v1/models):${probe_ok}"
+    fi
+  fi
+
+  # --- 26.10 insight 自己的 LLM 也通了 ---
+  #
+  # 只**读**最近一条(按 id 取最新)。
+  # ⚠️ **不许**在健康检查里调 POST /opc/insight/advice —— 那是真花钱
+  #    (用户 2026-11-04:「记住减少真实测试, 花钱的」)。
+  #    造那条非 FALLBACK 的行是**部署流程**里的一次动作(调一次, 之后零成本)。
+  # 这一条**不限定公司**:建议接口的 companyId 取自登录用户, 与工作流的 company 无关。
+  local adv adv_id adv_llm
+  adv=$(db_q "SELECT CONCAT(id,'|',IFNULL(llm_used,'')) FROM opc_insight_advice ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+  if [[ -z "${adv}" ]]; then
+    nok "26.10 opc_insight_advice 一行都没有 —— insight 的 LLM 从来没跑过"
+  else
+    adv_id=$(printf '%s' "${adv}" | cut -d'|' -f1)
+    adv_llm=$(printf '%s' "${adv}" | cut -d'|' -f2)
+    if [[ -z "${adv_llm}" || "${adv_llm}" == "FALLBACK" ]]; then
+      nok "26.10 最近一条建议(id=${adv_id})的 llm_used='${adv_llm}' —— insight 的 LLM 没通, 这一条是模板编的"
+    else
+      ok "26.10 最近一条建议(id=${adv_id})是真 LLM 写的: llm_used=${adv_llm}"
+    fi
+  fi
+
+  # --- 26.11 四份 yml 的 opc.llm 段必须逐行对得上 ---
+  #
+  # 四份各写各的 = 「配置真相源有两份」→ 改了一份另外三份不跟 → 又是漂移。
+  # 口径:只比 opc.llm 段里的**键与值**, 逐行相等; **注释不算**。
+  local yml_ai yml_hub yml_insight yml_nacos sec_ai sec_hub sec_insight sec_nacos
+  yml_ai="${DEPLOY_DIR}/../ruoyi-modules/opc-ai-core/src/main/resources/application.yml"
+  yml_hub="${DEPLOY_DIR}/../ruoyi-modules/opc-agent-hub/src/main/resources/application.yml"
+  yml_insight="${DEPLOY_DIR}/../ruoyi-modules/opc-insight/src/main/resources/application.yml"
+  yml_nacos="${DEPLOY_DIR}/nacos/application-dev.yml"
+  sec_ai=$(llm_section "${yml_ai}")
+  sec_hub=$(llm_section "${yml_hub}")
+  sec_insight=$(llm_section "${yml_insight}")
+  sec_nacos=$(llm_section "${yml_nacos}")
+  if [[ -z "${sec_ai}" || -z "${sec_hub}" || -z "${sec_insight}" || -z "${sec_nacos}" ]]; then
+    nok "26.11 有一份 yml 的 opc.llm 段读不出来 —— 对不了表"
+  elif [[ "${sec_ai}" == "${sec_hub}" && "${sec_hub}" == "${sec_insight}" && "${sec_insight}" == "${sec_nacos}" ]]; then
+    ok "26.11 四份 yml 的 opc.llm 段逐行一致(注释不算)"
+  else
+    nok "26.11 四份 yml 的 opc.llm 段对不上 —— 改了一份另外三份没跟(配置有两个真相源)"
+  fi
+
+  # --- 26.12 容器里降级链真的开着 ---
+  #
+  # yml 里写了不等于跑起来会用:enabled() = 「配置开关 && apiKey 非空」。
+  # 空 key 会让 enabled() 变成 false → 看着配了降级链, 实际一次都不会退过去。
+  # 所以三个容器里都得是「开关开着 + 两把钥匙都在」。
+  #
+  # 判据是「开关和有没有」, **不是**「key 是不是某个具体值」——
+  # 后者要把真 key 写进检查脚本, 那是最坏的一种泄露。
+  local c26 s26
+  for c26 in aiopc-ai-core aiopc-agent-hub aiopc-insight; do
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "${c26}"; then
+      nok "26.12 容器 ${c26} 没起来 —— 降级链在哪个容器里开着都说不清"
+      continue
+    fi
+    s26=$(docker exec "${c26}" sh -c '
+      case "$OPC_LLM_DEEPSEEK_ENABLED" in
+        "")          echo "ENABLED=EMPTY" ;;
+        true|TRUE|1) echo "ENABLED=true" ;;
+        *)           echo "ENABLED=false" ;;
+      esac
+      if [ -n "$DEEPSEEK_API_KEY" ]; then echo "DEEPSEEK=NONEMPTY"; else echo "DEEPSEEK=EMPTY"; fi
+      if [ -n "$MINIMAX_API_KEY" ]; then echo "MINIMAX=NONEMPTY"; else echo "MINIMAX=EMPTY"; fi
+    ' 2>/dev/null | tr '\n' ' ')
+    local why26=""
+    [[ "${s26}" != *"ENABLED=true"* ]] && why26="${why26} OPC_LLM_DEEPSEEK_ENABLED 不是真值 "
+    [[ "${s26}" != *"DEEPSEEK=NONEMPTY"* ]] && why26="${why26} DEEPSEEK_API_KEY 空 "
+    [[ "${s26}" != *"MINIMAX=NONEMPTY"* ]] && why26="${why26} MINIMAX_API_KEY 空 "
+    if [[ -z "${why26}" ]]; then
+      ok "26.12 ${c26}: 降级链在容器里真的开着(开关开 + 两把钥匙都在)"
+    else
+      nok "26.12 ${c26}:${why26}—— yml 里配了不等于容器里开着"
+    fi
+  done
 }
 
 # ---------- Main ----------
@@ -4021,6 +4673,7 @@ main() {
   step 23 check_memory_and_flow_control
   step 24 check_sentinel_dashboard
   step 25 check_scheduler_truth
+  step 26 check_finance_agent_truth
   hr
   echo "=================================================="
   echo "  PASS: ${pass}  FAIL: ${fail}"
