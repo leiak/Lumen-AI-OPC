@@ -14,6 +14,7 @@ import com.ruoyi.common.core.exception.job.TaskException;
 import com.ruoyi.job.domain.SysJob;
 import com.ruoyi.job.mapper.SysJobMapper;
 import com.ruoyi.job.util.CronUtils;
+import com.ruoyi.job.util.ManualTriggerMarker;
 import com.ruoyi.job.util.ScheduleUtils;
 
 /**
@@ -182,6 +183,10 @@ public class SysJobServiceImpl implements ISysJobService
         // 参数
         JobDataMap dataMap = new JobDataMap();
         dataMap.put(ScheduleConstants.TASK_PROPERTIES, properties);
+        // 手动执行标记：这是唯一区分「后台点执行一次」和「定时触发」的地方 ——
+        // 两者在 Quartz 侧走的是同一个 CronTrigger、同一个 invoke_target。
+        // 定时注册（ScheduleUtils.createScheduleJob）不能塞这个标记，塞了就全变手动了。
+        dataMap.put(ManualTriggerMarker.KEY, Boolean.TRUE);
         JobKey jobKey = ScheduleUtils.getJobKey(jobId, jobGroup);
         if (scheduler.checkExists(jobKey))
         {

@@ -17,6 +17,12 @@ import com.ruoyi.job.service.ISysJobLogService;
 /**
  * 抽象quartz调用
  *
+ * <p><b>「定时触发」与「后台执行一次」的区分放在这个基类里</b>：
+ * 实际跑的 Job 类由 {@code ScheduleUtils.getQuartzJobClass()} 按 sys_job.concurrent
+ * 决定（0=允许并发 → QuartzJobExecution，1=禁止并发 → QuartzDisallowConcurrentExecution），
+ * 两个类都继承这里 —— 写在子类里的话以后新增 Job 类就会漏。
+ * <b>新增 Job 类不需要动这里</b>，只要继承 AbstractQuartzJob 就自动带上标记逻辑。
+ *
  * @author ruoyi
  */
 public abstract class AbstractQuartzJob implements Job
@@ -47,6 +53,13 @@ public abstract class AbstractQuartzJob implements Job
             log.error("任务执行异常  - ：", e);
             after(context, sysJob, e);
         }
+        finally
+        {
+            // 无论成功、失败、还是 before 抛异常，都必须清掉标记 ——
+            // Quartz 的工作线程是池化复用的，标记泄漏会让下一个（可能完全无关的）
+            // 任务被误判成「后台手动触发」。
+            ManualTriggerMarker.clear();
+        }
     }
 
     /**
@@ -58,6 +71,13 @@ public abstract class AbstractQuartzJob implements Job
     protected void before(JobExecutionContext context, SysJob sysJob)
     {
         threadLocal.set(new Date());
+        // 后台「执行一次」走 scheduler.triggerJob(jobKey, dataMap)，
+        // 它塞进 JobDataMap 的标记在这里被读出来置成 ThreadLocal，
+        // 业务任务据此决定自己是被定时触发还是被手动触发。
+        if (context.getMergedJobDataMap().containsKey(ManualTriggerMarker.KEY))
+        {
+            ManualTriggerMarker.markManual();
+        }
     }
 
     /**
