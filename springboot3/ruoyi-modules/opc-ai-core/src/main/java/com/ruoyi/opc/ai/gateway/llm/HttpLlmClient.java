@@ -64,6 +64,11 @@ public class HttpLlmClient {
             if (options.getTools() != null) body.set("tools", MAPPER.valueToTree(options.getTools()));
             if (options.getToolChoice() != null) body.put("tool_choice", options.getToolChoice());
             if (options.getUser() != null) body.put("user", options.getUser());
+            // 思考强度 —— 只有「强制思考」模型认这个字段（MiniMax-M3.1-Flash）。
+            // 不传 = 厂商按自己的默认（MiniMax 默认 max）来 → 思考吃满 max_tokens → 正文没了。
+            if (options.getReasoningEffort() != null && !options.getReasoningEffort().isBlank()) {
+                body.put("reasoning_effort", options.getReasoningEffort());
+            }
         }
 
         int timeoutSec = (options != null && options.getTimeoutSeconds() != null) ? options.getTimeoutSeconds() : 60;

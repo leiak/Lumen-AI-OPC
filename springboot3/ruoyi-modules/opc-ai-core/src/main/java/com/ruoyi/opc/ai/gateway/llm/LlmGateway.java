@@ -73,6 +73,13 @@ public class LlmGateway {
         Long companyId = ctx != null ? ctx.getCompanyId() : null;
         String cacheKey = cache.buildKey(messages, options, companyId);
         ChatResponse cached = cache.get(cacheKey);
+        if (cached != null && isBlankWithoutToolCalls(cached)) {
+            // 缓存里躺着一条「成功但正文是空的」——
+            // 那是 2026-11-05 之前的 bug 写进去的（TTL 一小时）。
+            // 命中它等于把空正文再喂一遍；当没命中，重新调一次。
+            log.warn("[LLM] 缓存里是一条空正文, 当作没命中 key={}", cacheKey);
+            cached = null;
+        }
         if (cached != null) {
             log.debug("[LLM] 缓存命中 key={}", cacheKey);
             cached.setRequestId("cache-" + java.util.UUID.randomUUID().toString().substring(0, 8));
@@ -123,6 +130,27 @@ public class LlmGateway {
                                 provider.name(), attempt, resp.getErrorMessage());
                         continue;
                     }
+                    // 「报成功但正文是空的」= <b>失败</b>。
+                    //
+                    // 这是 2026-11-05 线上真踩的：M3.1-Flash 的思考吃满了 max_tokens，
+                    // 响应里没有 content 字段 → 解析成 null → provider 报「成功」。
+                    // 以前这里直接当成功返回，于是 ①降级链根本不触发、②null 落进缓存
+                    // （一小时内每次同样提问都拿到那份空）、③null 一路漏到工作流层
+                    // 才炸成一句「产出不是字符串: n2」。
+                    //
+                    // 判成失败后<b>不重试</b>：同样的参数再调一次还是被截断，
+                    // 而且每次截断的思考 token 都要真金白银。直接换下一个 provider。
+                    if (isBlankWithoutToolCalls(resp)) {
+                        resp.setSuccess(false);
+                        resp.setErrorMessage("provider 返回了空正文(finish_reason="
+                                + (resp.getFinishReason() == null ? "null" : resp.getFinishReason())
+                                + ")");
+                        lastError = resp;
+                        lastProviderName = provider.name();
+                        log.warn("[LLM] provider={} 返回空正文 → 换下一个 provider: {}",
+                                provider.name(), resp.getErrorMessage());
+                        break;
+                    }
                     log.info("[LLM] provider={} 调用成功 cost={}ms tokens={}",
                             provider.name(), cost, resp.getTokenTotal());
 
@@ -150,6 +178,22 @@ public class LlmGateway {
 
         throw new OpcException("所有 LLM provider 失败，最后错误（provider=" + lastProviderName + "）：" +
                 (lastError != null ? lastError.getErrorMessage() : "unknown"));
+    }
+
+    /**
+     * 「正文是空的」判定。
+     *
+     * <p><b>带 tool_calls 的响应不算空</b>：模型决定调工具时，正文本来就可能是空的
+     * （OpenAI 兼容协议里 {@code content} 与 {@code tool_calls} 二选一）。</p>
+     */
+    private boolean isBlankWithoutToolCalls(ChatResponse resp) {
+        if (resp == null) {
+            return false;
+        }
+        if (resp.getToolCalls() != null && !resp.getToolCalls().isEmpty()) {
+            return false;
+        }
+        return resp.getContent() == null || resp.getContent().isBlank();
     }
 
     /**

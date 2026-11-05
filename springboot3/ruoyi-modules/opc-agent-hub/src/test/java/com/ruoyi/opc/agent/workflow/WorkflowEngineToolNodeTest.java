@@ -384,6 +384,26 @@ class WorkflowEngineToolNodeTest {
     }
 
     @Test
+    @DisplayName("LLM 报成功但正文是空的 → 降级成 PARTIAL，摘要用确定性聚合（不许把 null 塞进产出物）")
+    void llmNode_blankContent_becomesPartialWithDeterministicSummary() throws Exception {
+        stubTools();
+        // 2026-11-05 线上就是这个形状：M3.1-Flash 的思考吃满了 max_tokens，
+        // 响应体里没有 content 字段 —— provider「成功」、内容却是 null。
+        when(agentRuntime.run(any())).thenReturn(AgentRuntime.AgentTaskResult.builder()
+                .success(true).content(null).model("MiniMax-M3.1-Flash").build());
+
+        WorkflowEngine.WorkflowResult result = engine.run(def(DAG_TOOL_AND_LLM), Map.of());
+
+        // 以前：outputs["n2"] = null，run 记成功 → 真正炸掉的地方在 persist 层，
+        // 错误消息还写着「产出不是字符串: n2」，指向了一个完全无辜的地方。
+        assertThat(result.isPartial()).isTrue();
+        String summary = (String) result.getOutputs().get("n2");
+        assertThat(summary).isNotBlank();
+        assertThat(summary).startsWith("[自动聚合·未走 LLM]");
+        assertThat(summary).contains("51892.00");
+    }
+
+    @Test
     @DisplayName("TOOL 失败 → 整条 run 失败（不会拿半截数据去写日报）")
     void toolNode_failure_doesNotProducePartialSummary() throws Exception {
         when(toolExecutor.execute(anyString(), anyString(), any()))

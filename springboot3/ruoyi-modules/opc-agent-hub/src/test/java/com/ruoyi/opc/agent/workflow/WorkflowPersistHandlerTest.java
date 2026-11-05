@@ -246,6 +246,23 @@ class WorkflowPersistHandlerTest {
     }
 
     @Test
+    @DisplayName("2026-11-05：summary 节点产出是 null → 错误消息要指向真凶（上游 LLM 没返回正文）")
+    void persist_nullSummary_pointsAtUpstreamLlm() {
+        WorkflowEngine.WorkflowContext ctx = ctx();
+        ctx.getOutputs().put("n1", KPI_JSON);
+        // null 不是「不是字符串」—— 是上游 LLM 没给出正文（M3.1-Flash 的思考吃满了 max_tokens）。
+        // 以前的消息写「产出不是字符串: n2」，把锅甩给了一个完全无辜的节点。
+        ctx.getOutputs().put("n2", null);
+
+        assertThatThrownBy(() -> handler.persist(node(PERSIST_DECL), ctx, VARS))
+                .isInstanceOf(OpcException.class)
+                .hasMessageContaining("上游 LLM")
+                .hasMessageContaining("没返回正文");
+
+        verify(insightService, never()).upsertDailyReport(any());
+    }
+
+    @Test
     @DisplayName("R-155：summary 是空白串 → 抛（空的东西不默默存进 summary_md）")
     void persist_blankSummary_throws() {
         WorkflowEngine.WorkflowContext ctx = ctx();

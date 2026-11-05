@@ -199,7 +199,21 @@ public class WorkflowEngine {
                 throw new OpcException("LLM 节点 " + nodeId + " 执行失败：" + res.getContent());
             }
             ctx.llmModel = res.getModel();
-            ctx.outputs.put(nodeId, res.getContent());
+            // 「报成功但正文是空的」= 没有正文。
+            //
+            // 2026-11-05 线上踩过：provider 报成功、content 是 null，
+            // 这里就把 null 塞进产出物 → 整条 run 记成功 →
+            // 真正炸掉的地方在 persist 层，错误消息还写着「产出不是字符串: n2」，
+            // 把锅甩给了一个完全无辜的节点。
+            //
+            // 现在当成软失败（下面的 catch 兜住）→ 降级成 PARTIAL，
+            // 摘要用工具返回里的真实数字，产出物照样落表。
+            String content = res.getContent();
+            if (content == null || content.isBlank()) {
+                throw new OpcException("LLM 节点 " + nodeId + " 没返回正文"
+                        + "（provider 报成功但内容是空的 —— 常见于思考 token 吃满了 max_tokens）");
+            }
+            ctx.outputs.put(nodeId, content);
         } catch (Exception e) {
             // 软失败：捕 Exception（**不只是 OpcException**）—— 超时、NPE、序列化…都会走到这。
             // 收窄成 catch (OpcException) 会让「provider 超时」把整条 run 打死，

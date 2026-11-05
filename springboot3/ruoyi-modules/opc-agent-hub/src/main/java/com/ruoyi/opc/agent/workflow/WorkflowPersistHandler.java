@@ -196,6 +196,14 @@ public class WorkflowPersistHandler {
      */
     private String requireSummary(WorkflowEngine.WorkflowContext ctx, String summaryFrom) {
         Object raw = output(ctx, summaryFrom, "summary");
+        if (raw == null) {
+            // null 不是「不是字符串」—— 是上游 LLM 没给出正文。
+            // 2026-11-05 线上这条消息写的是「产出不是字符串: n2」，
+            // 把锅甩给了一个完全无辜的节点（真凶是 provider 报成功但内容是空的）。
+            throw new OpcException("persist 声明的 summary 节点产出为 null —— "
+                    + "上游 LLM 没返回正文（provider 报成功但内容是空的，"
+                    + "常见于思考 token 吃满了 max_tokens）: " + summaryFrom);
+        }
         if (!(raw instanceof String text)) {
             throw new OpcException("persist 声明的 summary 节点产出不是字符串: " + summaryFrom);
         }

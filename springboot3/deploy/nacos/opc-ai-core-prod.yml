@@ -76,6 +76,11 @@ opc:
       api-key: ENC(${MINIMAX_API_KEY_NACOS_ENC:})
       base-url: https://api.minimaxi.com/v1
       model: MiniMax-M3.1-Flash
+      # 思考强度 —— M3.1-Flash 是强制思考模型, 思考 token 计入 max_tokens,
+      # 不显式传的话厂商默认按 max 思考, 正文会被挤掉(2026-11-05 线上踩过)
+      reasoning-effort: medium
+      # max_tokens 下限 —— 给思考留出空间; 调用方给得更多就按调用方的来
+      min-max-tokens: 4096
     openai:
       enabled: false
       api-key: ENC(${OPENAI_API_KEY_NACOS_ENC:})
