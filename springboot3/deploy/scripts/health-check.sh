@@ -4018,19 +4018,42 @@ print(sum(1 for r in rows if r.get('jobId') == 100))
   # Task 7 之后手动执行在 Quartz 的 JobDataMap 里放了一个标记
   # (ruoyi-job 的 ManualTriggerMarker),agent-hub 那边收到的 triggerSource
   # 就是 `manual:<code>` —— 而定时触发才是 `quartz:<code>`。
-  # 等 quartz: 会**永远等不到**(40 次 × 3 秒 = 2 分钟超时 → 25.5 当场红),
+  # 等 quartz: 会**永远等不到**(60 次 × 3 秒 = 3 分钟超时 → 25.5 当场红),
   # 而且更糟: 等 quartz: 会让健康检查自己把「定时器跑没跑过」这个问题喂绿。
   # 「定时器有没有真跑过」由第 26.1 / 26.6 查 quartz: 的历史记录来回答。
-  local new_run=""
-  for _ in $(seq 1 40); do
-    new_run=$(db_q "SELECT CONCAT(id,'|',run_code,'|',trigger_type,'|',trigger_source,'|',status) FROM opc_agent_workflow_run WHERE id > ${before_id} AND trigger_source LIKE 'manual:%' ORDER BY id DESC LIMIT 1;" | tr -d '\r')
-    [[ -n "${new_run}" ]] && break
+  local new_run="" new_run_id="" run_status=""
+  #
+  # ⚠️ 等的是「**跑到终态**」, 不是「记录出现」。
+  #   以前这里一看到记录就 break —— 而记录是**先落库、后跑**的:
+  #   触发受理 → newRun 落库(status=PENDING) → 引擎跑(十几秒到几分钟)→ 落终态。
+  #   于是在 LLM 真的要花时间的那次(2026-11-05: 缓存过期, 一次真调用 16 秒),
+  #   25.5b 读到的是 **RUNNING**, 25.6 也跟着判红 ——
+  #   **一条还在飞的运行, 被判成「业务没跑成」**。
+  #   (同一个健康检查跑两遍, 结果不一样: 缓存命中时 0.5 秒就 SUCCESS 了。)
+  #   判「业务跑成没跑成」就得等它跑完 —— 拿到 PENDING/RUNNING 时继续等。
+  #
+  # id 一旦定下来就**钉住**: 两次触发挨得近时, 每次都取「最新那条」会配错行。
+  for _ in $(seq 1 60); do
+    if [[ -z "${new_run_id}" ]]; then
+      new_run_id=$(db_q "SELECT id FROM opc_agent_workflow_run WHERE id > ${before_id} AND trigger_source LIKE 'manual:%' ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+    fi
+    if [[ -n "${new_run_id}" ]]; then
+      run_status=$(db_q "SELECT status FROM opc_agent_workflow_run WHERE id = ${new_run_id};" | tr -d '\r')
+      case "${run_status}" in
+        SUCCESS|PARTIAL|FAILED) break ;;   # 终态 → 可以判了
+      esac
+    fi
     sleep 3
   done
+  if [[ -n "${new_run_id}" ]]; then
+    new_run=$(db_q "SELECT CONCAT(id,'|',run_code,'|',trigger_type,'|',trigger_source,'|',status) FROM opc_agent_workflow_run WHERE id = ${new_run_id};" | tr -d '\r')
+  fi
   if [[ -z "${new_run}" ]]; then
-    nok "25.5 触发后 2 分钟内没等到 trigger_source='manual:%' 的运行记录 —— 手动执行这一环没通"
+    nok "25.5 触发后 3 分钟内没等到 trigger_source='manual:%' 的运行记录 —— 手动执行这一环没通"
+  elif [[ "${run_status}" == "SUCCESS" || "${run_status}" == "PARTIAL" || "${run_status}" == "FAILED" ]]; then
+    ok "25.5 真跑出一条运行记录(手动执行, 已跑到终态): ${new_run}"
   else
-    ok "25.5 真跑出一条运行记录(手动执行): ${new_run}"
+    nok "25.5 触发后 3 分钟这条运行(id=${new_run_id})还没跑到终态(status=${run_status:-<空>}) —— 它还在飞, 不是跑成了"
   fi
 
   # --- 25.5b 落库的那条运行记录, 状态必须是真的跑成了 ---
@@ -4047,17 +4070,19 @@ print(sum(1 for r in rows if r.get('jobId') == 100))
   # ⚠️ PARTIAL **不代表产出物落过表**(没有 persist 声明的 dag 记 PARTIAL 时业务表里
   # 一行都没有)—— 所以这里绝不能断言「PARTIAL 的运行必有对应的日报行」。
   # 「LLM 通不通」由 26.2 / 26.7 / 26.9b / 26.10 负责。
-  local new_run_id run_status
-  new_run_id=$(printf '%s' "${new_run}" | cut -d'|' -f1)
+  local new_run_id2
+  new_run_id2=$(printf '%s' "${new_run}" | cut -d'|' -f1)
   run_status=$(printf '%s' "${new_run}" | cut -d'|' -f5)
   if [[ -z "${new_run}" ]]; then
     nok "25.5b 没有一条可判状态的运行记录 —— 25.5 本身就没跑成"
   elif [[ "${run_status}" == "SUCCESS" ]]; then
-    ok "25.5b 这条运行记录 status=SUCCESS (id=${new_run_id})"
+    ok "25.5b 这条运行记录 status=SUCCESS (id=${new_run_id2})"
   elif [[ "${run_status}" == "PARTIAL" ]]; then
-    warn "25.5b 这条运行记录 status=PARTIAL (id=${new_run_id}) —— 跑成了, 但有节点降级(不等于业务成功)"
+    warn "25.5b 这条运行记录 status=PARTIAL (id=${new_run_id2}) —— 跑成了, 但有节点降级(不等于业务成功)"
+  elif [[ "${run_status}" == "PENDING" || "${run_status}" == "RUNNING" ]]; then
+    nok "25.5b 这条运行(id=${new_run_id2})等了 3 分钟还是 ${run_status} —— 它**没跑完**(不是失败), 别跟「跑成了」混为一谈"
   else
-    nok "25.5b 这条运行记录 status=${run_status:-<空>} (id=${new_run_id}) —— 记录落库了, 但业务没跑成(以前的 25.5 只看记录在不在)"
+    nok "25.5b 这条运行记录 status=${run_status:-<空>} (id=${new_run_id2}) —— 记录落库了, 但业务没跑成(以前的 25.5 只看记录在不在)"
   fi
 
   # --- 25.6 sys_job_log 里必须有这次执行, 而且业务也得真跑成 ---
