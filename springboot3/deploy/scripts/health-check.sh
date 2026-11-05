@@ -3250,24 +3250,52 @@ PY
   # 而网关的流控规则一条都从来没加载过 —— 而配置本身看上去一切正常。
   #
   # 症状是唯一的判据: 日志里一条 "Client not connected" 都没有 = 连上了。
-  # (容器重建后 docker logs 只含本次启动的日志, 不用自己算时间窗。)
+  #
+  # ⚠️ **只数最近 30 分钟的**(`docker logs --since`)。`docker logs` 是**容器创建
+  #    以来**的全部日志, 不是「本次启动」的 —— 容器重启(restart)不会清空它,
+  #    只有重建(create)才会。2026-11-05 这条检查就是这么假红的:
+  #    网关容器 10-30 建的, 11-03 有过一段 Nacos 抖动(84 条, 全是历史),
+  #    而最近两小时一条都没有 —— 数全量日志等于**拿历史故障判现在的健康**。
   #
   # 但**读不到日志不等于没问题** —— 容器名写错、容器刚被删了, 一样是 0 条。
   # 那种情况下这一项必须说"证明不了任何东西", 不能报 OK:
   # 一个永远绿的检查等于没有检查。
-  local gw_log gw_notconn
+  local gw_log gw_win gw_notconn gw_win_lines gw_last gw_ago gw_now
   gw_log=$(docker logs aiopc-gateway 2>&1 || true)
   if [[ -z "${gw_log}" ]] || [[ "${gw_log}" == *"Error response from daemon"* ]] \
      || [[ "${gw_log}" == *"No such container"* ]]; then
     nok "22.6 读不到网关日志 —— 这一项证明不了任何东西"
   else
-    gw_notconn=$(grep -c "Client not connected" <<<"${gw_log}" || true)
-    gw_notconn="${gw_notconn//[^0-9]/}"
-    [[ -z "${gw_notconn}" ]] && gw_notconn=0
-    if [[ "${gw_notconn}" -eq 0 ]]; then
-      ok "22.6 网关的 Sentinel 数据源没有连不上的重试 (Nacos 客户端已连上)"
+    # 窗口内的日志(带 RFC3339 时间戳, 用来判断故障是不是**还在持续**)
+    gw_win=$(docker logs -t --since 30m aiopc-gateway 2>&1 || true)
+    if [[ "${gw_win}" == *"Error response from daemon"* ]] || [[ "${gw_win}" == *"No such container"* ]]; then
+      nok "22.6 读不到网关最近 30 分钟的日志 —— 这一项证明不了任何东西"
     else
-      nok "22.6 网关日志里有 ${gw_notconn} 条 'Client not connected' —— Sentinel 的 Nacos 客户端连不上 (多半是 bootstrap.yml 里 sentinel.datasource...server-addr 还写着 127.0.0.1, 容器里那是网关自己)"
+      gw_win_lines=$(grep -c '[^[:space:]]' <<<"${gw_win}" || true)
+      gw_win_lines="${gw_win_lines//[^0-9]/}"
+      [[ -z "${gw_win_lines}" ]] && gw_win_lines=0
+      gw_notconn=$(grep -c "Client not connected" <<<"${gw_win}" || true)
+      gw_notconn="${gw_notconn//[^0-9]/}"
+      [[ -z "${gw_notconn}" ]] && gw_notconn=0
+      if [[ "${gw_win_lines}" -eq 0 ]]; then
+        # 窗口里一条日志都没有 → 「没有连不上的重试」这句话无从谈起(可能只是闲着)
+        warn "22.6 网关最近 30 分钟一条日志都没有 —— 判据落空, 说不了 Sentinel 数据源现在的状态"
+      elif [[ "${gw_notconn}" -eq 0 ]]; then
+        ok "22.6 最近 30 分钟网关日志(${gw_win_lines} 行)里没有 'Client not connected' —— Sentinel 的 Nacos 客户端连得上"
+      else
+        # 窗口里有过 → 还在持续吗? 看**最后一条**距现在多久。
+        # 「有过但已经停了」和「现在还在每秒十几条地重试」是两回事, 不能一律判 FAIL。
+        gw_last=$(grep "Client not connected" <<<"${gw_win}" | tail -1 | awk '{print $1}')
+        gw_now=$(date -u +%s)
+        gw_ago=$(date -u -d "${gw_last}" +%s 2>/dev/null || echo "")
+        if [[ -z "${gw_ago}" ]]; then
+          nok "22.6 最近 30 分钟有 ${gw_notconn} 条 'Client not connected', 但解析不出时间戳 —— 判不了它是不是还在持续"
+        elif [[ $(( gw_now - gw_ago )) -le 300 ]]; then
+          nok "22.6 最近 30 分钟有 ${gw_notconn} 条 'Client not connected', 最后一条就在 $(( (gw_now - gw_ago) / 60 )) 分钟前 —— Sentinel 的 Nacos 客户端**现在还**连不上 (多半是 bootstrap.yml 里 sentinel.datasource...server-addr 还写着 127.0.0.1, 容器里那是网关自己)"
+        else
+          warn "22.6 最近 30 分钟有 ${gw_notconn} 条 'Client not connected', 但最后一条是 $(( (gw_now - gw_ago) / 60 )) 分钟前 —— 已经停了(多半是那会儿 Nacos 在抖), 现在没在重试"
+        fi
+      fi
     fi
   fi
 }
@@ -4566,17 +4594,75 @@ print(' '.join(names))
   #    (用户 2026-11-04:「记住减少真实测试, 花钱的」)。
   #    造那条非 FALLBACK 的行是**部署流程**里的一次动作(调一次, 之后零成本)。
   # 这一条**不限定公司**:建议接口的 companyId 取自登录用户, 与工作流的 company 无关。
-  local adv adv_id adv_llm
-  adv=$(db_q "SELECT CONCAT(id,'|',IFNULL(llm_used,'')) FROM opc_insight_advice ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+  #
+  # ⚠️ 光看 llm_used 不够 —— 那只说明**那一条**是真 LLM 写的,
+  #    说不了「现在」通不通。2026-11-05 这条就是这么假红的:
+  #    最新一行是 2026-10-20 的种子数据(llm_used='FALLBACK'),
+  #    用它判「今天的 insight LLM 健不健康」= **拿 16 天前的一行判今天**。
+  #    所以这里要求它**够新**(7 天内, 与 26.6 一个口径):
+  #    · 太旧 → 红的理由是「只能证明当时通, 证明不了现在通」, 不是「当时没通」;
+  #    · 修法是部署后调一次 POST /opc/insight/advice(一次 LLM 调用, 之后零成本)。
+  local adv adv_id adv_llm adv_time adv_age
+  adv=$(db_q "SELECT CONCAT(id,'|',IFNULL(llm_used,''),'|',IFNULL(create_time,'')) FROM opc_insight_advice ORDER BY id DESC LIMIT 1;" | tr -d '\r')
   if [[ -z "${adv}" ]]; then
     nok "26.10 opc_insight_advice 一行都没有 —— insight 的 LLM 从来没跑过"
   else
     adv_id=$(printf '%s' "${adv}" | cut -d'|' -f1)
     adv_llm=$(printf '%s' "${adv}" | cut -d'|' -f2)
+    adv_time=$(printf '%s' "${adv}" | cut -d'|' -f3)
+    adv_age=$(db_q "SELECT TIMESTAMPDIFF(HOUR, '${adv_time}', NOW());" 2>/dev/null | tr -d '\r')
     if [[ -z "${adv_llm}" || "${adv_llm}" == "FALLBACK" ]]; then
-      nok "26.10 最近一条建议(id=${adv_id})的 llm_used='${adv_llm}' —— insight 的 LLM 没通, 这一条是模板编的"
+      nok "26.10 最近一条建议(id=${adv_id}, ${adv_time})的 llm_used='${adv_llm}' —— 这一条是降级模板, 不是模型看着真实数据写的"
+    elif [[ -z "${adv_age}" ]]; then
+      nok "26.10 最近一条建议(id=${adv_id})的 llm_used='${adv_llm}' 但算不出它有多旧 —— 这条断言等于没跑"
+    elif [[ "${adv_age}" -gt 168 ]]; then
+      nok "26.10 最近一条真 LLM 的建议(id=${adv_id})是 $(( adv_age / 24 )) 天前的 —— 只能证明当时通, 证明不了现在通(部署后调一次 POST /opc/insight/advice)"
     else
-      ok "26.10 最近一条建议(id=${adv_id})是真 LLM 写的: llm_used=${adv_llm}"
+      ok "26.10 最近一条建议(id=${adv_id}, ${adv_age} 小时前)是真 LLM 写的: llm_used=${adv_llm}"
+    fi
+  fi
+
+  # --- 26.13 LLM 的正文不许是空的(2026-11-05 那个坑) ---
+  #
+  # 线上怎么炸的: MiniMax-M3.1-Flash 是**强制思考**模型, 思考 token 计入
+  # max_tokens → 额度被思考吃光 → 响应里**没有 content 字段** → 解析成 null →
+  # provider 报「成功」→ 一路漏到工作流 persist 层, 才炸成一句看不懂的
+  # 「产出不是字符串: n2」(锅甩给了一个无辜的节点)。
+  #
+  # 这条断的是**结果**而不是日志:
+  #   · 最近一次工作流运行得是 SUCCESS(不是那个坑造成的 FAILED);
+  #   · 它落表的那份日报, 正文要么是模型写的(REAL), 要么是引擎的确定性兜底摘要
+  #     (FALLBACK_PREFIX = "[自动聚合·未走 LLM]")—— 空正文不许悄悄存进去。
+  # 判「最新一次」而不是「有没有一次」: 「存在一条好结果」会被历史上的一条永久满足。
+  local n13
+  n13=$(db_q "SELECT CONCAT(r.id,'|',r.status,'|',
+        IFNULL(d.report_status,'<无日报>'),'|',
+        CASE WHEN d.id IS NULL THEN 'NOREPORT'
+             WHEN d.summary_md IS NULL OR TRIM(d.summary_md) = '' THEN 'EMPTY'
+             WHEN d.summary_md LIKE '[自动聚合%' THEN 'FALLBACK_PREFIX'
+             ELSE 'REAL' END)
+      FROM opc_agent_workflow_run r
+      LEFT JOIN opc_insight_daily_report d ON d.source_workflow_run_id = r.id
+      ORDER BY r.id DESC, d.id DESC LIMIT 1;" | tr -d '\r')
+  if [[ -z "${n13}" ]]; then
+    nok "26.13 查不到 opc_agent_workflow_run —— 护栏空转, 证明不了任何东西"
+  else
+    local n13_id n13_status n13_repstat n13_body
+    n13_id=$(printf '%s' "${n13}" | cut -d'|' -f1)
+    n13_status=$(printf '%s' "${n13}" | cut -d'|' -f2)
+    n13_repstat=$(printf '%s' "${n13}" | cut -d'|' -f3)
+    n13_body=$(printf '%s' "${n13}" | cut -d'|' -f4)
+    local n13_why=""
+    [[ "${n13_status}" != "SUCCESS" ]] && n13_why="${n13_why} 最近一次运行 status='${n13_status}' "
+    case "${n13_body}" in
+      NOREPORT)       n13_why="${n13_why} 它没产出任何日报 " ;;
+      EMPTY)          n13_why="${n13_why} 日报正文是空的 " ;;
+      FALLBACK_PREFIX) n13_why="${n13_why} 日报正文是引擎的兜底摘要(LLM 没给出正文) " ;;
+    esac
+    if [[ -z "${n13_why}" ]]; then
+      ok "26.13 最近一次工作流运行(id=${n13_id})是 SUCCESS, 它的日报正文是模型写的(report_status=${n13_repstat})"
+    else
+      nok "26.13${n13_why}—— 2026-11-05 的坑(LLM 报成功但正文为空)还在"
     fi
   fi
 
