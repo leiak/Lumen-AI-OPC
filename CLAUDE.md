@@ -247,6 +247,37 @@ README 里写「每天 09:00」时**必须写明是北京时间**。
 **窗口会少 8 小时**，在 7 天边界上**假红**。要写成
 `DATE_SUB(NOW(), INTERVAL 7 DAY) + INTERVAL 8 HOUR`（健康检查 26.6 就是这么写的）。
 
+### 14. 「调用成功」不等于「有正文」 —— 强制思考模型会把 `max_tokens` 吃光
+
+MiniMax 把 `MiniMax-Text-01` 下线后换成 `MiniMax-M3.1-Flash`。它是**强制思考**模型：
+思考 token **计入 `max_tokens`**，而且 `reasoning_effort` 不传时厂商默认按 `max` 思考。
+调用方给的额度是按「正文长度」定的（insight 的建议 600、AgentRuntime 2048）→ 思考把额度吃光 →
+
+```
+HTTP 200，usage 里有 token，choices[0].message 里**没有 content 字段**
+finish_reason = "length"
+```
+
+解析层把「没有 content」读成 `null`，一路当成功传下去，于是：
+
+- 降级链（DeepSeek）**根本不触发**（失败被藏在「成功」里）；
+- `null` 被**写进 LLM 缓存** —— 一小时内每次同样提问都拿到那份空；
+- `null` 漏到工作流 persist 层才炸成一句看不懂的「产出不是字符串: n2」，
+  **锅甩给了一个无辜的节点**（真凶是 provider 报成功但内容是空的）。
+
+现在的三层防线（`MiniMaxProvider` / `LlmGateway` / `WorkflowEngine`+`WorkflowPersistHandler`）：
+
+- provider：响应里没有正文 = **失败**（错误信息里带 `finish_reason`），不是「成功但 content 是 null」；
+- 网关：provider 报成功但正文为空 → 当成失败换下一个 provider，且**不写缓存**；
+- 引擎/persist：正文为空 → 明确说「上游 LLM 没返回正文」，落到 PARTIAL + 引擎的**确定性**聚合摘要。
+
+请求侧也要留出空间：`opc.llm.minimax.min-max-tokens`（默认 4096，给思考留位置）
++ `opc.llm.minimax.reasoning-effort`（默认 medium）。这两个键写在**四份 yml** 里 ——
+健康检查 26.11 要求它们逐行一致。
+
+> 换模型名之前先去看厂商的 `/v1/models`；**任何**「返回了但正文是空的」响应，
+> 都要当成失败处理，否则它会一路伪装成成功，直到某个下游节点炸出一句不相干的话。
+
 ---
 
 ## 五、文档与计划

@@ -321,7 +321,7 @@ cmd_rebuild() {
   else
     build_one "${target}"
   fi
-  log "rebuild 完成,跑 bash deploy.sh health 验证 (25 节; 别直接跑 scripts/health-check.sh)"
+  log "rebuild 完成,跑 bash deploy.sh health 验证 (26 节; 别直接跑 scripts/health-check.sh)"
 }
 
 # 网关: fat jar(-jar 启动), 跟业务服务的 thin jar 流程不一样 ——
@@ -401,7 +401,7 @@ Commands:
   nuke                     ⚠️  清 mysql/redis/nacos 数据卷
   rebuild <svc|all|gateway|auth|frontend>  重建指定服务镜像 (e.g. opc-crm / opc-notification / ruoyi-job / gateway / auth / frontend / all)
   snapshot                 跑全栈状态快照
-  health                   跑健康检查 (25 节 / 184 项断言)
+  health                   跑健康检查 (26 节 / 202 项断言)
   help                     显示本帮助
 
 示例:
