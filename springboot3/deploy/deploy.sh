@@ -186,10 +186,14 @@ cmd_rebuild() {
   #
   # 前端不走这条 (它压根不碰 Maven), 跳过 —— 省一次 install, 也少一个失败点。
   if [[ "${target}" != "frontend" ]]; then
-    log "[shared] mvn install 共享模块 (ruoyi-common-security / opc-common / opc-ai-core)"
+    # 清单里必须有 ruoyi-common-core ——
+    # 2026-11-03 给它加过 INSIGHT_SERVICE 常量(opc-insight 的 Feign 定位靠它),
+    # 而 build_one 里的 copy-dependencies 不带 -am, 运行时 lib/ 只能从 ~/.m2 拿快照。
+    # 它不在这个清单里 → 镜像里塞的是旧包 → 编译期过、运行期 NoSuchFieldError。
+    log "[shared] mvn install 共享模块 (ruoyi-common-security / ruoyi-common-core / opc-common / opc-ai-core)"
     cd "${PROJECT_ROOT}"
     JAVA_HOME="${JAVA_HOME}" \
-      mvn -pl ruoyi-common/ruoyi-common-security,opc-common,ruoyi-modules/opc-ai-core \
+      mvn -pl ruoyi-common/ruoyi-common-security,ruoyi-common/ruoyi-common-core,opc-common,ruoyi-modules/opc-ai-core \
         -am clean install \
         -Dmaven.test.skip=true -Dspring-boot.repackage.skip=true -q \
       || fail "共享模块 install 失败"
