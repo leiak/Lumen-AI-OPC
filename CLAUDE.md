@@ -318,8 +318,17 @@ finish_reason = "length"
 - 比 `opc_agent_workflow_run.start_time`（北京）→ 同上，26.6 就是这么写的
   （`DATE_SUB(NOW(), INTERVAL 7 DAY) + INTERVAL 8 HOUR`）。
 
-> ⚠️ **还没修**：修法是把 mapper 里的 `sysdate()` 换成从 Java 传 `createTime`，
-> 让整行一个钟；配套还要加一条会红的断言盯住它。2026-11-06 只把坑记下来。
+> ⚠️ **已修，但还没部署**（2026-11-06）：修法是把 mapper 里的 `sysdate()` 换成从 Java 传
+> `createTime`（`SysJobLogServiceImpl.addJobLog()` 负责补上），让整行一个钟；
+> 配套加了健康检查 **25.9**（同一行的 `create_time` 必须落在 `end_time` 之后 5 分钟内）
+> 和两条单测（`SysJobLogClockTest`）。
+> **但 `ruoyi-job` 还没重建** —— 所以：
+>
+> - 25.9 现在**是红的**（skew = -28800 秒）—— 那才是它该有的样子：代码修好、断言没修；
+> - 下次 `bash deploy.sh rebuild ruoyi-job`（或 `rebuild all`）之后，
+>   **下一次任务执行**写出的新行才会是同一个钟，25.9 才会转绿；
+> - 修好之后 `create_time` 也是北京墙上的时间了 → 拿它跟 `NOW()`(UTC) 比要记得
+>   `+ INTERVAL 8 HOUR`（跟 `start_time` 一个待遇了）。
 
 ---
 

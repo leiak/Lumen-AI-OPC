@@ -1,5 +1,6 @@
 package com.ruoyi.job.service;
 
+import java.util.Date;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -43,12 +44,27 @@ public class SysJobLogServiceImpl implements ISysJobLogService
 
     /**
      * 新增任务日志
-     * 
+     *
      * @param jobLog 调度日志信息
      */
     @Override
     public void addJobLog(SysJobLog jobLog)
     {
+        // create_time 由这里补, 不再让数据库写。
+        //
+        // 原来 mapper 里写的是 sysdate() —— 那走 **MySQL 服务器的钟**(本机是 UTC),
+        // 而同一行的 start_time / end_time 走 JDBC 的钟(serverTimezone=Asia/Shanghai → 北京)。
+        // 结果同一行里差 8 小时:
+        //     start_time = 2026-11-06 09:00:00   (北京)
+        //     create_time = 2026-11-06 01:00:17 (UTC)
+        // RuoYi 自带的定时任务日志页按 create_time 过滤日期区间, 于是「按北京时间挑今天」
+        // 会把 00:00~08:00 发生的执行算到昨天去 —— 一行数据两个钟, 谁读谁懵。
+        //
+        // 这里从 Java 传, 整行一个钟(北京), 跟库里其它表(都从 Java 写)一致。
+        if (jobLog.getCreateTime() == null)
+        {
+            jobLog.setCreateTime(new Date());
+        }
         jobLogMapper.insertJobLog(jobLog);
     }
 

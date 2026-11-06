@@ -4144,6 +4144,34 @@ print(sum(1 for r in rows if r.get('jobId') == 100))
   else
     ok "25.8 界面上没有指向 localhost 的死外链菜单"
   fi
+
+  # --- 25.9 sys_job_log 同一行里不能有两个钟 ---
+  #
+  # 原来 mapper 里写的是 sysdate() → create_time 走 **MySQL 服务器的钟**(本机 UTC),
+  # 而同一行的 start_time / end_time 走 **JDBC 的钟**(serverTimezone=Asia/Shanghai → 北京)。
+  # 结果同一行差 8 小时:
+  #     start_time = 2026-11-06 09:00:00   (北京)
+  #     create_time = 2026-11-06 01:00:17 (UTC)
+  #
+  # 为什么它有牙: RuoYi 自带的定时任务日志页按 create_time 过滤日期区间
+  # (date_format(create_time,'%Y%m%d')) → 按北京时间挑「今天」, 会把 00:00~08:00
+  # 之间发生的执行算到昨天去。演示前端没有那个页面(views/monitor 不存在),
+  # 所以对访客不可见 —— 但对「查库的人」是真陷阱。
+  #
+  # 判据: create_time 就是那一次执行落表的时刻, 必须落在 end_time 之后 5 分钟之内。
+  # 差 8 小时 = -28800 秒 → 红。
+  local clock_row clock_skew
+  clock_row=$(db_q "SELECT CONCAT(job_log_id,'|',start_time,'|',end_time,'|',create_time,'|',TIMESTAMPDIFF(SECOND, end_time, create_time)) FROM sys_job_log WHERE job_name='财务日报' ORDER BY job_log_id DESC LIMIT 1;" | tr -d '\r')
+  if [[ -z "${clock_row}" ]]; then
+    nok "25.9 查不到 sys_job_log —— 护栏空转, 证明不了任何东西"
+  else
+    clock_skew=$(printf '%s' "${clock_row}" | awk -F'|' '{print $5}')
+    if [[ -z "${clock_skew}" || "${clock_skew}" -lt -60 || "${clock_skew}" -gt 300 ]]; then
+      nok "25.9 sys_job_log 同一行里两个钟: ${clock_row} —— create_time 比 end_time 差 ${clock_skew:-?} 秒(该在 0~300 秒之间)"
+    else
+      ok "25.9 sys_job_log 整行一个钟(create_time 比 end_time 晚 ${clock_skew} 秒): ${clock_row}"
+    fi
+  fi
 }
 
 # ---------- 26. 财务数字员工读的是真数据 ----------
