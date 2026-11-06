@@ -401,7 +401,7 @@ Commands:
   nuke                     ⚠️  清 mysql/redis/nacos 数据卷
   rebuild <svc|all|gateway|auth|frontend>  重建指定服务镜像 (e.g. opc-crm / opc-notification / ruoyi-job / gateway / auth / frontend / all)
   snapshot                 跑全栈状态快照
-  health                   跑健康检查 (26 节 / 202 项断言)
+  health                   跑健康检查 (26 节 / 204 项断言)
   help                     显示本帮助
 
 示例:

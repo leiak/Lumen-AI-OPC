@@ -33,7 +33,8 @@
 #  24) Sentinel 控制台是真的在管事 (不是「零节点零规则」的空壳)
 #  25) 定时任务是真的在跑 (ruoyi-job 真的被装起来 + 真的触发过)
 #  26) 财务数字员工读的是真数据 (日报里的金额逐笔等于库里的金额 +
-#      降级链真的开着 + 四份 yml 对得上)
+#      降级链真的开着 + 四份 yml 对得上 +
+#      日报**正文**里的数字也来自 kpi_json, 不许模型编)
 #
 # 输出: PASS=绿, FAIL=红
 # ============================================================
@@ -4745,6 +4746,65 @@ print(' '.join(names))
       nok "26.12 ${c26}:${why26}—— yml 里配了不等于容器里开着"
     fi
   done
+
+  # --- 26.14 / 26.15 日报正文里的数字必须来自 kpi_json ---
+  #
+  # prompt 里那两条硬性要求(「不得出现给定数据里没有的数字」「昨日没有流水必须明说」)
+  # 一直只是**请求** —— 模型这次照做了, 但那是模型的自觉, 不是护栏。
+  # 模型哪次不照做, 没有任何东西会红 → 这正是 CLAUDE.md 第二节说的那类坑。
+  #
+  # 这里把它变成断言:
+  #   26.14  正文里每一个「N 元」「N 笔」都得在 kpi_json 里找得到(数值相等)
+  #   26.15  昨日没有流水就必须明说, 且不许写成「营收 0 元, 运营平稳」
+  #
+  # 判据代码: deploy/scripts/report_body_truth.py
+  # 单测:     cd deploy/scripts && python3 -m unittest discover -s tests
+  #           (每一条「应该报红」的路径都有用例 —— 断言的价值全在它会不会红)
+  local rid14 sum14 kpi14 py14 tmp_sum tmp_kpi out14 rc14
+  py14="$(command -v python3 || command -v python)"
+  if [[ -z "${py14}" ]]; then
+    nok "26.14 找不到 python —— 日报正文里的数字没法对账"
+    nok "26.15 找不到 python —— 「昨日有无流水」没法对账"
+  else
+    rid14=$(db_q "SELECT id FROM opc_insight_daily_report WHERE summary_md IS NOT NULL AND TRIM(summary_md) <> '' ORDER BY id DESC LIMIT 1;" | tr -d '\r')
+    if [[ -z "${rid14}" ]]; then
+      nok "26.14 取不到有正文的日报 —— 护栏空转, 证明不了任何东西"
+      nok "26.15 取不到有正文的日报 —— 护栏空转, 证明不了任何东西"
+    else
+      # 正文里的换行/回车换成空格: 一行塞进 mysql -B 的输出里, 后面的解析才稳
+      sum14=$(db_q "SELECT REPLACE(REPLACE(summary_md, CHAR(10), ' '), CHAR(13), ' ') FROM opc_insight_daily_report WHERE id = ${rid14};")
+      kpi14=$(db_q "SELECT kpi_json FROM opc_insight_daily_report WHERE id = ${rid14};")
+      tmp_sum=$(mktemp)
+      tmp_kpi=$(mktemp)
+      printf '%s' "${sum14}" > "${tmp_sum}"
+      printf '%s' "${kpi14}" > "${tmp_kpi}"
+      out14=$("${py14}" "${SCRIPT_DIR}/report_body_truth.py" "${tmp_sum}" "${tmp_kpi}" 2>&1)
+      rc14=$?
+      rm -f "${tmp_sum}" "${tmp_kpi}"
+      if [[ "${rc14}" -gt 1 ]]; then
+        nok "26.14 正文对账脚本没跑通(退出码 ${rc14}) —— 这条断言等于没跑: ${out14}"
+        nok "26.15 正文对账脚本没跑通(退出码 ${rc14}) —— 这条断言等于没跑: ${out14}"
+      else
+        local line14 detail14
+        line14=$(printf '%s\n' "${out14}" | grep '^GROUP|FABRICATION|OK|' | head -1)
+        if [[ -n "${line14}" ]]; then
+          ok "26.14 日报(id=${rid14})正文里的数字都对得上: ${line14##*|}"
+        else
+          detail14=$(printf '%s\n' "${out14}" | grep '^GROUP|FABRICATION|FAIL|' \
+                     | sed 's/^GROUP|FABRICATION|FAIL|[^|]*|//' | head -3 | tr '\n' ' ')
+          nok "26.14 日报(id=${rid14})正文里有编出来的数字: ${detail14}"
+        fi
+        line14=$(printf '%s\n' "${out14}" | grep '^GROUP|NO_FLOW|OK|' | head -1)
+        if [[ -n "${line14}" ]]; then
+          ok "26.15 日报(id=${rid14})关于「昨日有无流水」照实说了: ${line14##*|}"
+        else
+          detail14=$(printf '%s\n' "${out14}" | grep '^GROUP|NO_FLOW|FAIL|' \
+                     | sed 's/^GROUP|NO_FLOW|FAIL|[^|]*|//' | head -3 | tr '\n' ' ')
+          nok "26.15 日报(id=${rid14})关于「昨日有无流水」没说实话: ${detail14}"
+        fi
+      fi
+    fi
+  fi
 }
 
 # ---------- Main ----------

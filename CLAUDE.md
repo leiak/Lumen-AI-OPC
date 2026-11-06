@@ -54,6 +54,18 @@ docs/superpowers/      9 份实施计划 + 逐份审计报告（plans/audit/）
 
 调单节：`HEALTH_ONLY=N bash deploy.sh health`。
 
+**断言也可以是代码**：有些判断写 bash 太绕，就抽成一个能单测的脚本，让健康检查去调它。
+现有的例子是 `deploy/scripts/report_body_truth.py`（26.14 / 26.15）——
+日报**正文**里模型自己写的数字，必须逐个能在 `kpi_json` 里找到；昨日没流水就必须明说，
+不许写成「营收 0 元，运营平稳」。它有 11 条单测：
+
+```bash
+cd springboot3/deploy/scripts && python3 -m unittest discover -s tests -v
+```
+
+**为什么要有单测**：一条断言的全部价值在「它会不会红」。prompt 里写「不得出现给定数据里没有的数字」
+只是**请求**；模型这次照做了，那是模型的自觉 —— 只有断言会红才算护栏。
+
 ---
 
 ## 三、怎么跑
@@ -277,6 +289,37 @@ finish_reason = "length"
 
 > 换模型名之前先去看厂商的 `/v1/models`；**任何**「返回了但正文是空的」响应，
 > 都要当成失败处理，否则它会一路伪装成成功，直到某个下游节点炸出一句不相干的话。
+
+### 15. 同一行里两个时钟 —— `sys_job_log.create_time` 是 UTC，`start_time` 是北京时间
+
+2026-11-06 查「09:00 那次自动触发」时发现的：
+
+| 列 | 谁写的 | 落在哪个时区 |
+|---|---|---|
+| `sys_job_log.start_time` / `end_time` | Java 的 `java.util.Date` → JDBC `serverTimezone=Asia/Shanghai` | **北京时间** |
+| `sys_job_log.create_time` | mapper 里写死的 `sysdate()` → MySQL 服务器的钟 | **UTC** |
+| `opc_agent_workflow_run.start_time` | Java 的 `Date` → 同上 | **北京时间** |
+| MySQL 的 `NOW()` | 会话时区（`NOW()` == `UTC_TIMESTAMP()`） | **UTC** |
+
+所以 2026-11-06 09:00（北京时间）那一次，`sys_job_log` id=14 的
+`start_time=09:00:00`，而**同一行**的 `create_time=01:00:17` —— 差 8 小时。
+不是时间戳算错了，是 `sysdate()` 走 MySQL 的钟、`#{startTime}` 走 JDBC 的钟。
+
+**为什么它有牙**：RuoYi 自带的定时任务日志列表按 `create_time` 过滤日期区间
+（`date_format(create_time,'%Y%m%d')`）→ 按北京时间挑「今天」，会把北京时间
+00:00~08:00 之间发生的执行算到昨天。本项目的演示前端**没有**这个页面
+（`vue3-typescript/src/views/monitor` 不存在），所以对访客不可见 —— 但对
+「查库的人」是真陷阱：拿 `create_time` 跟 `start_time` 对不上是常事。
+
+**比时间前先想清楚比的是哪个钟**：
+
+- 比 `sys_job_log.create_time`（UTC）→ 直接用 `NOW()`；
+- 比 `sys_job_log.start_time`（北京）→ 要 `NOW() + INTERVAL 8 HOUR`；
+- 比 `opc_agent_workflow_run.start_time`（北京）→ 同上，26.6 就是这么写的
+  （`DATE_SUB(NOW(), INTERVAL 7 DAY) + INTERVAL 8 HOUR`）。
+
+> ⚠️ **还没修**：修法是把 mapper 里的 `sysdate()` 换成从 Java 传 `createTime`，
+> 让整行一个钟；配套还要加一条会红的断言盯住它。2026-11-06 只把坑记下来。
 
 ---
 
